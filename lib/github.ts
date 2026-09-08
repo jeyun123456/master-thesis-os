@@ -8,6 +8,14 @@ let treeCache: { expiresAt: number; items: RepositoryItem[] } | null = null;
 
 import { isSafeRepositoryPath, type RepositoryItem } from './repository';
 
+export type GitHubCommitSummary = {
+  sha: string;
+  message: string;
+  author: string;
+  date: string;
+  url: string;
+};
+
 export function githubConfigured() { return Boolean(owner && repo); }
 
 async function gh<T>(path: string, options: { noStore?: boolean } = {}): Promise<T> {
@@ -39,9 +47,25 @@ export function clearGithubTreeCacheForTests() {
   treeCache = null;
 }
 
-export async function getCommits(limit = 8) {
+export async function getCommits(limit = 8): Promise<GitHubCommitSummary[]> {
   const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 30);
-  return gh<unknown[]>(`/commits?sha=${encodeURIComponent(branch)}&per_page=${safeLimit}`);
+  const items = await gh<Array<{
+    sha?: string;
+    html_url?: string;
+    commit?: {
+      message?: string;
+      author?: { name?: string; date?: string } | null;
+    };
+    author?: { login?: string } | null;
+  }>>(`/commits?sha=${encodeURIComponent(branch)}&per_page=${safeLimit}`);
+
+  return items.map((item) => ({
+    sha: item.sha || '',
+    message: item.commit?.message?.split('\n')[0] || '(커밋 메시지 없음)',
+    author: item.author?.login || item.commit?.author?.name || 'unknown',
+    date: item.commit?.author?.date || '',
+    url: item.html_url || '',
+  }));
 }
 
 export async function getFile(path: string) {
@@ -54,10 +78,14 @@ export async function getFile(path: string) {
   return data;
 }
 
-export async function getJsonFile<T>(path: string): Promise<T> {
+export async function getTextFile(path: string): Promise<string> {
   const file = await getFile(path);
   if (Array.isArray(file) || !('decoded' in file) || typeof file.decoded !== 'string') {
-    throw new Error(`GitHub file is not decodable JSON: ${path}`);
+    throw new Error(`GitHub file is not decodable text: ${path}`);
   }
-  return JSON.parse(file.decoded) as T;
+  return file.decoded;
+}
+
+export async function getJsonFile<T>(path: string): Promise<T> {
+  return JSON.parse(await getTextFile(path)) as T;
 }

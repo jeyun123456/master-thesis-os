@@ -2,7 +2,7 @@ import './globals.css';
 
 export const metadata = {
   title: 'Master Thesis OS',
-  description: 'Research dashboard for necessary labour thesis',
+  description: '한국 필요노동 석사논문 연구 작업실',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
