@@ -7,7 +7,7 @@ import { classifyWikiPath, wikiCategoryLabels, wikiCategoryOrder, wikiDisplayTit
 import { classifyRepositoryItems, type RepositoryItem } from '@/lib/repository';
 import type { ResearchStatus } from '@/lib/research-status';
 
-type LibraryTab = 'key' | 'literature' | 'wiki' | 'files';
+type LibraryTab = 'key' | 'literature' | 'wiki';
 
 type KeyResource = {
   label: string;
@@ -35,11 +35,6 @@ export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: Repositor
   const groups = useMemo(() => classifyRepositoryItems(tree), [tree]);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const blobPaths = useMemo(() => new Set(tree.filter((item) => item.type === 'blob').map((item) => item.path)), [tree]);
-
-  const files = useMemo(
-    () => tree.filter((item) => item.type === 'blob' && item.path.toLocaleLowerCase().includes(normalizedQuery)).slice(0, 160),
-    [tree, normalizedQuery],
-  );
 
   const filteredPapers = useMemo(
     () => papers.filter((paper) => `${paper.author} ${paper.year} ${paper.title} ${paper.path}`.toLocaleLowerCase().includes(normalizedQuery)),
@@ -91,9 +86,7 @@ export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: Repositor
     ? '저자 · 연도 · 논문 제목 검색'
     : tab === 'wiki'
       ? 'Wiki 제목 · 경로 검색'
-      : tab === 'files'
-        ? '저장소 전체 경로 검색'
-        : '주요 자료 검색';
+      : '주요 자료 검색';
 
   return (
     <div className="library-shell">
@@ -101,7 +94,6 @@ export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: Repositor
         <Stat label="주요 자료" value={keyResources.length} />
         <Stat label="대표 논문" value={papers.length} />
         <Stat label="연구 Wiki" value={groups.wiki.filter((item) => /\.md$/i.test(item.path)).length} />
-        <Stat label="전체 파일" value={tree.filter((item) => item.type === 'blob').length} />
       </div>
 
       <div className="library-toolbar">
@@ -109,7 +101,6 @@ export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: Repositor
           <button className={tab === 'key' ? 'active' : ''} onClick={() => setTab('key')}>주요 자료</button>
           <button className={tab === 'literature' ? 'active' : ''} onClick={() => setTab('literature')}>문헌</button>
           <button className={tab === 'wiki' ? 'active' : ''} onClick={() => setTab('wiki')}>연구 Wiki</button>
-          <button className={tab === 'files' ? 'active' : ''} onClick={() => setTab('files')}>전체 파일</button>
         </div>
         <input className="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={placeholder} />
       </div>
@@ -120,9 +111,9 @@ export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: Repositor
             <div><h3>지금 연구에 바로 쓰는 자료</h3><p>현재 상태 Wiki가 가리키는 결정·결과 파일과 핵심 인덱스를 모았어.</p></div>
             <span>{keyResources.length}개</span>
           </div>
-          <div className="resource-grid">
-            {keyResources.map((item) => <ResourceCard key={item.path} item={item} onOpen={onOpen} />)}
-            {keyResources.length === 0 && <div className="card empty">조건에 맞는 주요 자료가 없어.</div>}
+          <div className="library-list">
+            {keyResources.map((item) => <ResourceRow key={item.path} item={item} onOpen={onOpen} />)}
+            {keyResources.length === 0 && <div className="library-empty">조건에 맞는 주요 자료가 없어.</div>}
           </div>
         </>
       )}
@@ -134,9 +125,9 @@ export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: Repositor
             <span>{filteredPapers.length} / {papers.length}</span>
           </div>
           {paperError && <div className="error library-inline-error">{paperError}</div>}
-          <div className="paper-grid">
-            {filteredPapers.map((paper) => <PaperCard key={paper.path} paper={paper} onOpen={onOpen} />)}
-            {!paperError && filteredPapers.length === 0 && <div className="card empty">조건에 맞는 대표 논문이 없어.</div>}
+          <div className="library-list">
+            {filteredPapers.map((paper) => <PaperRow key={paper.path} paper={paper} onOpen={onOpen} />)}
+            {!paperError && filteredPapers.length === 0 && <div className="library-empty">조건에 맞는 대표 논문이 없어.</div>}
           </div>
           <div className="library-source-note">기준 인덱스 · <code>{paperSourcePath}</code></div>
         </>
@@ -149,26 +140,13 @@ export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: Repositor
             if (!items.length) return null;
             return <section className="wiki-section" key={category}>
               <div className="library-section-heading compact-heading"><div><h3>{wikiCategoryLabels[category]}</h3></div><span>{items.length}개</span></div>
-              <div className="wikigrid">
-                {items.map((file) => <WikiCard key={file.path} file={file} category={wikiCategoryLabels[category]} onOpen={onOpen} />)}
+              <div className="library-list">
+                {items.map((file) => <WikiRow key={file.path} file={file} category={wikiCategoryLabels[category]} onOpen={onOpen} />)}
               </div>
             </section>;
           })}
-          {wikiItems.length === 0 && <div className="card empty">조건에 맞는 Wiki 문서가 없어.</div>}
+          {wikiItems.length === 0 && <div className="library-empty">조건에 맞는 Wiki 문서가 없어.</div>}
         </div>
-      )}
-
-      {tab === 'files' && (
-        <>
-          <div className="library-section-heading">
-            <div><h3>전체 파일</h3><p>큐레이션되지 않은 파일까지 포함한 저장소 탐색용 목록이야.</p></div>
-            <span>최대 160개 표시</span>
-          </div>
-          <div className="filegrid">
-            {files.map((file) => <FileCard key={file.path} file={file} onOpen={onOpen} />)}
-            {files.length === 0 && <div className="card empty">조건에 맞는 파일이 없어.</div>}
-          </div>
-        </>
       )}
     </div>
   );
@@ -178,21 +156,14 @@ function Stat({ label, value }: { label: string; value: number }) {
   return <div className="card library-stat"><span>{label}</span><b>{value.toLocaleString('ko-KR')}</b></div>;
 }
 
-function ResourceCard({ item, onOpen }: { item: KeyResource; onOpen: (path: string) => void }) {
-  return <div className="card resource-card"><div className="resource-top"><span className="resource-badge">{item.category}</span></div><h4>{item.label}</h4><p>{item.path}</p><button className="mini" onClick={() => onOpen(item.path)}>로컬에서 열기</button></div>;
+function ResourceRow({ item, onOpen }: { item: KeyResource; onOpen: (path: string) => void }) {
+  return <div className="library-row"><span className="resource-badge">{item.category}</span><div className="library-row-main"><h4>{item.label}</h4><p>{item.path}</p></div><button className="mini" onClick={() => onOpen(item.path)}>열기</button></div>;
 }
 
-function PaperCard({ paper, onOpen }: { paper: LibraryPaper; onOpen: (path: string) => void }) {
-  return <article className="card paper-card"><div className="paper-meta"><b>{paper.author}</b><span>{paper.year}</span></div><h4>{paper.title}</h4><p>{paper.path}</p><button className="mini" onClick={() => onOpen(paper.path)}>PDF 열기</button></article>;
+function PaperRow({ paper, onOpen }: { paper: LibraryPaper; onOpen: (path: string) => void }) {
+  return <article className="library-row paper-row"><div className="paper-row-meta"><b>{paper.author}</b><span>{paper.year}</span></div><div className="library-row-main"><h4>{paper.title}</h4><p>{paper.path}</p></div><button className="mini" onClick={() => onOpen(paper.path)}>PDF</button></article>;
 }
 
-function WikiCard({ file, category, onOpen }: { file: RepositoryItem; category: string; onOpen: (path: string) => void }) {
-  return <div className="card library-card wiki-library-card"><div className="library-icon">{category.slice(0, 4)}</div><div className="grow"><h4>{wikiDisplayTitle(file.path)}</h4><p>{file.path}</p></div><button className="mini" onClick={() => onOpen(file.path)}>열기</button></div>;
+function WikiRow({ file, category, onOpen }: { file: RepositoryItem; category: string; onOpen: (path: string) => void }) {
+  return <div className="library-row"><span className="wiki-category-label">{category}</span><div className="library-row-main"><h4>{wikiDisplayTitle(file.path)}</h4><p>{file.path}</p></div><button className="mini" onClick={() => onOpen(file.path)}>열기</button></div>;
 }
-
-function FileCard({ file, onOpen }: { file: RepositoryItem; onOpen: (path: string) => void }) {
-  return <div className="card library-card"><div className="library-icon">{extension(file.path)}</div><div className="grow"><h4>{basename(file.path)}</h4><p>{file.path}</p></div><button className="mini" onClick={() => onOpen(file.path)}>열기</button></div>;
-}
-
-function basename(path: string) { return path.split('/').pop() || path; }
-function extension(path: string) { const value = (path.split('.').pop() || 'FILE').toUpperCase(); return value.slice(0, 4); }
