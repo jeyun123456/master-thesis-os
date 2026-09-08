@@ -2,9 +2,13 @@
   "name": "master-thesis-os",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "tsc --noEmit",
     "test:bridge": "python -m unittest discover -s local-bridge -p test_*.py",
