@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://master-thesis-os.local/schemas/necessary_labour.schema.json",
+  "title": "Necessary Labour Dashboard",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAt", "unit", "source", "methodology", "series"],
+  "properties": {
+    "schemaVersion": { "const": "1.1.0" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "unit": { "const": "hours" },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["workbook", "sheet", "yearRange", "valueRange"],
+      "properties": {
+        "workbook": { "const": "Calc/data/results/05_constant_value.xlsx" },
+        "sheet": { "const": "summary" },
+        "yearRange": { "const": "A2:A4" },
+        "valueRange": { "const": "K2:K4" }
+      }
+    },
+    "methodology": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "version", "priceBasis", "sectorClassification"],
+      "properties": {
+        "id": { "const": "necessary-labour-constant-price" },
+        "version": { "const": "2026-09-03" },
+        "priceBasis": { "const": "2020 constant prices" },
+        "sectorClassification": { "const": "K77" }
+      }
+    },
+    "series": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["year", "value", "sourceCell"],
+        "properties": {
+          "year": { "enum": [2010, 2015, 2020] },
+          "value": { "type": "number" },
+          "sourceCell": { "type": "string", "pattern": "^K[2-4]$" }
+        }
+      }
+    }
+  }
+}

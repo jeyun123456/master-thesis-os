@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://master-thesis-os.local/schemas/validation.schema.json",
+  "title": "Dashboard Export Validation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAt", "scope", "status", "sourceWorkbooks", "checks", "limitation"],
+  "properties": {
+    "schemaVersion": { "const": "1.1.0" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "scope": { "const": "exporter-only" },
+    "status": { "enum": ["pass", "fail", "warning"] },
+    "sourceWorkbooks": {
+      "type": "array", "minItems": 2, "maxItems": 2,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        }
+      }
+    },
+    "checks": {
+      "type": "array", "minItems": 5,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "status", "message"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["pass", "fail", "warning"] },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "limitation": { "type": "string", "minLength": 1 }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://master-thesis-os.local/schemas/decomposition.schema.json",
+  "title": "Necessary Labour Decomposition Dashboard",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAt", "unit", "source", "methodology", "periods"],
+  "properties": {
+    "schemaVersion": { "const": "1.1.0" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "unit": { "const": "hours" },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["workbook", "summarySheet", "summaryRange", "contributionColumns"],
+      "properties": {
+        "workbook": { "const": "Calc/data/results/06_decomposition.xlsx" },
+        "summarySheet": { "const": "summary" },
+        "summaryRange": { "const": "A1:I4" },
+        "contributionColumns": { "const": "M:O" }
+      }
+    },
+    "methodology": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "version", "priceBasis", "sectorClassification"],
+      "properties": {
+        "id": { "const": "symmetric-two-factor-decomposition" },
+        "version": { "const": "2026-09-03" },
+        "priceBasis": { "const": "2020 constant prices" },
+        "sectorClassification": { "const": "K77" }
+      }
+    },
+    "periods": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["period", "fromYear", "toYear", "startValue", "endValue", "totalChange", "basketEffect", "embodiedLabourEffect", "residual", "sourceRow", "contributions"],
+        "properties": {
+          "period": { "enum": ["2010-2015", "2015-2020", "2010-2020"] },
+          "fromYear": { "type": "integer" },
+          "toYear": { "type": "integer" },
+          "startValue": { "type": "number" },
+          "endValue": { "type": "number" },
+          "totalChange": { "type": "number" },
+          "basketEffect": { "type": "number" },
+          "embodiedLabourEffect": { "type": "number" },
+          "residual": { "type": "number" },
+          "sourceRow": { "type": "integer", "minimum": 2, "maximum": 4 },
+          "contributions": {
+            "type": "array", "minItems": 77, "maxItems": 77,
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["code", "name", "totalChange", "basketEffect", "embodiedLabourEffect", "sourceRow"],
+              "properties": {
+                "code": { "type": "string", "minLength": 1 },
+                "name": { "type": "string", "minLength": 1 },
+                "totalChange": { "type": "number" },
+                "basketEffect": { "type": "number" },
+                "embodiedLabourEffect": { "type": "number" },
+                "sourceRow": { "type": "integer", "minimum": 2, "maximum": 78 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

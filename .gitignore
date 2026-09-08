@@ -1,0 +1,12 @@
+node_modules
+.next
+.vercel
+.env
+.env.local
+*.log
+*.tsbuildinfo
+coverage/
+__pycache__/
+.pytest_cache/
+local-bridge/config.json
+local-bridge/__pycache__/
