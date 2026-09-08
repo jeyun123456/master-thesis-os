@@ -26,7 +26,7 @@ function filename(path: string) {
 export function parsePaperIndex(markdown: string): LibraryPaper[] {
   const items: LibraryPaper[] = [];
   const seen = new Set<string>();
-  const matcher = /\[\[([^\]|]+?\.pdf)(?:\|([^\]]+))?\]\]/gi;
+  const matcher = /\[\[([^\]|]+?\.pdf)\s*(?:\|\s*([^\]]+?))?\s*\]\]/gi;
 
   for (const match of markdown.matchAll(matcher)) {
     const path = match[1].trim();
