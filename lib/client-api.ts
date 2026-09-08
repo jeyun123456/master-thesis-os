@@ -4,6 +4,7 @@ import type { CalendarErrorCode, CalendarEvent } from './calendar';
 import type { GitHubCommitSummary } from './github';
 import type { ResearchStatus } from './research-status';
 import type { LibraryPaper } from './library';
+import type { ResearchProject } from './projects';
 
 type ApiEnvelope<T> = { configured: boolean; items: T; error?: string };
 export type CalendarApiResponse = { configured:boolean; state:'unconfigured'|'ready'|'empty'|'error'; calendarId:string; timezone:'Asia/Seoul'; range:{days:number;timeMin:string;timeMax:string}; items:CalendarEvent[]; errorCode?:CalendarErrorCode; error?:string };
@@ -24,5 +25,6 @@ export const dashboardApi = {
   results: () => request<DashboardBundle>('/api/results'),
   commits: () => request<ApiEnvelope<GitHubCommitSummary[]>>('/api/github/commits'),
   researchStatus: () => request<ResearchStatusApiResponse>('/api/research/status'),
+  projects: () => request<ApiEnvelope<ResearchProject[]>>('/api/research/projects'),
   papers: () => request<PaperIndexApiResponse>('/api/library/papers'),
 };

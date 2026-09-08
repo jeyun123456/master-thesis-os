@@ -1,5 +1,6 @@
 import './globals.css';
 import './library-panel.css';
+import './research-panel.css';
 
 export const metadata = {
   title: 'Master Thesis OS',
