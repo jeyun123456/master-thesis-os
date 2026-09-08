@@ -54,7 +54,15 @@ export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: Repositor
   );
 
   const wikiGroups = useMemo(() => {
-    const result = Object.fromEntries(wikiCategoryOrder.map((category) => [category, []])) as Record<WikiCategory, RepositoryItem[]>;
+    const result: Record<WikiCategory, RepositoryItem[]> = {
+      current: [],
+      concepts: [],
+      methodology: [],
+      decisions: [],
+      findings: [],
+      data: [],
+      other: [],
+    };
     for (const item of wikiItems) result[classifyWikiPath(item.path)].push(item);
     return result;
   }, [wikiItems]);
