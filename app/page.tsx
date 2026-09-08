@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { LibraryPanel } from '@/app/library-panel';
+import { ResearchPanel } from '@/app/research-panel';
 import { dashboardApi, type CalendarApiResponse } from '@/lib/client-api';
 import type { CalendarEvent } from '@/lib/calendar';
 import { daysUntil, groupCalendarEvents } from '@/lib/calendar-view';
 import type { GitHubCommitSummary } from '@/lib/github';
+import type { ResearchProject } from '@/lib/projects';
 import type { RepositoryItem } from '@/lib/repository';
 import type { ResearchStatus } from '@/lib/research-status';
 import type { DashboardBundle } from '@/lib/results';
@@ -30,9 +32,9 @@ const initialDashboard: DashboardBundle = {
 
 const pageMeta: Record<Page, [string, string]> = {
   home: ['홈', '오늘의 연구 작업과 다음 행동을 한눈에'],
-  research: ['연구', '현재 연구 질문 · 해석 · 다음 작업 · 연구 결정'],
+  research: ['연구', '프로젝트별 질문 · 진행 단계 · 다음 작업 · 관련 자료'],
   results: ['분석 결과', '필요노동 추이 · 분해 · 검증 결과'],
-  library: ['자료실', '주요 자료 · 대표 문헌 · 연구 Wiki · 전체 파일'],
+  library: ['자료실', '주요 자료 · 대표 문헌 · 연구 Wiki'],
   settings: ['설정', '연구 저장소 · Google Calendar · 로컬 브리지'],
 };
 
@@ -44,14 +46,13 @@ const navigation: Array<{ id: Page; label: string; icon: string }> = [
   { id: 'settings', label: '설정', icon: '⚙' },
 ];
 
-const pipelineStages = ['자료', '부문통합', '노동시간', '소비바스켓', '필요노동', '분해', '해석', '집필'];
-
 export default function Page() {
   const [page, setPage] = useState<Page>('home');
   const [tree, setTree] = useState<RepositoryItem[]>([]);
   const [calendar, setCalendar] = useState<CalendarApiResponse>(initialCalendar);
   const [dashboard, setDashboard] = useState<DashboardBundle>(initialDashboard);
   const [researchStatus, setResearchStatus] = useState<ResearchStatus | null>(null);
+  const [projects, setProjects] = useState<ResearchProject[]>([]);
   const [commits, setCommits] = useState<GitHubCommitSummary[]>([]);
   const [ghConfigured, setGhConfigured] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
@@ -65,9 +66,10 @@ export default function Page() {
         dashboardApi.results(),
         dashboardApi.commits(),
         dashboardApi.researchStatus(),
+        dashboardApi.projects(),
       ]);
       const nextErrors: string[] = [];
-      const [treeResult, calendarResult, dashboardResult, commitResult, statusResult] = results;
+      const [treeResult, calendarResult, dashboardResult, commitResult, statusResult, projectResult] = results;
 
       if (treeResult.status === 'fulfilled') {
         setGhConfigured(treeResult.value.configured);
@@ -82,6 +84,11 @@ export default function Page() {
       if (commitResult.status === 'fulfilled') setCommits(commitResult.value.items || []);
       if (statusResult.status === 'fulfilled') setResearchStatus(statusResult.value.status);
       else nextErrors.push(errorMessage(statusResult.reason, '현재 연구 상태를 불러오지 못했습니다.'));
+
+      if (projectResult.status === 'fulfilled') {
+        setProjects(projectResult.value.items || []);
+        if (projectResult.value.error) nextErrors.push(projectResult.value.error);
+      } else nextErrors.push(errorMessage(projectResult.reason, '연구 프로젝트를 불러오지 못했습니다.'));
 
       setErrors(nextErrors);
     })();
@@ -110,33 +117,36 @@ export default function Page() {
   }
 
   const schedule = useMemo(() => groupCalendarEvents(calendar.items), [calendar.items]);
+  const activeProject = useMemo(() => projects.find((project) => project.id === 'thesis') || projects.find((project) => project.status === 'active') || projects[0] || null, [projects]);
   const quickFiles = useMemo(() => {
-    if (!researchStatus) return [];
-    const items = [{ label: '현재 연구 상태', path: researchStatus.sourcePath }, ...researchStatus.importantFiles];
+    const items = [
+      ...(activeProject ? [{ label: `${activeProject.title} 프로젝트`, path: activeProject.sourcePath }] : []),
+      ...(researchStatus ? [{ label: '현재 연구 상태', path: researchStatus.sourcePath }, ...researchStatus.importantFiles] : []),
+    ];
     return items.filter((item, index) => items.findIndex((candidate) => candidate.path === item.path) === index).slice(0, 5);
-  }, [researchStatus]);
+  }, [activeProject, researchStatus]);
 
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="brand"><div className="logo">M</div><div><h1>Master Thesis OS</h1><p>석사논문 연구 작업실 · v1.1.1</p></div></div>
+        <div className="brand"><div className="logo">M</div><div><h1>Master Thesis OS</h1><p>석사논문 연구 작업실 · v1.2.0</p></div></div>
         <nav className="nav">{navigation.map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}><span>{item.icon}</span>{item.label}</button>)}</nav>
-        <div className="sidebar-source"><span>연구 기준</span><b>Obsidian Vault</b><small>GitHub live source</small></div>
+        <div className="sidebar-source"><span>연구 기준</span><b>Obsidian Vault</b><small>projects/ + shared/ · GitHub live</small></div>
       </aside>
 
       <main className="main">
         <header className="top">
           <div><h2>{pageMeta[page][0]}</h2><p>{pageMeta[page][1]}</p></div>
-          <div className="badges"><div className="badge">GitHub {ghConfigured ? '● 연결됨' : '○ 설정 필요'}</div><div className="badge">Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '● 연결됨' : '○ 확인 필요'}</div><div className="badge">v1.1.1</div></div>
+          <div className="badges"><div className="badge">GitHub {ghConfigured ? '● 연결됨' : '○ 설정 필요'}</div><div className="badge">Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '● 연결됨' : '○ 확인 필요'}</div><div className="badge">v1.2.0</div></div>
         </header>
 
         {errors.length > 0 && <div className="error page-error">{errors[0]}</div>}
 
         {page === 'home' && <section className="page active">
-          <CurrentFocus status={researchStatus} onOpen={openLocal} />
+          <CurrentFocus project={activeProject} status={researchStatus} onOpen={openLocal} />
           <div className="kpis home-kpis">
+            <Kpi label="활성 프로젝트" value={projects.length ? String(projects.filter((project) => project.status === 'active').length) : '—'} sub={activeProject?.title || 'projects/ 연결 대기'} />
             <Kpi label="다음 마감" value={schedule.nextDeadline ? deadlineLabel(schedule.nextDeadline) : '없음'} sub={schedule.nextDeadline?.title || '향후 일정에 마감 없음'} />
-            <Kpi label="예정 일정" value={calendar.configured ? String(calendar.items.length) : '—'} sub="오늘부터 14일" />
             <Kpi label="결과 검증" value={dashboard.validation?.status === 'pass' ? '통과' : '확인 필요'} sub="Exporter validation" />
             <Kpi label="연구 파일" value={ghConfigured ? String(tree.filter((item) => item.type === 'blob').length) : '—'} sub="GitHub live source" />
           </div>
@@ -146,45 +156,27 @@ export default function Page() {
             <Card title="다음 마감" right="마감 · 미팅">{schedule.nextDeadline ? <div className="event priority-event"><b>{schedule.nextDeadline.title}</b><small>{formatCalendarEvent(schedule.nextDeadline)} · {deadlineLabel(schedule.nextDeadline)}</small>{schedule.nextDeadline.location && <small>{schedule.nextDeadline.location}</small>}</div> : <CalendarState calendar={calendar} />}</Card>
           </div>
           <div className="grid2 section-gap">
-            <Card title="바로 다음 작업" right={researchStatus?.auditedAt ? `상태 기준 ${researchStatus.auditedAt}` : 'Wiki live'}><NumberedList items={researchStatus?.nextActions || []} empty="wiki/current_status.md의 ‘바로 다음 작업’을 표시해." /></Card>
-            <Card title="미해결 쟁점" right="확인 필요"><NumberedList items={researchStatus?.unresolved || []} empty="현재 등록된 미해결 쟁점이 없어." /></Card>
+            <Card title="바로 다음 작업" right={activeProject ? activeProject.title : 'Wiki live'}><NumberedList items={activeProject?.nextTasks || researchStatus?.nextActions || []} empty="활성 프로젝트의 다음 작업을 표시해." /></Card>
+            <Card title="막힌 부분" right={activeProject ? activeProject.title : '확인 필요'}><NumberedList items={activeProject?.blocked || researchStatus?.unresolved || []} empty="현재 등록된 막힌 부분이 없어." /></Card>
           </div>
           <div className="grid2 section-gap">
             <Card title="최근 변경" right="연구 저장소 GitHub"><CommitList commits={commits.slice(0, 6)} /></Card>
-            <Card title="빠른 열기" right="로컬 작업">{quickFiles.length ? quickFiles.map((item) => <div className="quick-open" key={item.path}><div><b>{item.label}</b><small>{item.path}</small></div><button className="mini" onClick={() => openLocal(item.path)}>로컬에서 열기</button></div>) : <div className="empty compact-empty">현재 상태 문서가 연결되면 주요 파일을 바로 열 수 있어.</div>}</Card>
+            <Card title="빠른 열기" right="로컬 작업">{quickFiles.length ? quickFiles.map((item) => <div className="quick-open" key={item.path}><div><b>{item.label}</b><small>{item.path}</small></div><button className="mini" onClick={() => openLocal(item.path)}>로컬에서 열기</button></div>) : <div className="empty compact-empty">프로젝트가 연결되면 주요 파일을 바로 열 수 있어.</div>}</Card>
           </div>
         </section>}
 
-        {page === 'research' && <section className="page active">
-          <div className="grid2">
-            <Card title="현재 연구 질문" right="현재 상태 Wiki"><div className="research-copy">{researchStatus?.researchQuestion || '현재 연구 상태를 불러오는 중이야.'}</div></Card>
-            <Card title="현재 해석" right={researchStatus?.currentStage || '연구 진행'}><div className="research-copy">{researchStatus?.currentInterpretation || '현재 해석이 상태 문서에 등록되면 여기 표시돼.'}</div></Card>
-          </div>
-          <div className="card section section-gap">
-            <div className="head"><h3>연구 파이프라인</h3><span>{researchStatus?.currentStage || '현재 단계 확인 중'}</span></div>
-            <div className="pipeline">{pipelineStages.map((stage, index) => <span key={stage} className="pipeline-wrap"><div className={`stage ${researchStatus?.currentStage.includes(stage) ? 'active' : ''}`}><b>{stage}</b><small>{researchStatus?.currentStage.includes(stage) ? '현재' : '연구 흐름'}</small></div>{index < pipelineStages.length - 1 && <span className="arrow">→</span>}</span>)}</div>
-          </div>
-          <div className="grid2 section-gap">
-            <Card title="다음 작업" right="Wiki live"><NumberedList items={researchStatus?.nextActions || []} empty="등록된 다음 작업이 없어." /></Card>
-            <Card title="미해결 문제" right="연구 한계 · 검증"><NumberedList items={researchStatus?.unresolved || []} empty="등록된 미해결 문제가 없어." /></Card>
-          </div>
-          <div className="grid2 section-gap">
-            <Card title="적용 중인 연구 결정" right="Decision Wiki">{researchStatus?.decisions.length ? researchStatus.decisions.slice(0, 8).map((item) => <div className="quick-open" key={item.path}><div><b>{item.label}</b><small>{item.path}</small></div><button className="mini" onClick={() => openLocal(item.path)}>열기</button></div>) : <div className="empty compact-empty">현재 상태 문서에 연결된 연구 결정을 표시해.</div>}</Card>
-            <Card title="연구 작업 도구" right="프롬프트 복사"><ResearchActions onCopy={(prompt) => { navigator.clipboard.writeText(prompt); pop('프롬프트를 복사했어'); }} /></Card>
-          </div>
-        </section>}
-
+        {page === 'research' && <section className="page active"><ResearchPanel projects={projects} tree={tree} onOpen={openLocal} onCopy={(prompt) => { navigator.clipboard.writeText(prompt); pop('프롬프트를 복사했어'); }} /></section>}
         {page === 'results' && <section className="page active"><ResultsPanel dashboard={dashboard} /></section>}
         {page === 'library' && <section className="page active"><LibraryPanel tree={tree} researchStatus={researchStatus} onOpen={openLocal} /></section>}
 
         {page === 'settings' && <section className="page active">
           <div className="grid2">
-            <Card title="연구 저장소" right={ghConfigured ? '연결됨' : '설정 필요'}><div className="note">GitHub의 Obsidian Vault가 연구 데이터의 기준이야. <code>GITHUB_OWNER / GITHUB_REPO / GITHUB_BRANCH / GITHUB_TOKEN</code>은 서버 환경변수에서 관리해.</div></Card>
+            <Card title="연구 저장소" right={ghConfigured ? '연결됨' : '설정 필요'}><div className="note">GitHub의 Obsidian Vault가 연구 데이터의 기준이야. 프로젝트는 <code>projects/*/project.md</code>에서 자동 발견하고, 기존 <code>wiki/ · Calc/ · 연구/</code> 경로는 manifest가 연결해.</div></Card>
             <Card title="로컬 브리지" right="127.0.0.1 전용"><div className="note">로컬 파일 열기는 PC에서 bridge를 실행했을 때만 동작해. 토큰은 이 브라우저의 localStorage에 저장돼.</div><BridgeToken onSave={() => pop('브리지 토큰을 저장했어')} /></Card>
           </div>
           <div className="grid2 section-gap">
             <Card title="Google Calendar" right={calendar.state === 'ready' || calendar.state === 'empty' ? '연결됨' : '확인 필요'}><div className="note">현재 상태: {calendarStateText(calendar)}</div></Card>
-            <Card title="버전" right="v1.1.1"><div className="note">한국어 UI · 실사용형 홈 · current_status.md live 연결 · 큐레이션 자료실 · 모바일 내비게이션.</div></Card>
+            <Card title="버전" right="v1.2.0"><div className="note">프로젝트 기반 연구탭 · repo project manifest · 한국어 UI · 큐레이션 자료실 · 모바일 내비게이션.</div></Card>
           </div>
         </section>}
       </main>
@@ -195,8 +187,11 @@ export default function Page() {
   );
 }
 
-function CurrentFocus({ status, onOpen }: { status: ResearchStatus | null; onOpen: (path: string) => void }) {
-  return <div className="focus-card card"><div className="focus-meta"><span>현재 집중 작업</span><b>{status?.currentStage || '연구 상태 연결 중'}</b></div><div className="focus-main"><h3>{status?.nextActions[0] || 'wiki/current_status.md의 다음 작업을 불러오는 중이야.'}</h3>{status?.nextActions[1] && <p>그다음: {status.nextActions[1]}</p>}</div><button className="btn primary" onClick={() => onOpen(status?.sourcePath || 'wiki/current_status.md')}>현재 상태 열기</button></div>;
+function CurrentFocus({ project, status, onOpen }: { project: ResearchProject | null; status: ResearchStatus | null; onOpen: (path: string) => void }) {
+  const title = project?.currentFocus || status?.nextActions[0] || '연구 프로젝트를 불러오는 중이야.';
+  const next = project?.nextTasks[0] || status?.nextActions[1] || '';
+  const path = project?.sourcePath || status?.sourcePath || 'wiki/current_status.md';
+  return <div className="focus-card card"><div className="focus-meta"><span>현재 집중 프로젝트</span><b>{project?.title || status?.currentStage || '연구 상태 연결 중'}</b></div><div className="focus-main"><h3>{title}</h3>{next && next !== title && <p>다음: {next}</p>}</div><button className="btn primary" onClick={() => onOpen(path)}>{project ? '프로젝트 열기' : '현재 상태 열기'}</button></div>;
 }
 
 function Card({ title, right, children }: { title: string; right?: string; children: React.ReactNode }) { return <div className="card section"><div className="head"><h3>{title}</h3><span>{right}</span></div>{children}</div>; }
@@ -206,16 +201,6 @@ function calendarStateText(calendar: CalendarApiResponse) { if (calendar.state =
 function Kpi({ label, value, sub }: { label: string; value: string; sub: string }) { return <div className="card kpi"><small>{label}</small><strong>{value}</strong><span>{sub}</span></div>; }
 function NumberedList({ items, empty }: { items: string[]; empty: string }) { if (!items.length) return <div className="empty compact-empty">{empty}</div>; return <div className="numbered-list">{items.map((item, index) => <div className="numbered-item" key={`${index}-${item}`}><span>{index + 1}</span><p>{item}</p></div>)}</div>; }
 function CommitList({ commits }: { commits: GitHubCommitSummary[] }) { if (!commits.length) return <div className="empty compact-empty">최근 GitHub 변경을 불러오는 중이거나 연결 정보가 없어.</div>; return <div>{commits.map((commit) => <div className="commit" key={commit.sha}><div><b>{commit.message}</b><small>{commit.author} · {relativeDate(commit.date)}</small></div><code>{commit.sha.slice(0, 7)}</code></div>)}</div>; }
-
-function ResearchActions({ onCopy }: { onCopy: (prompt: string) => void }) {
-  const actions = [
-    ['논리 검토', '현재 methodology, decisions, findings와 연구 질문을 기준으로 논문의 논리 전개를 검토해줘. 전제, 비약, 반론 가능성을 우선 확인해줘.'],
-    ['결과 해석', '최신 필요노동 결과와 2요인 분해를 기준으로 변화 방향과 주요 부문 기여를 해석해줘. 계산 결과와 인과 해석을 구분해줘.'],
-    ['코드 검증', '현재 방법론 Wiki와 계산 코드를 대조해서 구현 불일치, 오래된 파이프라인 혼입, 결과 재현 위험을 점검해줘.'],
-    ['Wiki 갱신', '현재 코드, 결과, 결정사항을 기준으로 연구 Wiki를 갱신해줘. methodology/findings/decisions 경계를 유지하고 중복 문서는 만들지 마.'],
-  ];
-  return <div className="action-grid">{actions.map(([title, prompt]) => <button key={title} className="action-button" onClick={() => onCopy(prompt)}><b>{title}</b><small>프롬프트 복사</small></button>)}</div>;
-}
 
 function ResultsPanel({ dashboard }: { dashboard: DashboardBundle }) {
   if (!dashboard.necessaryLabour || !dashboard.decomposition || !dashboard.validation) return <div className="card empty result-empty"><h3>분석 결과를 불러올 수 없어</h3><p>{dashboard.error || 'exporter를 실행하고 검증된 JSON을 GitHub에 반영해줘.'}</p><code>python exporter/export_results.py</code></div>;
