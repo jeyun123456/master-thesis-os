@@ -149,11 +149,11 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 Windows에서 `local-bridge/start_bridge.bat`을 실행하면 설정을 확인한 뒤 브리지를 계속 실행한다. 브리지가 비정상 종료되면 3초 후 자동으로 재시작한다. 콘솔 없이 실행하려면 `start_bridge_hidden.vbs`를 사용한다. 시스템 트레이 아이콘과 상태 확인·종료 메뉴를 쓰려면 `start_bridge_tray.vbs`를 사용한다. Windows 로그인 때마다 트레이 실행기를 자동 시작하려면 해당 VBS 파일의 바로가기를 `Win+R` → `shell:startup` 폴더에 넣는다. 일반 브라우저 개발 시에는 `start_bridge.bat`을 사용하고, 중지는 콘솔 창에서 `Ctrl+C` 또는 창 닫기로 수행한다.
 
-## Sucrose Wallpaper
+## Sucrose 설정
 
-Sucrose Wallpaper에는 `https://master-thesis-os.vercel.app/wallpaper`을 웹 wallpaper URL로 지정한다. 이 경로는 일반 대시보드와 분리된 가벼운 화면이며, 데이터 polling은 화면이 숨겨진 동안 멈췄다가 다시 보일 때 필요한 경우에만 재개한다. 시계는 별도의 1초 갱신으로 동작한다.
+Sucrose에서는 별도 전용 경로 대신 일반 대시보드 `https://master-thesis-os.vercel.app/`를 사용한다. 일반 대시보드의 기존 레이아웃과 데이터 로딩을 그대로 사용한다.
 
-Wallpaper의 **로컬 파일 열기**와 **볼트 폴더 열기**는 클릭했을 때만 loopback bridge를 호출한다. 먼저 일반 대시보드 Settings에서 같은 bridge token을 저장하고, 로컬 PC에서 bridge를 실행해야 한다. Sucrose가 로컬 브리지를 호출할 수 있도록 `config.json`의 `allowed_origins`에 실제 Sucrose page origin을 명시적으로 추가한다; allowlist에 wildcard는 사용하지 않는다.
+일반 대시보드의 **로컬 파일 열기**와 **볼트 폴더 열기**는 클릭했을 때만 loopback bridge를 호출한다. 먼저 Settings에서 같은 bridge token을 저장하고, 로컬 PC에서 bridge를 실행해야 한다. 브리지의 `config.json`에는 `https://master-thesis-os.vercel.app`를 명시적으로 허용하고 wildcard는 사용하지 않는다.
 
 ## Results JSON 계약
 
