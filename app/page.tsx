@@ -57,6 +57,12 @@ export default function Page() {
   const [ghConfigured, setGhConfigured] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [toast, setToast] = useState('');
+  const [wallpaperMode, setWallpaperMode] = useState(false);
+
+  useEffect(() => {
+    const mode = new URLSearchParams(window.location.search).get('mode');
+    setWallpaperMode(mode === 'wallpaper' || mode === 'lively');
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -127,7 +133,7 @@ export default function Page() {
   }, [activeProject, researchStatus]);
 
   return (
-    <div className="shell">
+    <div className={`shell${wallpaperMode ? ' wallpaper-mode' : ''}`}>
       <aside className="sidebar">
         <div className="brand"><div className="logo">M</div><div><h1>Master Thesis OS</h1><p>석사논문 연구 작업실 · v1.2.0</p></div></div>
         <nav className="nav">{navigation.map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}><span>{item.icon}</span>{item.label}</button>)}</nav>
