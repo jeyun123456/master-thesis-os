@@ -11,6 +11,7 @@ import type { ResearchProject } from '@/lib/projects';
 import type { RepositoryItem } from '@/lib/repository';
 import type { ResearchStatus } from '@/lib/research-status';
 import type { DashboardBundle } from '@/lib/results';
+import { BRIDGE_OFFLINE_MESSAGE, bridgeResponseMessage } from '@/lib/bridge-status';
 
 type Page = 'home' | 'research' | 'results' | 'library' | 'settings';
 
@@ -107,11 +108,14 @@ export default function Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path, token }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'bridge error');
+      const data = await response.json().catch(() => ({} as { error?: unknown }));
+      if (!response.ok) {
+        pop(bridgeResponseMessage(response.status, data.error));
+        return;
+      }
       pop('로컬에서 열었어');
     } catch {
-      pop('로컬 브리지를 확인해줘');
+      pop(BRIDGE_OFFLINE_MESSAGE);
     }
   }
 
@@ -124,11 +128,14 @@ export default function Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path, token }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'bridge error');
+      const data = await response.json().catch(() => ({} as { error?: unknown }));
+      if (!response.ok) {
+        pop(bridgeResponseMessage(response.status, data.error));
+        return;
+      }
       pop('로컬 볼트 폴더를 열었어');
     } catch {
-      pop('로컬 브리지를 확인해줘');
+      pop(BRIDGE_OFFLINE_MESSAGE);
     }
   }
 
