@@ -17,72 +17,74 @@ const initialDashboard: DashboardBundle = { source: 'empty', necessaryLabour: nu
 
 type ProjectResponse = Awaited<ReturnType<typeof dashboardApi.projects>>;
 
+const dateFormatter = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', weekday: 'short', month: 'long', day: 'numeric' });
+const timeFormatter = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+const eventFormatter = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+const numberFormatter = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
+
 export default function WallpaperPage() {
-  const [now, setNow] = useState<Date | null>(null);
   const [projects, setProjects] = useState<ResearchProject[]>([]);
   const [calendar, setCalendar] = useState<CalendarApiResponse>(initialCalendar);
   const [results, setResults] = useState<DashboardBundle>(initialDashboard);
+  const [viewNow, setViewNow] = useState<Date | null>(null);
   const lastFetch = useRef(0);
   const refreshing = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    let clock: ReturnType<typeof setInterval> | null = null;
+    let disposed = false;
 
     const clearDataTimer = () => {
       if (timer.current) clearTimeout(timer.current);
       timer.current = null;
     };
 
-    const scheduleDataRefresh = () => {
+    const scheduleDataRefresh = (delay = WALLPAPER_REFRESH_MS) => {
       clearDataTimer();
-      if (document.visibilityState === 'hidden') return;
-      timer.current = setTimeout(() => { void refreshData(); }, WALLPAPER_REFRESH_MS);
+      if (disposed || document.visibilityState === 'hidden') return;
+      timer.current = setTimeout(() => { void refreshData(); }, Math.max(0, delay));
     };
 
     async function refreshData() {
-      if (document.visibilityState === 'hidden' || refreshing.current) return;
+      if (disposed || document.hidden || refreshing.current) return;
       refreshing.current = true;
-      const responses = await Promise.allSettled([dashboardApi.projects(), dashboardApi.calendar(), dashboardApi.results()]);
-      if (!document.hidden) {
+      try {
+        const responses = await Promise.allSettled([dashboardApi.projects(), dashboardApi.calendar(), dashboardApi.results()]);
+        if (disposed || document.hidden) return;
         const [projectResponse, calendarResponse, resultsResponse] = responses;
         if (projectResponse.status === 'fulfilled') setProjects((projectResponse.value as ProjectResponse).items || []);
         if (calendarResponse.status === 'fulfilled') setCalendar(calendarResponse.value);
         if (resultsResponse.status === 'fulfilled') setResults(resultsResponse.value);
-        lastFetch.current = Date.now();
+        const fetchedAt = Date.now();
+        lastFetch.current = fetchedAt;
+        setViewNow(new Date(fetchedAt));
         scheduleDataRefresh();
+      } finally {
+        refreshing.current = false;
       }
-      refreshing.current = false;
     }
 
-    const startClock = () => {
-      if (clock || document.visibilityState === 'hidden') return;
-      setNow(new Date());
-      clock = setInterval(() => setNow(new Date()), 1000);
-    };
-    const stopClock = () => { if (clock) clearInterval(clock); clock = null; };
     const handleVisibility = () => {
       if (document.visibilityState === 'hidden') {
-        stopClock();
         clearDataTimer();
         return;
       }
-      startClock();
-      if (Date.now() - lastFetch.current >= WALLPAPER_REFRESH_MS) void refreshData();
-      else scheduleDataRefresh();
+      const elapsed = lastFetch.current ? Date.now() - lastFetch.current : WALLPAPER_REFRESH_MS;
+      if (elapsed >= WALLPAPER_REFRESH_MS) void refreshData();
+      else scheduleDataRefresh(WALLPAPER_REFRESH_MS - elapsed);
     };
 
     document.addEventListener('visibilitychange', handleVisibility);
-    startClock();
+    setViewNow(new Date());
     void refreshData();
     return () => {
-      stopClock();
+      disposed = true;
       clearDataTimer();
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, []);
 
-  const displayNow = now || new Date(0);
+  const displayNow = viewNow || new Date(0);
   const project = selectWallpaperProject(projects);
   const calendarView = selectWallpaperCalendar(calendar.items, displayNow);
   const resultView = selectLatestWallpaperResults(results);
@@ -90,7 +92,7 @@ export default function WallpaperPage() {
   return <main className={styles.wallpaper} aria-label="Master Thesis OS wallpaper">
     <section className={styles.header}>
       <div><p className={styles.eyebrow}>MASTER THESIS OS</p><h1>Research Desk</h1></div>
-      <time dateTime={displayNow.toISOString()}><strong>{now ? formatTime(displayNow) : '—'}</strong><span>{now ? formatDate(displayNow) : ''}</span></time>
+      <WallpaperClock />
     </section>
 
     <section className={styles.grid}>
@@ -119,11 +121,43 @@ export default function WallpaperPage() {
   </main>;
 }
 
+function WallpaperClock() {
+  const [now, setNow] = useState<Date | null>(null);
+
+  useEffect(() => {
+    let clock: ReturnType<typeof setInterval> | null = null;
+
+    const stopClock = () => {
+      if (clock) clearInterval(clock);
+      clock = null;
+    };
+    const startClock = () => {
+      if (clock || document.visibilityState === 'hidden') return;
+      setNow(new Date());
+      clock = setInterval(() => setNow(new Date()), 1000);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') stopClock();
+      else startClock();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    startClock();
+    return () => {
+      stopClock();
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
+  const displayNow = now || new Date(0);
+  return <time dateTime={now ? displayNow.toISOString() : undefined}><strong>{now ? formatTime(displayNow) : '—'}</strong><span>{now ? formatDate(displayNow) : ''}</span></time>;
+}
+
 function EventRow({ event }: { event: CalendarEvent }) { return <div className={styles.event}><b>{event.title}</b><span>{formatEvent(event)} · {event.category}</span></div>; }
 function Metric({ label, value }: { label: string; value: string }) { return <div><span>{label}</span><b>{value}</b></div>; }
-function formatDate(value: Date) { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', weekday: 'short', month: 'long', day: 'numeric' }).format(value); }
-function formatTime(value: Date) { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(value); }
-function formatEvent(event: CalendarEvent) { if (event.allDay) return `${event.start} 종일`; return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(event.start)); }
-function formatNumber(value: number) { return value.toLocaleString('ko-KR', { maximumFractionDigits: 2 }); }
+function formatDate(value: Date) { return dateFormatter.format(value); }
+function formatTime(value: Date) { return timeFormatter.format(value); }
+function formatEvent(event: CalendarEvent) { if (event.allDay) return `${event.start} 종일`; return eventFormatter.format(new Date(event.start)); }
+function formatNumber(value: number) { return numberFormatter.format(value); }
 function signed(value: number) { return `${value >= 0 ? '+' : ''}${formatNumber(value)}h`; }
-function calendarMessage(calendar: CalendarApiResponse) { if (calendar.state === 'unconfigured') return 'Google Calendar 연결 대기 중'; if (calendar.state === 'empty') return '오늘 일정 없음'; if (calendar.errorCode === 'auth_error') return 'Calendar 인증을 확인해 주세요'; return '일정을 불러올 수 없음'; }
+function calendarMessage(calendar: CalendarApiResponse) { if (calendar.state === 'unconfigured') return 'Google Calendar 연결 대기 중'; if (calendar.state === 'ready' || calendar.state === 'empty') return '오늘 일정 없음'; if (calendar.errorCode === 'auth_error') return 'Calendar 인증을 확인해 주세요'; return '일정을 불러올 수 없음'; }
