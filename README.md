@@ -143,7 +143,13 @@ python bridge.py
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-브리지는 `127.0.0.1` bind, localhost origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 연다. 실제 `config.json`은 git에서 제외된다.
+브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. 실제 `config.json`은 git에서 제외된다.
+
+## Sucrose Wallpaper
+
+Sucrose Wallpaper에는 `https://master-thesis-os.vercel.app/wallpaper`을 웹 wallpaper URL로 지정한다. 이 경로는 일반 대시보드와 분리된 가벼운 화면이며, 데이터 polling은 화면이 숨겨진 동안 멈췄다가 다시 보일 때 필요한 경우에만 재개한다. 시계는 별도의 1초 갱신으로 동작한다.
+
+Wallpaper의 **로컬 파일 열기**와 **볼트 폴더 열기**는 클릭했을 때만 loopback bridge를 호출한다. 먼저 일반 대시보드 Settings에서 같은 bridge token을 저장하고, 로컬 PC에서 bridge를 실행해야 한다. Sucrose가 로컬 브리지를 호출할 수 있도록 `config.json`의 `allowed_origins`에 실제 Sucrose page origin을 명시적으로 추가한다; allowlist에 wildcard는 사용하지 않는다.
 
 ## Results JSON 계약
 

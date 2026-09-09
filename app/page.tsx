@@ -57,13 +57,6 @@ export default function Page() {
   const [ghConfigured, setGhConfigured] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [toast, setToast] = useState('');
-  const [wallpaperMode, setWallpaperMode] = useState(false);
-
-  useEffect(() => {
-    const mode = new URLSearchParams(window.location.search).get('mode');
-    setWallpaperMode(mode === 'wallpaper' || mode === 'lively');
-  }, []);
-
   useEffect(() => {
     (async () => {
       const results = await Promise.allSettled([
@@ -122,6 +115,23 @@ export default function Page() {
     }
   }
 
+  async function openLocalFolder(path = '') {
+    const base = process.env.NEXT_PUBLIC_LOCAL_BRIDGE_URL || 'http://127.0.0.1:38471';
+    const token = localStorage.getItem('thesisBridgeToken') || '';
+    try {
+      const response = await fetch(`${base}/open-folder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, token }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'bridge error');
+      pop('로컬 볼트 폴더를 열었어');
+    } catch {
+      pop('로컬 브리지를 확인해줘');
+    }
+  }
+
   const schedule = useMemo(() => groupCalendarEvents(calendar.items), [calendar.items]);
   const activeProject = useMemo(() => projects.find((project) => project.id === 'thesis') || projects.find((project) => project.status === 'active') || projects[0] || null, [projects]);
   const quickFiles = useMemo(() => {
@@ -133,7 +143,7 @@ export default function Page() {
   }, [activeProject, researchStatus]);
 
   return (
-    <div className={`shell${wallpaperMode ? ' wallpaper-mode' : ''}`}>
+    <div className="shell">
       <aside className="sidebar">
         <div className="brand"><div className="logo">M</div><div><h1>Master Thesis OS</h1><p>석사논문 연구 작업실 · v1.2.0</p></div></div>
         <nav className="nav">{navigation.map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}><span>{item.icon}</span>{item.label}</button>)}</nav>
@@ -178,7 +188,7 @@ export default function Page() {
         {page === 'settings' && <section className="page active">
           <div className="grid2">
             <Card title="연구 저장소" right={ghConfigured ? '연결됨' : '설정 필요'}><div className="note">GitHub의 Obsidian Vault가 연구 데이터의 기준이야. 프로젝트는 <code>projects/*/project.md</code>에서 자동 발견하고, 기존 <code>wiki/ · Calc/ · 연구/</code> 경로는 manifest가 연결해.</div></Card>
-            <Card title="로컬 브리지" right="127.0.0.1 전용"><div className="note">로컬 파일 열기는 PC에서 bridge를 실행했을 때만 동작해. 토큰은 이 브라우저의 localStorage에 저장돼.</div><BridgeToken onSave={() => pop('브리지 토큰을 저장했어')} /></Card>
+            <Card title="로컬 브리지" right="127.0.0.1 전용"><div className="note">로컬 파일·볼트 폴더 열기는 PC에서 bridge를 실행했을 때만 동작해. 토큰은 이 브라우저의 localStorage에 저장돼.</div><div className="toolbar bridge-toolbar"><button className="btn" type="button" onClick={() => openLocalFolder()}>볼트 폴더 열기</button></div><BridgeToken onSave={() => pop('브리지 토큰을 저장했어')} /></Card>
           </div>
           <div className="grid2 section-gap">
             <Card title="Google Calendar" right={calendar.state === 'ready' || calendar.state === 'empty' ? '연결됨' : '확인 필요'}><div className="note">현재 상태: {calendarStateText(calendar)}</div></Card>
@@ -187,52 +197,10 @@ export default function Page() {
         </section>}
       </main>
 
-      <ScrollControls />
       <nav className="mobile-nav" aria-label="모바일 메뉴">{navigation.map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}><span>{item.icon}</span><small>{item.label}</small></button>)}</nav>
       <div className={`toast ${toast ? 'show' : ''}`}>{toast}</div>
     </div>
   );
-}
-
-function ScrollControls() {
-  const [canScrollUp, setCanScrollUp] = useState(false);
-  const [canScrollDown, setCanScrollDown] = useState(false);
-
-  useEffect(() => {
-    let frame = 0;
-    const update = () => {
-      if (frame) return;
-      frame = window.requestAnimationFrame(() => {
-        frame = 0;
-        const documentHeight = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
-        const maxScroll = Math.max(0, documentHeight - window.innerHeight);
-        const position = window.scrollY;
-        setCanScrollUp(position > 4);
-        setCanScrollDown(position < maxScroll - 4);
-      });
-    };
-
-    update();
-    window.addEventListener('scroll', update, { passive: true });
-    window.addEventListener('resize', update, { passive: true });
-    const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : null;
-    resizeObserver?.observe(document.body);
-    return () => {
-      window.removeEventListener('scroll', update);
-      window.removeEventListener('resize', update);
-      resizeObserver?.disconnect();
-      if (frame) window.cancelAnimationFrame(frame);
-    };
-  }, []);
-
-  const move = (direction: -1 | 1) => {
-    window.scrollBy({ top: direction * window.innerHeight * 0.75, behavior: 'smooth' });
-  };
-
-  return <div className="scroll-controls" aria-label="페이지 스크롤">
-    <button type="button" aria-label="위로 스크롤" title="위로 스크롤" onClick={() => move(-1)} disabled={!canScrollUp}>▲</button>
-    <button type="button" aria-label="아래로 스크롤" title="아래로 스크롤" onClick={() => move(1)} disabled={!canScrollDown}>▼</button>
-  </div>;
 }
 
 function CurrentFocus({ project, status, onOpen }: { project: ResearchProject | null; status: ResearchStatus | null; onOpen: (path: string) => void }) {

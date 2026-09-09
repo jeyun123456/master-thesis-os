@@ -7,6 +7,7 @@ import type { ResearchProject } from '@/lib/projects';
 import type { DashboardBundle } from '@/lib/results';
 import { daysUntil } from '@/lib/calendar-view';
 import { selectLatestWallpaperResults, selectWallpaperCalendar, selectWallpaperProject, wallpaperTasks, WALLPAPER_REFRESH_MS } from '@/lib/wallpaper-view';
+import { BRIDGE_OFFLINE_MESSAGE, bridgeResponseMessage } from '@/lib/bridge-status';
 import styles from './wallpaper.module.css';
 
 const initialCalendar: CalendarApiResponse = {
@@ -27,6 +28,7 @@ export default function WallpaperPage() {
   const [calendar, setCalendar] = useState<CalendarApiResponse>(initialCalendar);
   const [results, setResults] = useState<DashboardBundle>(initialDashboard);
   const [viewNow, setViewNow] = useState<Date | null>(null);
+  const [bridgeMessage, setBridgeMessage] = useState('');
   const lastFetch = useRef(0);
   const refreshing = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,10 +91,30 @@ export default function WallpaperPage() {
   const calendarView = selectWallpaperCalendar(calendar.items, displayNow);
   const resultView = selectLatestWallpaperResults(results);
 
+  async function openLocal(endpoint: '/open' | '/open-folder', path = '') {
+    const base = process.env.NEXT_PUBLIC_LOCAL_BRIDGE_URL || 'http://127.0.0.1:38471';
+    const token = localStorage.getItem('thesisBridgeToken') || '';
+    try {
+      const response = await fetch(`${base}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, token }),
+      });
+      const data = await response.json() as { error?: unknown };
+      if (!response.ok) {
+        setBridgeMessage(bridgeResponseMessage(response.status, data.error));
+        return;
+      }
+      setBridgeMessage(endpoint === '/open' ? '로컬 파일을 열었어' : '볼트 폴더를 열었어');
+    } catch {
+      setBridgeMessage(BRIDGE_OFFLINE_MESSAGE);
+    }
+  }
+
   return <main className={styles.wallpaper} aria-label="Master Thesis OS wallpaper">
     <section className={styles.header}>
       <div><p className={styles.eyebrow}>MASTER THESIS OS</p><h1>Research Desk</h1></div>
-      <WallpaperClock />
+      <div className={styles.headerActions}><WallpaperClock /><div className={styles.localActions}><button type="button" onClick={() => openLocal('/open', project?.sourcePath || 'wiki/current_status.md')}>로컬 파일 열기</button><button type="button" onClick={() => openLocal('/open-folder')}>볼트 폴더 열기</button>{bridgeMessage && <span role="status">{bridgeMessage}</span>}</div></div>
     </section>
 
     <section className={styles.grid}>

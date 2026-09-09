@@ -1,7 +1,7 @@
-import hmac, json, os, platform, subprocess
+import json, os, platform, subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from bridge_security import safe_path
+from bridge_security import allows_private_network, target_for_endpoint, token_matches, valid_origins
 
 HERE = Path(__file__).resolve().parent
 CONFIG = HERE / 'config.json'
@@ -11,15 +11,19 @@ config = json.loads(CONFIG.read_text(encoding='utf-8'))
 ROOT = Path(config['master_path']).expanduser().resolve()
 TOKEN = str(config.get('token',''))
 PORT = int(config.get('port',38471))
-ORIGINS = set(config.get('allowed_origins', ['http://localhost:3000']))
+ORIGINS = set(config.get('allowed_origins', [
+    'https://master-thesis-os.vercel.app',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+]))
 MAX_BODY_BYTES = 16 * 1024
 
 if not ROOT.is_dir():
     raise SystemExit(f'master_path is not an existing directory: {ROOT}')
 if len(TOKEN) < 32 or TOKEN.startswith('CHANGE-THIS'):
     raise SystemExit('Bridge token must be a non-placeholder value of at least 32 characters.')
-if not ORIGINS or any(not origin.startswith(('http://localhost:', 'http://127.0.0.1:')) for origin in ORIGINS):
-    raise SystemExit('allowed_origins must contain only explicit localhost origins.')
+if not valid_origins(ORIGINS):
+    raise SystemExit('allowed_origins must include the production origin and explicit localhost URLs only.')
 if not 1024 <= PORT <= 65535:
     raise SystemExit('port must be between 1024 and 65535.')
 
@@ -37,6 +41,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Vary','Origin')
         self.send_header('Access-Control-Allow-Headers','Content-Type')
         self.send_header('Access-Control-Allow-Methods','POST, OPTIONS, GET')
+        if allows_private_network(self.headers.get('Access-Control-Request-Private-Network', '')):
+            self.send_header('Access-Control-Allow-Private-Network', 'true')
     def json_out(self, status, obj):
         data=json.dumps(obj,ensure_ascii=False).encode('utf-8')
         self.send_response(status); self.cors(); self.send_header('Content-Type','application/json; charset=utf-8'); self.send_header('Content-Length',str(len(data))); self.end_headers(); self.wfile.write(data)
@@ -46,7 +52,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/health': return self.json_out(200, {'ok':True})
         return self.json_out(404, {'error':'not found'})
     def do_POST(self):
-        if self.path != '/open': return self.json_out(404, {'error':'not found'})
+        if self.path not in ('/open', '/open-folder'): return self.json_out(404, {'error':'not found'})
         try:
             origin = self.headers.get('Origin','')
             if origin not in ORIGINS: return self.json_out(403, {'error':'origin not allowed'})
@@ -54,8 +60,9 @@ class Handler(BaseHTTPRequestHandler):
             length=int(self.headers.get('Content-Length','0'))
             if length <= 0 or length > MAX_BODY_BYTES: return self.json_out(413, {'error':'invalid request size'})
             body=json.loads(self.rfile.read(length))
-            if not hmac.compare_digest(str(body.get('token','')), TOKEN): return self.json_out(403, {'error':'invalid token'})
-            target=safe_path(ROOT, str(body.get('path',''))); launch(target)
+            if not token_matches(body.get('token',''), TOKEN): return self.json_out(403, {'error':'invalid token'})
+            target = target_for_endpoint(ROOT, self.path, str(body.get('path','')))
+            launch(target)
             return self.json_out(200, {'ok':True,'path':str(target)})
         except FileNotFoundError as e: return self.json_out(404, {'error':'local file not found','detail':str(e)})
         except Exception as e: return self.json_out(400, {'error':str(e)})

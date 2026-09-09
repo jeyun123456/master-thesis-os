@@ -3,6 +3,7 @@
   "token": "CHANGE-THIS-TO-A-RANDOM-STRING-OF-AT-LEAST-32-CHARS",
   "port": 38471,
   "allowed_origins": [
+    "https://master-thesis-os.vercel.app",
     "http://localhost:3000",
     "http://127.0.0.1:3000"
   ]

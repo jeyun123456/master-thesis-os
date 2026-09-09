@@ -16,6 +16,11 @@
 .header time { text-align: right; }
 .header time strong { display: block; font-size: clamp(24px, 4vw, 48px); line-height: 1; font-variant-numeric: tabular-nums; }
 .header time span { display: block; margin-top: 8px; color: #9ca3af; font-size: 12px; }
+.headerActions { display: flex; align-items: flex-start; gap: 18px; }
+.localActions { display: flex; max-width: 250px; flex-wrap: wrap; justify-content: flex-end; gap: 6px; pointer-events: auto; }
+.localActions button { border: 1px solid #4b5563; border-radius: 7px; background: #1f2937; color: #dbeafe; padding: 7px 9px; font-size: 10px; cursor: pointer; }
+.localActions button:hover { border-color: #93c5fd; background: #27364a; }
+.localActions span { width: 100%; color: #fcd34d; font-size: 10px; text-align: right; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(10px, 1.5vw, 18px); max-width: 1180px; margin: 0 auto; }
 .card { min-height: 150px; padding: clamp(16px, 2vw, 26px); background: #1f2937; border: 1px solid #374151; border-radius: 12px; }
 .label { margin: 0 0 18px; color: #93c5fd; font-size: 11px; letter-spacing: .08em; }
@@ -39,6 +44,10 @@
   .header time strong { font-size: 24px; }
   .header time span { margin-top: 4px; font-size: 10px; }
   .header time { text-align: left; }
+  .headerActions { gap: 8px; }
+  .localActions { max-width: 130px; gap: 4px; }
+  .localActions button { padding: 5px 6px; font-size: 8px; }
+  .localActions span { font-size: 8px; }
   .grid { grid-template-columns: 1fr; gap: 8px; }
   .card { min-height: 0; padding: 12px; }
   .label { margin-bottom: 8px; font-size: 9px; }
