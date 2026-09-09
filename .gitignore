@@ -8,5 +8,7 @@ node_modules
 coverage/
 __pycache__/
 .pytest_cache/
+/AGENTS.md
+/CLAUDE.md
 local-bridge/config.json
 local-bridge/__pycache__/
