@@ -76,5 +76,7 @@ describe('project manifests', () => {
   it('provides Korean stage and status labels', () => {
     expect(stageLabel('interpretation')).toBe('해석');
     expect(projectStatusLabel('active')).toBe('진행 중');
+    expect(projectStatusLabel('writing')).toBe('작성중');
+    expect(projectStatusLabel('paused')).toBe('보류');
   });
 });
