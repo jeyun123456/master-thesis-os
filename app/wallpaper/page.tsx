@@ -46,11 +46,11 @@ export default function WallpaperPage() {
     };
 
     async function refreshData() {
-      if (disposed || document.visibilityState === 'hidden' || refreshing.current) return;
+      if (disposed || document.hidden || refreshing.current) return;
       refreshing.current = true;
       try {
         const responses = await Promise.allSettled([dashboardApi.projects(), dashboardApi.calendar(), dashboardApi.results()]);
-        if (disposed || document.visibilityState === 'hidden') return;
+        if (disposed || document.hidden) return;
         const [projectResponse, calendarResponse, resultsResponse] = responses;
         if (projectResponse.status === 'fulfilled') setProjects((projectResponse.value as ProjectResponse).items || []);
         if (calendarResponse.status === 'fulfilled') setCalendar(calendarResponse.value);
