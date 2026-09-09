@@ -20,6 +20,8 @@ SCHEMA_VERSION = "1.1.0"
 METHOD_VERSION = "2026-09-03"
 TOLERANCE = 1e-8
 APP_ROOT = Path(__file__).resolve().parents[1]
+RESULTS_RELATIVE_PATH = Path("projects") / "interim-presentation" / "코드" / "결과" / "주요결과"
+RESULTS_SOURCE_PATH = RESULTS_RELATIVE_PATH.as_posix()
 
 
 class ExportError(RuntimeError):
@@ -93,7 +95,7 @@ def read_necessary_labour(path: Path, generated_at: str) -> dict[str, Any]:
             "schemaVersion": SCHEMA_VERSION,
             "generatedAt": generated_at,
             "unit": "hours",
-            "source": {"workbook": "Calc/data/results/05_constant_value.xlsx", "sheet": "summary", "yearRange": "A2:A4", "valueRange": "K2:K4"},
+            "source": {"workbook": f"{RESULTS_SOURCE_PATH}/05_constant_value.xlsx", "sheet": "summary", "yearRange": "A2:A4", "valueRange": "K2:K4"},
             "methodology": {"id": "necessary-labour-constant-price", "version": METHOD_VERSION, "priceBasis": "2020 constant prices", "sectorClassification": "K77"},
             "series": rows,
         }
@@ -162,7 +164,7 @@ def read_decomposition(path: Path, generated_at: str) -> dict[str, Any]:
             "schemaVersion": SCHEMA_VERSION,
             "generatedAt": generated_at,
             "unit": "hours",
-            "source": {"workbook": "Calc/data/results/06_decomposition.xlsx", "summarySheet": "summary", "summaryRange": "A1:I4", "contributionColumns": "M:O"},
+            "source": {"workbook": f"{RESULTS_SOURCE_PATH}/06_decomposition.xlsx", "summarySheet": "summary", "summaryRange": "A1:I4", "contributionColumns": "M:O"},
             "methodology": {"id": "symmetric-two-factor-decomposition", "version": METHOD_VERSION, "priceBasis": "2020 constant prices", "sectorClassification": "K77"},
             "periods": periods,
         }
@@ -204,8 +206,8 @@ def build_validation(levels: dict[str, Any], decomposition: dict[str, Any], leve
         "scope": "exporter-only",
         "status": "pass",
         "sourceWorkbooks": [
-            {"path": "Calc/data/results/05_constant_value.xlsx", "sha256": _sha256(level_path)},
-            {"path": "Calc/data/results/06_decomposition.xlsx", "sha256": _sha256(decomposition_path)},
+            {"path": f"{RESULTS_SOURCE_PATH}/05_constant_value.xlsx", "sha256": _sha256(level_path)},
+            {"path": f"{RESULTS_SOURCE_PATH}/06_decomposition.xlsx", "sha256": _sha256(decomposition_path)},
         ],
         "checks": checks,
         "limitation": "These checks validate extraction, schema, cross-workbook endpoints, and saved decomposition identities. They do not rerun or independently validate the original calculation pipeline.",
@@ -267,21 +269,21 @@ def resolve_repository_root(configured_root: Path | None) -> Path:
     if value is None:
         raise ExportError("set LOCAL_REPOSITORY_ROOT or pass --repository-root to the Obsidian-Vault checkout")
     root = value.expanduser().resolve()
-    if not (root / "Calc").is_dir():
-        raise ExportError(f"repository root does not contain Calc/: {root}")
+    if not root.is_dir():
+        raise ExportError(f"repository root is not a directory: {root}")
     return root
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Export canonical Calc workbooks to validated dashboard JSON.")
     parser.add_argument("--repository-root", type=Path, help="Absolute path to the Obsidian-Vault research-data checkout.")
-    parser.add_argument("--results-dir", type=Path, help="Override the Calc/data/results directory under the research-data checkout.")
+    parser.add_argument("--results-dir", type=Path, help="Override the canonical workbook directory under the research-data checkout.")
     parser.add_argument("--schema-dir", type=Path, default=APP_ROOT / "schemas")
     parser.add_argument("--output-dir", type=Path)
     args = parser.parse_args()
     try:
         repository_root = resolve_repository_root(args.repository_root)
-        results_dir = args.results_dir or repository_root / "Calc" / "data" / "results"
+        results_dir = args.results_dir or repository_root / RESULTS_RELATIVE_PATH
         output_dir = args.output_dir or results_dir / "dashboard"
         documents = export_results(results_dir / "05_constant_value.xlsx", results_dir / "06_decomposition.xlsx", args.schema_dir, output_dir)
     except ExportError as exc:

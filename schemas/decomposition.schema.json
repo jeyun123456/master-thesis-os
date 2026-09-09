@@ -13,7 +13,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["workbook", "summarySheet", "summaryRange", "contributionColumns"],
       "properties": {
-        "workbook": { "const": "Calc/data/results/06_decomposition.xlsx" },
+        "workbook": { "const": "projects/interim-presentation/코드/결과/주요결과/06_decomposition.xlsx" },
         "summarySheet": { "const": "summary" },
         "summaryRange": { "const": "A1:I4" },
         "contributionColumns": { "const": "M:O" }

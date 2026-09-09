@@ -13,7 +13,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["workbook", "sheet", "yearRange", "valueRange"],
       "properties": {
-        "workbook": { "const": "Calc/data/results/05_constant_value.xlsx" },
+        "workbook": { "const": "projects/interim-presentation/코드/결과/주요결과/05_constant_value.xlsx" },
         "sheet": { "const": "summary" },
         "yearRange": { "const": "A2:A4" },
         "valueRange": { "const": "K2:K4" }

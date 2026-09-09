@@ -55,7 +55,7 @@ GitHub·Google 비밀값은 `.env.local` 또는 배포 플랫폼의 서버 환�
 | `GITHUB_REPO` | GitHub 연결 시 | repository 이름 |
 | `GITHUB_BRANCH` | 아니오 | 기본값 `master` |
 | `GITHUB_TOKEN` | private repo에서 필수 | Contents 읽기 권한의 fine-grained token |
-| `GITHUB_RESULTS_PATH` | 아니오 | 기본값 `Calc/data/results/dashboard` |
+| `GITHUB_RESULTS_PATH` | 아니오 | 기본값 `projects/interim-presentation/코드/결과/주요결과/dashboard` |
 | `LOCAL_REPOSITORY_ROOT` | 별도 checkout의 로컬 fallback/exporter 시 | 기존 `Obsidian-Vault` checkout의 절대 경로. Vercel에는 설정하지 않음 |
 | `GOOGLE_CLIENT_ID` | Calendar 연결 시 | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | Calendar 연결 시 | Google OAuth client secret |
@@ -71,7 +71,7 @@ GitHub tree의 상대경로를 공통 식별자로 사용한다. 실제 저장�
 
 - Wiki: `wiki/**` (기존 `concepts`, `methodology`, `data`, `decisions`, `findings`, `literature` 유지)
 - Literature: `연구/문헌/**`, `연구/선행연구/**`, `wiki/literature/**`
-- Results: `Calc/data/results/**`, `wiki/findings/**`
+- Results: `projects/interim-presentation/코드/결과/주요결과/**` (legacy `Calc/data/results/**`, `wiki/findings/**`도 분류)
 - Research: 나머지 `Calc/**`, `연구/**`, `wiki/**`
 
 GitHub recursive tree가 API 한계로 잘리면 불완전한 목록을 사용하지 않고 오류를 표시한다.
@@ -147,7 +147,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 ## Results JSON 계약
 
-웹은 Excel을 파싱하지 않는다. 별도 Python exporter가 연구 Vault의 canonical workbook을 read-only로 열어 다음 JSON을 `Calc/data/results/dashboard/`에 생성한다.
+웹은 Excel을 파싱하지 않는다. 별도 Python exporter가 연구 Vault의 canonical workbook을 read-only로 열어 다음 JSON을 `projects/interim-presentation/코드/결과/주요결과/dashboard/`에 생성한다.
 
 - `necessary_labour.json`: 연도별 필요노동 시간
 - `decomposition.json`: 기간별 총변화·바스켓 효과·투하노동량 효과
@@ -161,7 +161,7 @@ python exporter/export_results.py --repository-root "D:\path\to\Obsidian-Vault"
 
 # In the Obsidian-Vault checkout, commit the generated data there.
 Set-Location "D:\path\to\Obsidian-Vault"
-git add Calc/data/results/dashboard
+git add "projects/interim-presentation/코드/결과/주요결과/dashboard"
 git commit -m "data(results): refresh dashboard export"
 git push origin master
 ```
@@ -171,7 +171,7 @@ git push origin master
 ```text
 Calc result workbook
 → exporter/export_results.py
-→ Calc/data/results/dashboard/*.json
+→ projects/interim-presentation/코드/결과/주요결과/dashboard/*.json
 → Git commit/push
 → /api/results
 → Master Thesis OS Results

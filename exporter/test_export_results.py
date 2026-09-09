@@ -85,14 +85,13 @@ class ExportResultsTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             validate({"schemaVersion": "1.1.0", "unit": "hours", "series": []}, schema)
 
-    def test_repository_root_is_explicit_and_must_contain_calc(self):
+    def test_repository_root_is_explicit_and_must_be_a_directory(self):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ExportError):
                 resolve_repository_root(None)
-        with self.assertRaises(ExportError):
-            resolve_repository_root(self.root)
-        (self.root / "Calc").mkdir()
         self.assertEqual(resolve_repository_root(self.root), self.root.resolve())
+        with self.assertRaises(ExportError):
+            resolve_repository_root(self.root / "missing")
 
 
 if __name__ == "__main__":

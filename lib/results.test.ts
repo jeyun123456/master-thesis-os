@@ -24,7 +24,7 @@ function contributions() {
 async function createDashboardFixture() {
   const root = await mkdtemp(path.join(tmpdir(), 'master-thesis-os-results-'));
   temporaryRoots.push(root);
-  const directory = path.join(root, 'Calc', 'data', 'results', 'dashboard');
+  const directory = path.join(root, 'projects', 'interim-presentation', '코드', '결과', '주요결과', 'dashboard');
   await mkdir(directory, { recursive: true });
 
   const necessaryLabour = {
