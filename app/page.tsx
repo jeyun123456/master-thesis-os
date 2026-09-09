@@ -181,10 +181,52 @@ export default function Page() {
         </section>}
       </main>
 
+      <ScrollControls />
       <nav className="mobile-nav" aria-label="모바일 메뉴">{navigation.map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}><span>{item.icon}</span><small>{item.label}</small></button>)}</nav>
       <div className={`toast ${toast ? 'show' : ''}`}>{toast}</div>
     </div>
   );
+}
+
+function ScrollControls() {
+  const [canScrollUp, setCanScrollUp] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+
+  useEffect(() => {
+    let frame = 0;
+    const update = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        const documentHeight = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+        const maxScroll = Math.max(0, documentHeight - window.innerHeight);
+        const position = window.scrollY;
+        setCanScrollUp(position > 4);
+        setCanScrollDown(position < maxScroll - 4);
+      });
+    };
+
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update, { passive: true });
+    const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : null;
+    resizeObserver?.observe(document.body);
+    return () => {
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+      resizeObserver?.disconnect();
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  const move = (direction: -1 | 1) => {
+    window.scrollBy({ top: direction * window.innerHeight * 0.75, behavior: 'smooth' });
+  };
+
+  return <div className="scroll-controls" aria-label="페이지 스크롤">
+    <button type="button" aria-label="위로 스크롤" title="위로 스크롤" onClick={() => move(-1)} disabled={!canScrollUp}>▲</button>
+    <button type="button" aria-label="아래로 스크롤" title="아래로 스크롤" onClick={() => move(1)} disabled={!canScrollDown}>▼</button>
+  </div>;
 }
 
 function CurrentFocus({ project, status, onOpen }: { project: ResearchProject | null; status: ResearchStatus | null; onOpen: (path: string) => void }) {
