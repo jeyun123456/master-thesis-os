@@ -155,6 +155,33 @@ Sucrose에서는 별도 전용 경로 대신 일반 대시보드 `https://master
 
 일반 대시보드의 **로컬 파일 열기**와 **볼트 폴더 열기**는 클릭했을 때만 loopback bridge를 호출한다. 먼저 Settings에서 같은 bridge token을 저장하고, 로컬 PC에서 bridge를 실행해야 한다. 브리지의 `config.json`에는 `https://master-thesis-os.vercel.app`를 명시적으로 허용하고 wildcard는 사용하지 않는다.
 
+### Sucrose WebViewLive에서 Local Bridge가 차단될 때
+
+정상적인 Production 페이지 context는 다음과 같다.
+
+```text
+location.href   = https://master-thesis-os.vercel.app/
+location.origin = https://master-thesis-os.vercel.app
+window.isSecureContext = true
+```
+
+`GET http://127.0.0.1:38471/health`가 `200 {"ok":true}`인데 자료실의 **열기** 또는 설정의 **볼트 폴더 열기**에서 다음 메시지가 나오면 Sucrose의 browser argument를 확인한다.
+
+```text
+Origin blocked: bridge allowed_origins에 Vercel 주소를 추가해줘.
+```
+
+Sucrose DevTools Network에서 `/open` 또는 `/open-folder` 요청을 확인한다.
+
+- 문제 상태: 요청은 bridge에 도달하지만 `Origin` header가 없고 `403 {"error":"origin not allowed"}`가 반환됨
+- 정상 상태: `Origin: https://master-thesis-os.vercel.app`가 포함되고 `200 OK`가 반환됨
+
+원인은 Sucrose `WebArguments`의 `--disable-web-security`가 WebViewLive의 cross-site localhost 요청에서 `Origin` header를 누락시킬 수 있기 때문이다. 해결하려면 Sucrose를 완전히 종료한 뒤 `Engine.json`의 `WebArguments`에서 **`--disable-web-security`만 제거**하고 Sucrose를 다시 시작한다. 다른 browser argument는 현재 동작에 필요할 수 있으므로 임의로 초기화하지 않는다. `DeveloperMode`는 진단 중에만 켤 수 있고, 확인 후에는 꺼도 된다.
+
+이 문제를 해결하기 위해 bridge 보안을 완화하지 않는다. `Access-Control-Allow-Origin: *`, 모든 Origin, `null` 또는 Origin 없는 요청, Sucrose User-Agent만을 허용하지 않는다. bridge는 계속 `127.0.0.1`에만 bind하고, exact production/localhost allowlist, token 검증, 요청 크기 제한, Vault 내부 path containment를 적용한다. 거부 로그에는 원인 확인을 위해 origin만 남기며 token, request body, local path, secret/config 값은 기록하지 않는다.
+
+앱의 Sucrose UA 감지 시 `targetAddressSpace: 'loopback'`을 지정하는 로직은 유지한다. 이는 현재 WebViewLive에서 `/health`와 bridge 요청의 loopback/LNA 호환성을 위한 보조 설정이며, Origin 검증을 대체하지 않는다.
+
 ## Results JSON 계약
 
 웹은 Excel을 파싱하지 않는다. 별도 Python exporter가 연구 Vault의 canonical workbook을 read-only로 열어 다음 JSON을 `projects/interim-presentation/코드/결과/주요결과/dashboard/`에 생성한다.
