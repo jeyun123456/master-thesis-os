@@ -195,7 +195,7 @@ export default function Page() {
         {page === 'settings' && <section className="page active">
           <div className="grid2">
             <Card title="연구 저장소" right={ghConfigured ? '연결됨' : '설정 필요'}><div className="note">GitHub의 Obsidian Vault가 연구 데이터의 기준이야. 프로젝트는 <code>projects/*/project.md</code>에서 자동 발견하고, 기존 <code>wiki/ · Calc/ · 연구/</code> 경로는 manifest가 연결해.</div></Card>
-            <Card title="로컬 브리지" right="127.0.0.1 전용"><div className="note">로컬 파일·볼트 폴더 열기는 PC에서 bridge를 실행했을 때만 동작해. 토큰은 이 브라우저의 localStorage에 저장돼.</div><div className="toolbar bridge-toolbar"><button className="btn" type="button" onClick={() => openLocalFolder()}>볼트 폴더 열기</button></div><BridgeToken onSave={() => pop('브리지 토큰을 저장했어')} /></Card>
+            <Card title="로컬 브리지" right="127.0.0.1 전용"><div className="note">로컬 파일·볼트 폴더 열기는 PC에서 bridge를 실행했을 때만 동작해. 토큰은 이 브라우저의 localStorage에 저장돼.</div><div className="toolbar bridge-toolbar"><button className="btn" type="button" onClick={() => openLocalFolder()}>볼트 폴더 열기</button></div><BridgeToken onSave={() => pop('브리지 토큰을 저장했어')} onNotice={pop} /></Card>
           </div>
           <div className="grid2 section-gap">
             <Card title="Google Calendar" right={calendar.state === 'ready' || calendar.state === 'empty' ? '연결됨' : '확인 필요'}><div className="note">현재 상태: {calendarStateText(calendar)}</div></Card>
@@ -240,7 +240,25 @@ function ResultsPanel({ dashboard }: { dashboard: DashboardBundle }) {
   </>;
 }
 
-function BridgeToken({ onSave }: { onSave: () => void }) { const [value, setValue] = useState(''); useEffect(() => setValue(localStorage.getItem('thesisBridgeToken') || ''), []); return <div className="toolbar bridge-toolbar"><input className="search" placeholder="Bridge token" value={value} onChange={(event) => setValue(event.target.value)} /><button className="btn" onClick={() => { localStorage.setItem('thesisBridgeToken', value); onSave(); }}>저장</button></div>; }
+function BridgeToken({ onSave, onNotice }: { onSave: () => void; onNotice: (message: string) => void }) {
+  const [value, setValue] = useState('');
+  useEffect(() => setValue(localStorage.getItem('thesisBridgeToken') || ''), []);
+  async function pasteToken() {
+    try {
+      if (!navigator.clipboard?.readText) throw new Error('clipboard unavailable');
+      const clipboardValue = await navigator.clipboard.readText();
+      if (!clipboardValue.trim()) {
+        onNotice('클립보드에 토큰이 없어');
+        return;
+      }
+      setValue(clipboardValue.trim());
+      onNotice('클립보드에서 토큰을 가져왔어');
+    } catch {
+      onNotice('브라우저의 클립보드 접근을 허용해줘');
+    }
+  }
+  return <div className="toolbar bridge-toolbar"><input className="search" placeholder="Bridge token" value={value} onChange={(event) => setValue(event.target.value)} /><button className="btn" type="button" onClick={() => void pasteToken()}>붙여넣기</button><button className="btn" type="button" onClick={() => { localStorage.setItem('thesisBridgeToken', value); onSave(); }}>저장</button></div>;
+}
 function errorMessage(error: unknown, fallback: string) { return error instanceof Error ? error.message : fallback; }
 function formatDate(value: string) { if (!value) return ''; try { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)); } catch { return value; } }
 function formatCalendarEvent(event: CalendarEvent) { if (event.allDay) return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'short', day: 'numeric' }).format(new Date(`${event.start}T00:00:00+09:00`)); return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(event.start)); }
