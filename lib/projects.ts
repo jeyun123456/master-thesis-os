@@ -1,6 +1,6 @@
 import type { RepositoryItem } from './repository';
 
-export type ProjectStatus = 'active' | 'waiting' | 'blocked' | 'complete' | string;
+export type ProjectStatus = 'writing' | 'active' | 'paused' | 'waiting' | 'blocked' | 'complete' | string;
 
 export type ResearchProject = {
   id: string;
@@ -82,7 +82,9 @@ export function stageLabel(stage: string): string {
 
 export function projectStatusLabel(status: string): string {
   const labels: Record<string, string> = {
+    writing: '작성중',
     active: '진행 중',
+    paused: '보류',
     waiting: '대기',
     blocked: '막힘',
     complete: '완료',
