@@ -145,6 +145,10 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. 실제 `config.json`은 git에서 제외된다.
 
+### 브리지 상시 실행
+
+Windows에서 `local-bridge/start_bridge.bat`을 실행하면 설정을 확인한 뒤 브리지를 계속 실행한다. 브리지가 비정상 종료되면 3초 후 자동으로 재시작한다. 콘솔 없이 실행하려면 `start_bridge_hidden.vbs`를 사용한다. Windows 로그인 때마다 자동 실행하려면 해당 VBS 파일의 바로가기를 `Win+R` → `shell:startup` 폴더에 넣는다. 일반 브라우저 개발 시에는 `start_bridge.bat`을 사용하고, 중지는 콘솔 창에서 `Ctrl+C` 또는 창 닫기로 수행한다.
+
 ## Sucrose Wallpaper
 
 Sucrose Wallpaper에는 `https://master-thesis-os.vercel.app/wallpaper`을 웹 wallpaper URL로 지정한다. 이 경로는 일반 대시보드와 분리된 가벼운 화면이며, 데이터 polling은 화면이 숨겨진 동안 멈췄다가 다시 보일 때 필요한 경우에만 재개한다. 시계는 별도의 1초 갱신으로 동작한다.
