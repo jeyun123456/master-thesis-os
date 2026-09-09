@@ -4,16 +4,19 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$ConfigErrorExitCode = 78
 $bridgeDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $bridgeScript = Join-Path $bridgeDirectory 'bridge.py'
 $configPath = Join-Path $bridgeDirectory 'config.json'
 
 if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
-    throw "Missing config.json. Copy config.example.json to config.json and edit it."
+    [Console]::Error.WriteLine("Missing config.json. Copy config.example.json to config.json and edit it.")
+    exit $ConfigErrorExitCode
 }
 
 if (-not (Test-Path -LiteralPath $bridgeScript -PathType Leaf)) {
-    throw "Missing bridge.py in $bridgeDirectory."
+    [Console]::Error.WriteLine("Missing bridge.py in $bridgeDirectory.")
+    exit $ConfigErrorExitCode
 }
 
 function Test-PythonCommand {
@@ -59,7 +62,8 @@ if ($null -eq $pythonExecutable -and $env:LOCALAPPDATA) {
 }
 
 if ($null -eq $pythonExecutable) {
-    throw 'Python 3 was not found. Install Python and ensure python or py is on PATH.'
+    [Console]::Error.WriteLine('Python 3 was not found. Install Python and ensure python or py is on PATH.')
+    exit $ConfigErrorExitCode
 }
 
 Write-Host "[bridge] running from $bridgeDirectory"
@@ -68,6 +72,11 @@ Write-Host '[bridge] close this window or press Ctrl+C to stop.'
 while ($true) {
     & $pythonExecutable @pythonPrefixArguments $bridgeScript
     $exitCode = $LASTEXITCODE
+
+    if ($exitCode -eq $ConfigErrorExitCode) {
+        [Console]::Error.WriteLine('[bridge] permanent configuration error; fix config.json and restart the launcher.')
+        exit $exitCode
+    }
 
     if ($exitCode -eq 0) {
         Write-Host '[bridge] stopped.'

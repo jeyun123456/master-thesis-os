@@ -2,6 +2,8 @@
 param()
 
 $ErrorActionPreference = 'Stop'
+$ConfigErrorExitCode = 78
+$DefaultPort = 38471
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
@@ -10,9 +12,6 @@ $bridgeRunner = Join-Path $bridgeDirectory 'start_bridge.ps1'
 $configPath = Join-Path $bridgeDirectory 'config.json'
 if (-not (Test-Path -LiteralPath $bridgeRunner -PathType Leaf)) {
     throw "Missing start_bridge.ps1 in $bridgeDirectory."
-}
-if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
-    throw "Missing config.json. Copy config.example.json to config.json and edit it."
 }
 
 function Start-BridgeRunner {
@@ -35,7 +34,41 @@ function Stop-ProcessTree {
     Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
 }
 
-$state = @{ runner = Start-BridgeRunner; stopping = $false }
+function Get-BridgePort {
+    if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
+        throw 'Missing config.json. Copy config.example.json to config.json and edit it.'
+    }
+    try {
+        $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+    } catch {
+        throw "Invalid config.json: $($_.Exception.Message)"
+    }
+    $rawPort = $config.port
+    if ($null -eq $rawPort) {
+        return $DefaultPort
+    }
+    if ($rawPort -is [bool] -or $rawPort -is [double] -or $rawPort -is [decimal]) {
+        throw 'config.json port must be an integer between 1024 and 65535.'
+    }
+    try {
+        $port = [int]$rawPort
+    } catch {
+        throw 'config.json port must be an integer between 1024 and 65535.'
+    }
+    if ($port -lt 1024 -or $port -gt 65535) {
+        throw 'config.json port must be an integer between 1024 and 65535.'
+    }
+    return $port
+}
+
+function Show-BridgeNotice {
+    param([string]$Message)
+    $notifyIcon.BalloonTipTitle = 'Master Thesis OS Bridge'
+    $notifyIcon.BalloonTipText = $Message
+    $notifyIcon.ShowBalloonTip(2200)
+}
+
+$state = @{ runner = Start-BridgeRunner; stopping = $false; permanentError = $false }
 $notifyIcon = New-Object System.Windows.Forms.NotifyIcon
 $notifyIcon.Icon = [System.Drawing.SystemIcons]::Application
 $notifyIcon.Text = 'Master Thesis OS Bridge'
@@ -69,13 +102,23 @@ $copyToken.Add_Click({
 })
 
 $openHealth.Add_Click({
-    Start-Process 'http://127.0.0.1:38471/health'
+    try {
+        $port = Get-BridgePort
+        Start-Process ("http://127.0.0.1:{0}/health" -f $port)
+    } catch {
+        Show-BridgeNotice $_.Exception.Message
+    }
 })
 
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 2000
 $timer.Add_Tick({
-    if (-not $state.stopping -and $state.runner.HasExited) {
+    if (-not $state.stopping -and -not $state.permanentError -and $state.runner.HasExited) {
+        if ($state.runner.ExitCode -eq $ConfigErrorExitCode) {
+            $state.permanentError = $true
+            Show-BridgeNotice '설정 오류로 브리지가 시작되지 않았어. config.json을 수정하고 트레이 실행기를 다시 시작해줘.'
+            return
+        }
         $state.runner = Start-BridgeRunner
     }
 })

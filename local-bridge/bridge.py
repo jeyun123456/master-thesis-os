@@ -1,31 +1,23 @@
-import json, os, platform, subprocess
+import json, os, platform, subprocess, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from bridge_security import allows_private_network, target_for_endpoint, token_matches, valid_origins
+from bridge_config import CONFIG_ERROR_EXIT_CODE, ConfigError, load_bridge_config
+from bridge_security import allows_private_network, target_for_endpoint, token_matches
 
 HERE = Path(__file__).resolve().parent
 CONFIG = HERE / 'config.json'
-if not CONFIG.exists():
-    raise SystemExit('Missing config.json. Copy config.example.json -> config.json and edit it.')
-config = json.loads(CONFIG.read_text(encoding='utf-8'))
-ROOT = Path(config['master_path']).expanduser().resolve()
-TOKEN = str(config.get('token',''))
-PORT = int(config.get('port',38471))
-ORIGINS = set(config.get('allowed_origins', [
-    'https://master-thesis-os.vercel.app',
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-]))
 MAX_BODY_BYTES = 16 * 1024
 
-if not ROOT.is_dir():
-    raise SystemExit(f'master_path is not an existing directory: {ROOT}')
-if len(TOKEN) < 32 or TOKEN.startswith('CHANGE-THIS'):
-    raise SystemExit('Bridge token must be a non-placeholder value of at least 32 characters.')
-if not valid_origins(ORIGINS):
-    raise SystemExit('allowed_origins must include the production origin and explicit localhost URLs only.')
-if not 1024 <= PORT <= 65535:
-    raise SystemExit('port must be between 1024 and 65535.')
+try:
+    bridge_config = load_bridge_config(CONFIG)
+except ConfigError as exc:
+    print(str(exc), file=sys.stderr)
+    raise SystemExit(CONFIG_ERROR_EXIT_CODE) from exc
+
+ROOT = bridge_config.root
+TOKEN = bridge_config.token
+PORT = bridge_config.port
+ORIGINS = bridge_config.origins
 
 def launch(path: Path):
     system = platform.system()

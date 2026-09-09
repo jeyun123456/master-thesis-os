@@ -1,8 +1,13 @@
+import json
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from bridge_config import DEFAULT_PORT, ConfigError, load_bridge_config
 from bridge_security import (
     PRODUCTION_ORIGIN,
     allows_private_network,
@@ -66,6 +71,83 @@ class SafePathTests(unittest.TestCase):
 
 
 class BridgeConfigurationTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name).resolve()
+        self.config_path = self.root / 'config.json'
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def write_config(self, **overrides):
+        config = {
+            'master_path': str(self.root),
+            'token': 't' * 40,
+            'allowed_origins': [PRODUCTION_ORIGIN, 'http://localhost:3000'],
+        }
+        config.update(overrides)
+        self.config_path.write_text(json.dumps(config), encoding='utf-8')
+
+    def test_loader_accepts_custom_port(self):
+        self.write_config(port=38472)
+        loaded = load_bridge_config(self.config_path)
+        self.assertEqual(loaded.port, 38472)
+
+    def test_loader_uses_default_port_when_omitted(self):
+        self.write_config()
+        loaded = load_bridge_config(self.config_path)
+        self.assertEqual(loaded.port, DEFAULT_PORT)
+
+    def test_loader_rejects_invalid_ports(self):
+        for invalid_port in (1023, 65536, 'not-a-port', True, 38472.5):
+            with self.subTest(port=invalid_port):
+                self.write_config(port=invalid_port)
+                with self.assertRaises(ConfigError):
+                    load_bridge_config(self.config_path)
+
+    def test_loader_rejects_malformed_or_invalid_config(self):
+        self.config_path.write_text('{', encoding='utf-8')
+        with self.assertRaises(ConfigError):
+            load_bridge_config(self.config_path)
+
+        self.write_config(master_path=str(self.root / 'missing'))
+        with self.assertRaises(ConfigError):
+            load_bridge_config(self.config_path)
+
+    def test_config_error_uses_non_restart_exit_code(self):
+        from bridge_config import CONFIG_ERROR_EXIT_CODE
+
+        self.assertEqual(CONFIG_ERROR_EXIT_CODE, 78)
+
+    def test_bridge_process_exits_with_config_error_code(self):
+        for module_name in ('bridge.py', 'bridge_config.py', 'bridge_security.py'):
+            shutil.copy(Path(__file__).with_name(module_name), self.root / module_name)
+        self.config_path.write_text('{', encoding='utf-8')
+
+        completed = subprocess.run(
+            [sys.executable, str(self.root / 'bridge.py')],
+            cwd=self.root,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+
+        self.assertEqual(completed.returncode, 78)
+        self.assertIn('Invalid config.json', completed.stderr)
+
+    def test_tray_health_url_uses_configured_port(self):
+        tray_script = Path(__file__).with_name('start_bridge_tray.ps1').read_text(encoding='utf-8-sig')
+        self.assertNotIn('127.0.0.1:38471/health', tray_script)
+        self.assertIn('Get-BridgePort', tray_script)
+        self.assertIn('http://127.0.0.1:{0}/health', tray_script)
+
+    def test_runner_marks_config_exit_as_non_restartable(self):
+        runner_script = Path(__file__).with_name('start_bridge.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn('$ConfigErrorExitCode = 78', runner_script)
+        self.assertIn('if ($exitCode -eq $ConfigErrorExitCode)', runner_script)
+        self.assertIn('exit $exitCode', runner_script)
+
     def test_accepts_exact_production_and_explicit_local_origins(self):
         self.assertTrue(valid_origins({PRODUCTION_ORIGIN, 'http://localhost:3000', 'http://127.0.0.1:3001'}))
 
