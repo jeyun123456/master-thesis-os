@@ -11,7 +11,7 @@ import type { ResearchProject } from '@/lib/projects';
 import type { RepositoryItem } from '@/lib/repository';
 import type { ResearchStatus } from '@/lib/research-status';
 import type { DashboardBundle } from '@/lib/results';
-import { BRIDGE_OFFLINE_MESSAGE, bridgeResponseMessage } from '@/lib/bridge-status';
+import { BRIDGE_OFFLINE_MESSAGE, BRIDGE_TIMEOUT_MESSAGE, bridgeResponseMessage } from '@/lib/bridge-status';
 
 type Page = 'home' | 'research' | 'results' | 'library' | 'settings';
 
@@ -46,6 +46,51 @@ const navigation: Array<{ id: Page; label: string; icon: string }> = [
   { id: 'library', label: '자료실', icon: '▤' },
   { id: 'settings', label: '설정', icon: '⚙' },
 ];
+
+const BRIDGE_REQUEST_TIMEOUT_MS = 5000;
+type BridgeRequestInit = RequestInit & { targetAddressSpace?: 'loopback' };
+
+function bridgeRequestInit(body: { path: string; token: string }, signal: AbortSignal): BridgeRequestInit {
+  const init: BridgeRequestInit = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  };
+  // Sucrose's Chromium runtime may require an explicit loopback address space
+  // for a secure production page calling the local bridge.
+  if (typeof navigator !== 'undefined' && navigator.userAgent.startsWith('Sucrose')) {
+    init.targetAddressSpace = 'loopback';
+  }
+  return init;
+}
+
+function isBridgeAbort(error: unknown) {
+  return typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError';
+}
+
+function readBridgeToken() {
+  try {
+    return localStorage.getItem('thesisBridgeToken') || '';
+  } catch {
+    // Some embedded runtimes can deny storage access; let the bridge return
+    // its normal invalid-token response instead of making the button silent.
+    return '';
+  }
+}
+
+async function postBridge(endpoint: string, path: string, token: string) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), BRIDGE_REQUEST_TIMEOUT_MS);
+  try {
+    const base = process.env.NEXT_PUBLIC_LOCAL_BRIDGE_URL || 'http://127.0.0.1:38471';
+    const response = await fetch(`${base}${endpoint}`, bridgeRequestInit({ path, token }, controller.signal));
+    const data = await response.json().catch(() => ({} as { error?: unknown }));
+    return { response, data };
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
 
 export default function Page() {
   const [page, setPage] = useState<Page>('home');
@@ -100,42 +145,30 @@ export default function Page() {
   }
 
   async function openLocal(path: string) {
-    const base = process.env.NEXT_PUBLIC_LOCAL_BRIDGE_URL || 'http://127.0.0.1:38471';
-    const token = localStorage.getItem('thesisBridgeToken') || '';
+    pop('로컬 파일을 여는 중…');
     try {
-      const response = await fetch(`${base}/open`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, token }),
-      });
-      const data = await response.json().catch(() => ({} as { error?: unknown }));
+      const { response, data } = await postBridge('/open', path, readBridgeToken());
       if (!response.ok) {
         pop(bridgeResponseMessage(response.status, data.error));
         return;
       }
       pop('로컬에서 열었어');
-    } catch {
-      pop(BRIDGE_OFFLINE_MESSAGE);
+    } catch (error) {
+      pop(isBridgeAbort(error) ? BRIDGE_TIMEOUT_MESSAGE : BRIDGE_OFFLINE_MESSAGE);
     }
   }
 
   async function openLocalFolder(path = '') {
-    const base = process.env.NEXT_PUBLIC_LOCAL_BRIDGE_URL || 'http://127.0.0.1:38471';
-    const token = localStorage.getItem('thesisBridgeToken') || '';
+    pop('로컬 폴더를 여는 중…');
     try {
-      const response = await fetch(`${base}/open-folder`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, token }),
-      });
-      const data = await response.json().catch(() => ({} as { error?: unknown }));
+      const { response, data } = await postBridge('/open-folder', path, readBridgeToken());
       if (!response.ok) {
         pop(bridgeResponseMessage(response.status, data.error));
         return;
       }
       pop('로컬 볼트 폴더를 열었어');
-    } catch {
-      pop(BRIDGE_OFFLINE_MESSAGE);
+    } catch (error) {
+      pop(isBridgeAbort(error) ? BRIDGE_TIMEOUT_MESSAGE : BRIDGE_OFFLINE_MESSAGE);
     }
   }
 

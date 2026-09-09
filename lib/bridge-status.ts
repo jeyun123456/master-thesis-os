@@ -1,4 +1,5 @@
 export const BRIDGE_OFFLINE_MESSAGE = 'Bridge offline: 로컬 브리지가 실행 중인지 확인해줘.';
+export const BRIDGE_TIMEOUT_MESSAGE = 'Bridge timeout: 로컬 브리지가 5초 안에 응답하지 않았어.';
 
 export function bridgeResponseMessage(status: number, error: unknown): string {
   const code = typeof error === 'string' ? error : '';
