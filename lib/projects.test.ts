@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseProjectManifest, projectManifestPaths, projectRelatedFiles, projectStatusLabel, stageLabel } from './projects';
+import { groupFilesByParentFolder, parseProjectManifest, projectManifestPaths, projectRelatedFiles, projectStatusLabel, stageLabel } from './projects';
 import type { RepositoryItem } from './repository';
 
 const manifest = `---
@@ -68,8 +68,8 @@ describe('project manifests', () => {
       { path: 'Calc/data/input.xlsx', type: 'blob' },
     ] as RepositoryItem[];
     expect(projectRelatedFiles(project, tree).map((item) => item.path)).toEqual([
-      'wiki/current_status.md',
       'Calc/data/results/05.xlsx',
+      'wiki/current_status.md',
     ]);
   });
 
@@ -78,5 +78,22 @@ describe('project manifests', () => {
     expect(projectStatusLabel('active')).toBe('진행 중');
     expect(projectStatusLabel('writing')).toBe('작성중');
     expect(projectStatusLabel('paused')).toBe('보류');
+  });
+
+  it('groups related files by their actual parent directory in stable order', () => {
+    const groups = groupFilesByParentFolder([
+      { path: 'wiki/z.md', type: 'blob' },
+      { path: 'wiki/a.md', type: 'blob' },
+      { path: 'README.md', type: 'blob' },
+      { path: 'Calc/data/result.xlsx', type: 'blob' },
+    ]);
+    expect(groups.map((group) => group.path)).toEqual(['', 'Calc/data', 'wiki']);
+    expect(groups[0].label).toBe('Vault root');
+    expect(groups[2].files.map((item) => item.path)).toEqual(['wiki/a.md', 'wiki/z.md']);
+  });
+
+  it('returns no groups for an empty or tree-only selection', () => {
+    expect(groupFilesByParentFolder([])).toEqual([]);
+    expect(groupFilesByParentFolder([{ path: 'wiki', type: 'tree' }])).toEqual([]);
   });
 });

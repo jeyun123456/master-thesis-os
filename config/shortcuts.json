@@ -1,0 +1,46 @@
+[
+  {
+    "id": "current-status",
+    "title": "현재 연구 상태",
+    "type": "file",
+    "target": "wiki/current_status.md",
+    "description": "현재 연구 질문, 결과, 다음 작업을 확인합니다.",
+    "icon": "◌",
+    "pinnedToHome": true,
+    "enabled": true,
+    "order": 10
+  },
+  {
+    "id": "dashboard-validation",
+    "title": "결과 검증 JSON",
+    "type": "file",
+    "target": "projects/interim-presentation/코드/결과/주요결과/dashboard/validation.json",
+    "description": "최신 exporter 검증 상태를 엽니다.",
+    "icon": "▥",
+    "pinnedToHome": true,
+    "enabled": true,
+    "order": 20
+  },
+  {
+    "id": "literature-index",
+    "title": "논문 인덱스",
+    "type": "file",
+    "target": "연구/문헌/논문 리스트.md",
+    "description": "정리된 문헌 목록을 엽니다.",
+    "icon": "▤",
+    "pinnedToHome": true,
+    "enabled": true,
+    "order": 30
+  },
+  {
+    "id": "vault-research-folder",
+    "title": "연구 자료 폴더",
+    "type": "folder",
+    "target": "연구",
+    "description": "로컬 Obsidian Vault의 연구 폴더를 엽니다.",
+    "icon": "⌂",
+    "pinnedToHome": false,
+    "enabled": true,
+    "order": 40
+  }
+]

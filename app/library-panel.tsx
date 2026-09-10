@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import { dashboardApi } from '@/lib/client-api';
 import type { LibraryPaper, WikiCategory } from '@/lib/library';
 import { classifyWikiPath, wikiCategoryLabels, wikiCategoryOrder, wikiDisplayTitle } from '@/lib/library';
 import { classifyRepositoryItems, type RepositoryItem } from '@/lib/repository';
 import type { ResearchStatus } from '@/lib/research-status';
+import { searchKeyAction, shouldHandleGlobalShortcut } from '@/lib/ime';
 
 type LibraryTab = 'key' | 'literature' | 'wiki';
 
@@ -18,6 +20,7 @@ type KeyResource = {
 export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: RepositoryItem[]; researchStatus: ResearchStatus | null; onOpen: (path: string) => void }) {
   const [tab, setTab] = useState<LibraryTab>('key');
   const [query, setQuery] = useState('');
+  const [isComposing, setIsComposing] = useState(false);
   const [papers, setPapers] = useState<LibraryPaper[]>([]);
   const [paperSourcePath, setPaperSourcePath] = useState('연구/문헌/논문 리스트.md');
   const [paperError, setPaperError] = useState('');
@@ -102,7 +105,15 @@ export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: Repositor
           <button className={tab === 'literature' ? 'active' : ''} onClick={() => setTab('literature')}>문헌</button>
           <button className={tab === 'wiki' ? 'active' : ''} onClick={() => setTab('wiki')}>연구 Wiki</button>
         </div>
-        <input className="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={placeholder} />
+        <input
+          className="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onCompositionStart={() => setIsComposing(true)}
+          onCompositionEnd={() => setIsComposing(false)}
+          onKeyDown={(event) => handleSearchKey(event, isComposing, setQuery)}
+          placeholder={placeholder}
+        />
       </div>
 
       {tab === 'key' && (
@@ -150,6 +161,21 @@ export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: Repositor
       )}
     </div>
   );
+}
+
+function handleSearchKey(event: KeyboardEvent<HTMLInputElement>, composing: boolean, setQuery: (value: string) => void) {
+  const isNativeComposing = event.nativeEvent.isComposing || composing;
+  if (!shouldHandleGlobalShortcut(isNativeComposing)) {
+    if (event.key === 'Enter' || event.key === 'Escape') event.preventDefault();
+    return;
+  }
+  const action = searchKeyAction(event.key, false);
+  if (action === 'submit') {
+    event.preventDefault();
+    event.currentTarget.blur();
+  } else if (action === 'clear') {
+    setQuery('');
+  }
 }
 
 function Stat({ label, value }: { label: string; value: number }) {

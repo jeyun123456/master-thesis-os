@@ -76,6 +76,28 @@ GitHub tree의 상대경로를 공통 식별자로 사용한다. 실제 저장�
 
 GitHub recursive tree가 API 한계로 잘리면 불완전한 목록을 사용하지 않고 오류를 표시한다.
 
+## 바로가기와 Library 입력
+
+상단의 **바로가기** 탭과 Home의 **작성 중 프로젝트 바로가기**는 `config/shortcuts.json` 하나를 함께 읽는다. 앱 DB나 별도 CRUD는 두지 않으며, 설정 파일을 수정해 다음 schema로 항목을 관리한다.
+
+```json
+{
+  "id": "unique-id",
+  "title": "표시 이름",
+  "type": "web | file | folder",
+  "target": "https://example.com 또는 Vault 기준 상대경로",
+  "description": "선택 설명",
+  "icon": "선택 아이콘",
+  "pinnedToHome": true,
+  "enabled": true,
+  "order": 10
+}
+```
+
+`web`은 새 탭 링크로 열고, `file`은 기존 Local Bridge의 `/open`, `folder`는 `/open-folder`로 전달한다. `enabled: false`는 모든 화면에서 숨기며, Home에는 `enabled: true`와 `pinnedToHome: true`인 항목만 표시한다. 파일·폴더 target은 연구 repository root 기준 안전한 상대경로여야 하고, 잘못된 항목은 무시된다. 파일·폴더를 열려면 로컬 PC에서 bridge를 실행하고 Settings에 같은 token을 저장해야 한다.
+
+자료실 검색창은 한국어·일본어 IME 조합 중 Enter/Escape와 전역 단축키 처리를 중지하고 composition이 끝난 뒤에만 처리한다. 따라서 조합 중인 입력이 검색어를 지우거나 제출하는 문제를 피한다.
+
 ## Google Calendar
 
 Calendar 연결은 Service Account JWT bearer 인증을 사용하는 서버 전용 읽기 방식이다. 사용자 OAuth와 refresh token이 runtime 경로에 필요하지 않으므로 반복 재인증에 의존하지 않는다.

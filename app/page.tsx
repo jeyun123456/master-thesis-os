@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { LibraryPanel } from '@/app/library-panel';
 import { ResearchPanel } from '@/app/research-panel';
+import { ShortcutList, ShortcutsPanel } from '@/app/shortcuts-panel';
 import { dashboardApi, type CalendarApiResponse } from '@/lib/client-api';
 import type { CalendarEvent } from '@/lib/calendar';
 import { daysUntil, groupCalendarEvents } from '@/lib/calendar-view';
@@ -12,8 +13,9 @@ import type { RepositoryItem } from '@/lib/repository';
 import type { ResearchStatus } from '@/lib/research-status';
 import type { DashboardBundle } from '@/lib/results';
 import { BRIDGE_OFFLINE_MESSAGE, BRIDGE_TIMEOUT_MESSAGE, bridgeResponseMessage } from '@/lib/bridge-status';
+import { getEnabledShortcuts, getHomeShortcuts, shortcuts } from '@/lib/shortcuts';
 
-type Page = 'home' | 'research' | 'results' | 'library' | 'settings';
+type Page = 'home' | 'research' | 'results' | 'library' | 'shortcuts' | 'settings';
 
 const initialCalendar: CalendarApiResponse = {
   configured: false,
@@ -36,6 +38,7 @@ const pageMeta: Record<Page, [string, string]> = {
   research: ['연구', '프로젝트별 질문 · 진행 단계 · 다음 작업 · 관련 자료'],
   results: ['분석 결과', '필요노동 추이 · 분해 · 검증 결과'],
   library: ['자료실', '주요 자료 · 대표 문헌 · 연구 Wiki'],
+  shortcuts: ['바로가기', '반복해서 여는 연구 파일 · 폴더 · 웹 주소'],
   settings: ['설정', '연구 저장소 · Google Calendar · 로컬 브리지'],
 };
 
@@ -44,6 +47,7 @@ const navigation: Array<{ id: Page; label: string; icon: string }> = [
   { id: 'research', label: '연구', icon: '⌕' },
   { id: 'results', label: '분석 결과', icon: '▥' },
   { id: 'library', label: '자료실', icon: '▤' },
+  { id: 'shortcuts', label: '바로가기', icon: '↗' },
   { id: 'settings', label: '설정', icon: '⚙' },
 ];
 
@@ -103,6 +107,8 @@ export default function Page() {
   const [ghConfigured, setGhConfigured] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [toast, setToast] = useState('');
+  const enabledShortcuts = getEnabledShortcuts(shortcuts);
+  const homeShortcuts = getHomeShortcuts(enabledShortcuts);
   useEffect(() => {
     (async () => {
       const results = await Promise.allSettled([
@@ -174,14 +180,6 @@ export default function Page() {
 
   const schedule = useMemo(() => groupCalendarEvents(calendar.items), [calendar.items]);
   const activeProject = useMemo(() => projects.find((project) => project.id === 'thesis') || projects.find((project) => project.status === 'active') || projects[0] || null, [projects]);
-  const quickFiles = useMemo(() => {
-    const items = [
-      ...(activeProject ? [{ label: `${activeProject.title} 프로젝트`, path: activeProject.sourcePath }] : []),
-      ...(researchStatus ? [{ label: '현재 연구 상태', path: researchStatus.sourcePath }, ...researchStatus.importantFiles] : []),
-    ];
-    return items.filter((item, index) => items.findIndex((candidate) => candidate.path === item.path) === index).slice(0, 5);
-  }, [activeProject, researchStatus]);
-
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -199,13 +197,6 @@ export default function Page() {
         {errors.length > 0 && <div className="error page-error">{errors[0]}</div>}
 
         {page === 'home' && <section className="page active">
-          <CurrentFocus project={activeProject} status={researchStatus} onOpen={openLocal} />
-          <div className="kpis home-kpis">
-            <Kpi label="활성 프로젝트" value={projects.length ? String(projects.filter((project) => project.status === 'active').length) : '—'} sub={activeProject?.title || 'projects/ 연결 대기'} />
-            <Kpi label="다음 마감" value={schedule.nextDeadline ? deadlineLabel(schedule.nextDeadline) : '없음'} sub={schedule.nextDeadline?.title || '향후 일정에 마감 없음'} />
-            <Kpi label="결과 검증" value={dashboard.validation?.status === 'pass' ? '통과' : '확인 필요'} sub="Exporter validation" />
-            <Kpi label="연구 파일" value={ghConfigured ? String(tree.filter((item) => item.type === 'blob').length) : '—'} sub="GitHub live source" />
-          </div>
           <div className="grid3">
             <CalendarCard title="오늘 일정" events={schedule.today} calendar={calendar} />
             <CalendarCard title="예정 일정" events={schedule.upcoming.slice(0, 6)} calendar={calendar} />
@@ -217,13 +208,14 @@ export default function Page() {
           </div>
           <div className="grid2 section-gap">
             <Card title="최근 변경" right="연구 저장소 GitHub"><CommitList commits={commits.slice(0, 6)} /></Card>
-            <Card title="빠른 열기" right="로컬 작업">{quickFiles.length ? quickFiles.map((item) => <div className="quick-open" key={item.path}><div><b>{item.label}</b><small>{item.path}</small></div><button className="mini" onClick={() => openLocal(item.path)}>로컬에서 열기</button></div>) : <div className="empty compact-empty">프로젝트가 연결되면 주요 파일을 바로 열 수 있어.</div>}</Card>
+            <Card title="작성 중 프로젝트 바로가기" right={homeShortcuts.length ? `${homeShortcuts.length}개` : '설정 필요'}><ShortcutList shortcuts={homeShortcuts} onOpenFile={openLocal} onOpenFolder={openLocalFolder} /></Card>
           </div>
         </section>}
 
-        {page === 'research' && <section className="page active"><ResearchPanel projects={projects} tree={tree} onOpen={openLocal} onCopy={(prompt) => { navigator.clipboard.writeText(prompt); pop('프롬프트를 복사했어'); }} /></section>}
+        {page === 'research' && <section className="page active"><ResearchPanel projects={projects} tree={tree} onOpen={openLocal} onOpenFolder={openLocalFolder} /></section>}
         {page === 'results' && <section className="page active"><ResultsPanel dashboard={dashboard} /></section>}
         {page === 'library' && <section className="page active"><LibraryPanel tree={tree} researchStatus={researchStatus} onOpen={openLocal} /></section>}
+        {page === 'shortcuts' && <section className="page active"><ShortcutsPanel shortcuts={enabledShortcuts} onOpenFile={openLocal} onOpenFolder={openLocalFolder} /></section>}
 
         {page === 'settings' && <section className="page active">
           <div className="grid2">
@@ -241,13 +233,6 @@ export default function Page() {
       <div className={`toast ${toast ? 'show' : ''}`}>{toast}</div>
     </div>
   );
-}
-
-function CurrentFocus({ project, status, onOpen }: { project: ResearchProject | null; status: ResearchStatus | null; onOpen: (path: string) => void }) {
-  const title = project?.currentFocus || status?.nextActions[0] || '연구 프로젝트를 불러오는 중이야.';
-  const next = project?.nextTasks[0] || status?.nextActions[1] || '';
-  const path = project?.sourcePath || status?.sourcePath || 'wiki/current_status.md';
-  return <div className="focus-card card"><div className="focus-meta"><span>현재 집중 프로젝트</span><b>{project?.title || status?.currentStage || '연구 상태 연결 중'}</b></div><div className="focus-main"><h3>{title}</h3>{next && next !== title && <p>다음: {next}</p>}</div><button className="btn primary" onClick={() => onOpen(path)}>{project ? '프로젝트 열기' : '현재 상태 열기'}</button></div>;
 }
 
 function Card({ title, right, children }: { title: string; right?: string; children: React.ReactNode }) { return <div className="card section"><div className="head"><h3>{title}</h3><span>{right}</span></div>{children}</div>; }

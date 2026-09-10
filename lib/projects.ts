@@ -18,6 +18,12 @@ export type ResearchProject = {
   relatedPaths: string[];
 };
 
+export type RelatedFolderGroup = {
+  path: string;
+  label: string;
+  files: RepositoryItem[];
+};
+
 const sectionAliases: Record<string, keyof Pick<ResearchProject, 'currentFocus' | 'questions' | 'nextTasks' | 'blocked' | 'relatedPaths'>> = {
   '현재 집중': 'currentFocus',
   '연구 질문': 'questions',
@@ -61,7 +67,30 @@ export function projectRelatedFiles(project: ResearchProject, tree: RepositoryIt
     if (item.type !== 'blob') return false;
     return project.relatedPaths.some((path) => path.endsWith('/') ? item.path.startsWith(path) : item.path === path);
   });
-  return matched.slice(0, Math.max(0, limit));
+  return matched.sort((a, b) => compareText(a.path, b.path)).slice(0, Math.max(0, limit));
+}
+
+export function groupFilesByParentFolder(items: RepositoryItem[]): RelatedFolderGroup[] {
+  const groups = new Map<string, RepositoryItem[]>();
+  for (const item of items) {
+    if (item.type !== 'blob') continue;
+    const separator = item.path.lastIndexOf('/');
+    const path = separator === -1 ? '' : item.path.slice(0, separator);
+    const files = groups.get(path) || [];
+    files.push(item);
+    groups.set(path, files);
+  }
+  return [...groups.entries()]
+    .sort(([left], [right]) => compareText(left, right))
+    .map(([path, files]) => ({
+      path,
+      label: path ? path.split('/').pop() || path : 'Vault root',
+      files: files.sort((a, b) => compareText(a.path, b.path)),
+    }));
+}
+
+function compareText(left: string, right: string) {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 export function stageLabel(stage: string): string {
