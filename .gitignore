@@ -3,6 +3,8 @@ node_modules
 .vercel
 .env
 .env.local
+*service-account*.json
+*service_account*.json
 *.log
 *.tsbuildinfo
 coverage/
