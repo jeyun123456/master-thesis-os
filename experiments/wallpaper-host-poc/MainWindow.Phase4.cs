@@ -19,6 +19,7 @@ public partial class MainWindow
         }
 
         _phase4Initialized = true;
+        Icon = BrandIcon.CreateImageSource();
 
         var hwnd = new WindowInteropHelper(this).Handle;
         _phase4HwndSource = HwndSource.FromHwnd(hwnd);
