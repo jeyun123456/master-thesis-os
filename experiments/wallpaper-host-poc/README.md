@@ -43,15 +43,11 @@ While attached to WorkerW, the web app is visible behind desktop icons. The
 icon layer receives desktop mouse input first, so direct web interaction is not
 attempted there.
 
-Press:
-
-`Ctrl + Alt + W`
-
-to switch between:
+Press `Ctrl + Alt + W` to switch between:
 
 - **Wallpaper mode** — host is attached behind desktop icons;
 - **Interactive mode** — host returns to a normal top-level WebView2 window so
-  native mouse/focus/IME works exactly through the Windows/WebView2 path.
+  native mouse/focus/IME works through the normal Windows/WebView2 path.
 
 The abandoned DOM/native focus bridge is intentionally not installed because
 repeated forced focus can break IME composition.
@@ -64,7 +60,7 @@ dotnet run --project .\WallpaperHostPoc.csproj -- --wallpaper --phase2-only
 
 ## Phase 4 — tray, refresh, startup, display changes
 
-Wallpaper mode now creates a notification-area icon.
+Wallpaper mode creates a notification-area icon.
 
 Tray menu:
 
@@ -72,6 +68,7 @@ Tray menu:
 - `Return to Wallpaper`
 - `Refresh`
 - `Start with Windows`
+- `Open Logs Folder`
 - `Exit`
 
 Double-clicking the tray icon toggles Wallpaper / Interactive mode.
@@ -82,11 +79,34 @@ Double-clicking the tray icon toggles Wallpaper / Interactive mode.
 
 No administrator rights are required.
 
-The host also listens for Windows `WM_DISPLAYCHANGE`. While it is attached to
-WorkerW, it re-reads the Worker's client rectangle and resizes the wallpaper
-host to match the changed desktop topology/resolution. This is the first-pass
-monitor handling for the PoC; explicit per-monitor host selection is not yet
-implemented.
+The host listens for Windows `WM_DISPLAYCHANGE`. While attached to WorkerW it
+re-reads the WorkerW client rectangle and resizes the host to match desktop
+resolution/topology changes.
+
+## Phase 5 / v0.2 — runtime hardening
+
+### Single instance
+
+A named per-user mutex prevents multiple wallpaper hosts from running at once.
+Launching the host again signals the existing instance instead of creating a
+second WorkerW host. The primary instance responds by entering/raising
+Interactive mode.
+
+### WorkerW health recovery
+
+While in Wallpaper mode the host checks the WorkerW attachment every five
+seconds. If Explorer restarts, the WorkerW is replaced, or the host loses its
+expected parent, the host searches for a replacement WorkerW and re-attaches
+only its own HWND. Explorer icon windows remain untouched.
+
+### Runtime logs
+
+Operational and error logs are stored under:
+
+`%LOCALAPPDATA%\MasterThesisOSWallpaper\logs\`
+
+The tray menu can open that folder directly. Logging is best-effort and is not
+allowed to block application startup or hide unhandled failures.
 
 ## Build
 
@@ -102,7 +122,7 @@ dotnet restore
 dotnet build -c Debug
 ```
 
-## Phase 4 validation
+## v0.2 validation
 
 After building:
 
@@ -113,13 +133,13 @@ dotnet run --project .\WallpaperHostPoc.csproj -- --wallpaper
 Check:
 
 1. wallpaper attaches behind desktop icons;
-2. tray icon appears;
-3. tray `Enter Interactive mode` works;
-4. Korean native IME remains stable in Interactive mode;
-5. tray `Return to Wallpaper` works;
-6. tray `Refresh` reloads Master Thesis OS;
-7. `Start with Windows` can be enabled and disabled;
-8. changing resolution / monitor topology keeps the wallpaper correctly sized;
+2. tray icon appears and all Phase 4 actions still work;
+3. Korean native IME remains stable in Interactive mode;
+4. launching a second copy does not create a second wallpaper host and raises the existing instance;
+5. `Open Logs Folder` opens the local log directory and a daily log file is written;
+6. restarting Explorer, if tested, eventually re-attaches the host to a valid WorkerW;
+7. `Start with Windows` remains configurable;
+8. display-resolution changes still resize the wallpaper correctly;
 9. `Exit` removes the tray icon and terminates the host cleanly.
 
 ## Deliberately not implemented
