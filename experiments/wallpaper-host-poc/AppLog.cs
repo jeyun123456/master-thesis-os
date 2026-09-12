@@ -51,7 +51,7 @@ internal static class AppLog
             };
         }
 
-        Info($"Process started. PID={Environment.ProcessId}, args='{string.Join(' ', Environment.GetCommandLineArgs().Skip(1))}'.");
+        Info($"Process started. PID={Environment.ProcessId}, args='{string.Join(" ", Environment.GetCommandLineArgs().Skip(1))}'.");
     }
 
     internal static void Info(string message) => Write("INFO", message, null);
