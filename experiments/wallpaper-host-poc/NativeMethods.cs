@@ -28,6 +28,7 @@ internal static class NativeMethods
     internal const uint SMTO_NORMAL = 0x0000;
     internal const uint SPAWN_WORKERW_MESSAGE = 0x052C;
 
+    internal const int WM_DISPLAYCHANGE = 0x007E;
     internal const int WM_HOTKEY = 0x0312;
     internal const uint MOD_ALT = 0x0001;
     internal const uint MOD_CONTROL = 0x0002;
