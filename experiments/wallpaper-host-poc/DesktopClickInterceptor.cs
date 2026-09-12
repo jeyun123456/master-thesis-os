@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace WallpaperHostPoc;
 
 /// <summary>
-/// Experimental mouse-only bridge used while the host is behind Explorer's desktop layer.
+/// Mouse-only bridge used while the host is behind Explorer's desktop layer.
 /// It never synthesizes keyboard input. A captured empty-desktop click is replayed once
 /// after the existing host HWND has entered the normal Interactive WebView2 state.
 /// </summary>
