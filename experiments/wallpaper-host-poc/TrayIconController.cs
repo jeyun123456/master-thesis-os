@@ -12,6 +12,7 @@ internal sealed class TrayIconController : IDisposable
     private readonly Forms.ToolStripMenuItem _wallpaperItem;
     private readonly Forms.ToolStripMenuItem _displayItem;
     private readonly Forms.ToolStripMenuItem _autoReturnItem;
+    private readonly Forms.ToolStripMenuItem _clickToInteractItem;
     private readonly Forms.ToolStripMenuItem _startupItem;
 
     private readonly Func<bool> _isWallpaperMode;
@@ -23,6 +24,8 @@ internal sealed class TrayIconController : IDisposable
     private readonly Action<string> _selectDisplay;
     private readonly Func<bool> _isAutoReturnEnabled;
     private readonly Action<bool> _setAutoReturnEnabled;
+    private readonly Func<bool> _isClickToInteractEnabled;
+    private readonly Action<bool> _setClickToInteractEnabled;
     private readonly Func<bool> _isStartupEnabled;
     private readonly Action<bool> _setStartupEnabled;
     private readonly Action _exit;
@@ -37,6 +40,8 @@ internal sealed class TrayIconController : IDisposable
         Action<string> selectDisplay,
         Func<bool> isAutoReturnEnabled,
         Action<bool> setAutoReturnEnabled,
+        Func<bool> isClickToInteractEnabled,
+        Action<bool> setClickToInteractEnabled,
         Func<bool> isStartupEnabled,
         Action<bool> setStartupEnabled,
         Action exit)
@@ -50,6 +55,8 @@ internal sealed class TrayIconController : IDisposable
         _selectDisplay = selectDisplay;
         _isAutoReturnEnabled = isAutoReturnEnabled;
         _setAutoReturnEnabled = setAutoReturnEnabled;
+        _isClickToInteractEnabled = isClickToInteractEnabled;
+        _setClickToInteractEnabled = setClickToInteractEnabled;
         _isStartupEnabled = isStartupEnabled;
         _setStartupEnabled = setStartupEnabled;
         _exit = exit;
@@ -72,6 +79,9 @@ internal sealed class TrayIconController : IDisposable
 
         _autoReturnItem = new Forms.ToolStripMenuItem("Return to wallpaper when inactive");
         _autoReturnItem.Click += (_, _) => ToggleAutoReturn();
+
+        _clickToInteractItem = new Forms.ToolStripMenuItem("Click wallpaper to open (experimental)");
+        _clickToInteractItem.Click += (_, _) => ToggleClickToInteract();
 
         _startupItem = new Forms.ToolStripMenuItem("Start with Windows");
         _startupItem.Click += (_, _) => ToggleStartup();
@@ -104,6 +114,7 @@ internal sealed class TrayIconController : IDisposable
         menu.Items.Add(refreshItem);
         menu.Items.Add(_displayItem);
         menu.Items.Add(_autoReturnItem);
+        menu.Items.Add(_clickToInteractItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(_startupItem);
         menu.Items.Add(foldersItem);
@@ -143,6 +154,15 @@ internal sealed class TrayIconController : IDisposable
         catch
         {
             _autoReturnItem.Checked = false;
+        }
+
+        try
+        {
+            _clickToInteractItem.Checked = _isClickToInteractEnabled();
+        }
+        catch
+        {
+            _clickToInteractItem.Checked = false;
         }
 
         try
@@ -239,6 +259,28 @@ internal sealed class TrayIconController : IDisposable
         }
     }
 
+    private void ToggleClickToInteract()
+    {
+        try
+        {
+            var next = !_isClickToInteractEnabled();
+            _setClickToInteractEnabled(next);
+            _clickToInteractItem.Checked = _isClickToInteractEnabled();
+
+            ShowInfo(
+                BuildInfo.ShortProductName,
+                next
+                    ? "Experimental click-to-interact is enabled. Empty desktop clicks can open Master Thesis OS."
+                    : "Experimental click-to-interact is disabled.",
+                2200);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Click-to-interact setting failed.", ex);
+            ShowInfo("Click-to-interact unavailable", ex.Message, 3500);
+        }
+    }
+
     private void ToggleStartup()
     {
         try
@@ -273,6 +315,7 @@ internal sealed class TrayIconController : IDisposable
                 wallpaperMode: _isWallpaperMode(),
                 displayDeviceName: _getSelectedDisplayDeviceName(),
                 autoReturnEnabled: _isAutoReturnEnabled(),
+                clickToInteractEnabled: _isClickToInteractEnabled(),
                 startupEnabled: _isStartupEnabled());
         }
         catch (Exception ex)
