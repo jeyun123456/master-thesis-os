@@ -116,7 +116,7 @@ public partial class MainWindow
             return;
         }
 
-        if (IsLikelyImeForegroundWindow(foregroundWindow))
+        if (ShouldDeferAutoReturnForForegroundWindow(foregroundWindow))
         {
             return;
         }
@@ -127,7 +127,7 @@ public partial class MainWindow
         AppLog.Info("Interactive mode automatically returned to Wallpaper after focus moved away.");
     }
 
-    private static bool IsLikelyImeForegroundWindow(nint hwnd)
+    private static bool ShouldDeferAutoReturnForForegroundWindow(nint hwnd)
     {
         if (hwnd == nint.Zero)
         {
@@ -135,9 +135,11 @@ public partial class MainWindow
         }
 
         _ = NativeMethods.GetWindowThreadProcessId(hwnd, out var processId);
-        if (processId == 0 || processId == Environment.ProcessId)
+        var currentProcessId = unchecked((uint)Environment.ProcessId);
+
+        if (processId == 0 || processId == currentProcessId)
         {
-            return processId == Environment.ProcessId;
+            return processId == currentProcessId;
         }
 
         try
