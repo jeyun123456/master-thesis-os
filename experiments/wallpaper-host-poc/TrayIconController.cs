@@ -66,6 +66,7 @@ internal sealed class TrayIconController : IDisposable
         menu.Items.Add(_startupItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(exitItem);
+        menu.Opening += (_, _) => RefreshState();
 
         _notifyIcon = new Forms.NotifyIcon
         {
