@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     private HwndSource? _hwndSource;
     private nint _hostHwnd;
     private bool _hotkeyRegistered;
+    private int _hotkeyRegistrationError;
 
     public MainWindow()
     {
@@ -70,6 +71,11 @@ public partial class MainWindow : Window
             NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT,
             NativeMethods.VK_W);
 
+        if (!_hotkeyRegistered)
+        {
+            _hotkeyRegistrationError = Marshal.GetLastWin32Error();
+        }
+
         _wallpaperAttachment = WallpaperAttachment.ForWindow(this);
 
         if (_wallpaperAttachment.TryAttach(out var status))
@@ -82,7 +88,7 @@ public partial class MainWindow : Window
             {
                 MessageBox.Show(
                     $"Wallpaper mode is active, but Ctrl+Alt+W could not be registered. " +
-                    $"Win32 error: {Marshal.GetLastWin32Error()}.",
+                    $"Win32 error: {_hotkeyRegistrationError}.",
                     "Interactive hotkey unavailable",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
