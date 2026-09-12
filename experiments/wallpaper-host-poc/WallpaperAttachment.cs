@@ -3,7 +3,7 @@ using System.Windows.Interop;
 
 namespace WallpaperHostPoc;
 
-internal sealed class WallpaperAttachment
+internal sealed partial class WallpaperAttachment
 {
     private readonly nint _hostHwnd;
     private readonly nint _originalParent;
