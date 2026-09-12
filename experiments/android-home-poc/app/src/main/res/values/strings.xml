@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Master Thesis OS Companion</string>
+    <string name="widget_description">오늘 할 일, 가까운 일정, 연구 진행 상태를 빠르게 확인하는 Master Thesis OS 홈화면 위젯</string>
+</resources>
