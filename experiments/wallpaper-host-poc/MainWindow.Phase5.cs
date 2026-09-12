@@ -99,12 +99,6 @@ public partial class MainWindow
                 }
 
                 _phase5RecoveryFailures = 0;
-
-                if (Browser.CoreWebView2 is not null)
-                {
-                    Browser.CoreWebView2Controller.NotifyParentWindowPositionChanged();
-                }
-
                 _trayIcon?.RefreshState();
                 return;
             }
