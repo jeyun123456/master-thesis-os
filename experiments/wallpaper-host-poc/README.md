@@ -2,7 +2,7 @@
 
 Windows 10/11 companion that keeps the production Master Thesis OS on the desktop while preserving native Windows/WebView2 keyboard input and Korean/Japanese IME behavior.
 
-Current version: **0.6.0**
+Current version: **0.6.1**
 
 Production page:
 
@@ -41,13 +41,14 @@ The companion has two internal states:
 - **Wallpaper**: Master Thesis OS sits behind normal desktop icons.
 - **Open**: the same WebView2 temporarily becomes a foreground top-level window for normal mouse/keyboard/IME input.
 
-Open it by:
+By default, click-to-interact is enabled. Clicking eligible empty desktop space on the selected display opens Master Thesis OS and replays that one left click into the WebView, so normal use feels like interacting directly with the wallpaper.
+
+You can also open it by:
 
 - double-clicking the tray icon;
 - tray `Open Master Thesis OS`;
 - `Ctrl + Alt + W`;
-- launching the app again while it is already running;
-- optionally, an empty desktop click when experimental click-to-interact is enabled.
+- launching the app again while it is already running.
 
 Return it to the wallpaper by:
 
@@ -56,11 +57,11 @@ Return it to the wallpaper by:
 - `Ctrl + Alt + W`;
 - switching to another application and waiting about 1.5 seconds when automatic return is enabled.
 
-## v0.6 experimental click-to-interact
+## Click-to-interact
 
-Tray `Click wallpaper to open (experimental)` is **off by default**.
+Tray `Click wallpaper to open` is **on by default** for new/default settings.
 
-When enabled, the companion installs a low-level **mouse-only** hook while the feature is active. A left click is intercepted only when all of these are true:
+When enabled, the companion installs a low-level **mouse-only** hook. A left click is intercepted only when all of these are true:
 
 1. the companion is currently in Wallpaper state;
 2. the pointer is inside the selected display;
@@ -69,7 +70,7 @@ When enabled, the companion installs a low-level **mouse-only** hook while the f
 
 For an eligible empty-desktop click, the original left-button down/up is suppressed, the existing host HWND enters the normal Open state, and **one mouse left-click only** is replayed so the first click can reach WebView2.
 
-Important boundary:
+Safety boundary:
 
 - no keyboard `SendInput`;
 - no RawInput keyboard forwarding;
@@ -80,7 +81,7 @@ Important boundary:
 
 If desktop-icon hit testing cannot be performed safely, the feature fails closed and leaves the click with Explorer instead of risking an icon hijack.
 
-Turn the tray option off at any time to return immediately to the stable v0.5 interaction behavior.
+Turn `Click wallpaper to open` off at any time to use the manual fallback path: tray open, tray double-click, second launch, or `Ctrl + Alt + W`. An explicit saved `false` remains respected across upgrades.
 
 ## Tray menu
 
@@ -92,13 +93,13 @@ The notification-area menu contains:
 - `Refresh`
 - `Display`
 - `Return to wallpaper when inactive`
-- `Click wallpaper to open (experimental)`
+- `Click wallpaper to open`
 - `Start with Windows`
 - `Folders`
   - `Open Data Folder`
   - `Open App Folder`
   - `Open Logs Folder`
-- `About... v0.6.0`
+- `About... v0.6.1`
 - `Exit`
 
 ## Display selection
@@ -137,6 +138,12 @@ Important files/directories:
 
 Reinstalling/updating preserves settings and logs.
 
+For click-to-interact migration:
+
+- missing `ClickToInteractEnabled` uses the new default `true`;
+- explicit `true` stays enabled;
+- explicit `false` stays disabled.
+
 ## Single instance and recovery
 
 Only one companion process can run per user. A second launch signals the existing instance instead of creating another WorkerW/WebView2 host.
@@ -155,7 +162,7 @@ The stable keyboard/IME path remains the normal Windows/WebView2 path:
 - no custom Hangul/Japanese composer
 - no forced DOM/native focus bridge
 
-The optional v0.6 experiment uses `SendInput` only for the single captured **mouse left-click replay** after Open state has already been established.
+Click-to-interact uses `SendInput` only for the single captured **mouse left-click replay** after Open state has already been established.
 
 `NativeImeFocusBridge.cs` remains in the repository only as historical reference and is excluded from the executable.
 
@@ -182,18 +189,18 @@ Requirements:
 - .NET 8 Windows Desktop Runtime
 - Microsoft Edge WebView2 Runtime
 
-## v0.6 manual validation
+## v0.6.1 validation
 
-Keep `Click wallpaper to open (experimental)` off first and verify the v0.5 behavior is unchanged. Then enable it and test:
+After updating:
 
-1. click empty desktop space on the selected display: Master Thesis OS should open and the first click should reach the web UI;
-2. click a desktop icon: Explorer should receive the click and Master Thesis OS should stay in Wallpaper state;
-3. click the taskbar or another visible application: it must not open Master Thesis OS;
-4. click empty desktop on a non-selected display: it must not open Master Thesis OS;
-5. while Open, normal clicks and native Korean/Japanese IME must remain unchanged;
-6. `Esc`, focus-loss auto-return and `Ctrl+Alt+W` must still return to Wallpaper normally;
-7. turn the experimental option off and confirm all global mouse interception stops;
-8. restart and confirm the experimental setting is persisted.
+1. a new/default settings object should report click-to-interact enabled;
+2. an existing saved `ClickToInteractEnabled: false` should remain disabled;
+3. tray should show `Click wallpaper to open` without experimental wording;
+4. empty desktop on the selected display should open Master Thesis OS and deliver the first click;
+5. desktop icons, taskbar, another application and non-selected displays must keep their normal click behavior;
+6. Korean/Japanese IME, `Esc`, focus-loss auto-return and `Ctrl+Alt+W` must remain unchanged;
+7. turning `Click wallpaper to open` off should dispose the mouse hook and leave the manual fallback paths working;
+8. restart should preserve the explicit user choice.
 
 ## Uninstall
 
@@ -207,4 +214,4 @@ By default settings/logs are preserved. Use `-PurgeData` to remove them too.
 
 ## Architecture boundary
 
-This is intentionally not a general-purpose Wallpaper Engine. Explorer's desktop icon windows are never re-parented. The temporary Open state remains the mechanism that gives WebView2 normal foreground focus and reliable native IME; v0.6 only experiments with making entry into that state feel like direct wallpaper interaction.
+This is intentionally not a general-purpose Wallpaper Engine. Explorer's desktop icon windows are never re-parented. The temporary Open state remains the mechanism that gives WebView2 normal foreground focus and reliable native IME; click-to-interact makes entry into that state feel like direct wallpaper interaction while keeping the stable manual fallback available.
