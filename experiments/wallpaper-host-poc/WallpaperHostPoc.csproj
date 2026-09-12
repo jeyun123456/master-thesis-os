@@ -17,6 +17,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Kept in the repo only as historical Phase 3 reference. It is intentionally
+         not part of the executable because forced focus broke native IME composition. -->
+    <Compile Remove="NativeImeFocusBridge.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
   </ItemGroup>
 
