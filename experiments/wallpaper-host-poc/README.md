@@ -62,11 +62,12 @@ dotnet run --project .\WallpaperHostPoc.csproj -- --wallpaper --phase2-only
 
 Wallpaper mode creates a notification-area icon.
 
-Tray menu:
+Tray menu includes:
 
 - `Enter Interactive mode`
 - `Return to Wallpaper`
 - `Refresh`
+- `Display`
 - `Start with Windows`
 - `Open Logs Folder`
 - `Exit`
@@ -79,9 +80,8 @@ Double-clicking the tray icon toggles Wallpaper / Interactive mode.
 
 No administrator rights are required.
 
-The host listens for Windows `WM_DISPLAYCHANGE`. While attached to WorkerW it
-re-reads the WorkerW client rectangle and resizes the host to match desktop
-resolution/topology changes.
+The host listens for Windows `WM_DISPLAYCHANGE` and re-applies its target-display
+bounds after resolution/topology changes.
 
 ## Phase 5 / v0.2 — runtime hardening
 
@@ -108,6 +108,31 @@ Operational and error logs are stored under:
 The tray menu can open that folder directly. Logging is best-effort and is not
 allowed to block application startup or hide unhandled failures.
 
+## Phase 6 / v0.3 — choose exactly one display
+
+The wallpaper host still runs as one process and one WebView2 instance. Even if
+Windows has multiple monitors connected, Master Thesis OS is shown on exactly
+one selected display.
+
+Use the tray `Display` submenu to choose the target monitor. The menu follows
+Windows `DISPLAY1`, `DISPLAY2`, ... numbering and allows only one selected item.
+
+The selection is persisted in:
+
+`%LOCALAPPDATA%\MasterThesisOSWallpaper\settings.json`
+
+Behavior:
+
+- Wallpaper mode occupies only the selected display;
+- Interactive mode opens full-screen only on that same display;
+- changing the selected display moves the current host immediately;
+- display coordinates are converted from screen coordinates into WorkerW client
+  coordinates before positioning, so left/negative-coordinate monitor layouts
+  are supported;
+- if the saved display is disconnected, the host falls back to the Windows
+  primary display and persists that fallback;
+- no additional wallpaper process or per-monitor WebView is created.
+
 ## Build
 
 Requirements:
@@ -122,7 +147,7 @@ dotnet restore
 dotnet build -c Debug
 ```
 
-## v0.2 validation
+## v0.3 validation
 
 After building:
 
@@ -132,15 +157,16 @@ dotnet run --project .\WallpaperHostPoc.csproj -- --wallpaper
 
 Check:
 
-1. wallpaper attaches behind desktop icons;
-2. tray icon appears and all Phase 4 actions still work;
-3. Korean native IME remains stable in Interactive mode;
-4. launching a second copy does not create a second wallpaper host and raises the existing instance;
-5. `Open Logs Folder` opens the local log directory and a daily log file is written;
-6. restarting Explorer, if tested, eventually re-attaches the host to a valid WorkerW;
-7. `Start with Windows` remains configurable;
-8. display-resolution changes still resize the wallpaper correctly;
-9. `Exit` removes the tray icon and terminates the host cleanly.
+1. tray `Display` lists every connected monitor once;
+2. exactly one display is checked;
+3. selecting another display moves Wallpaper mode to only that display;
+4. `Ctrl+Alt+W` opens Interactive mode on the selected display only;
+5. Korean native IME remains stable;
+6. switching the display while Interactive mode is active moves the top-level host;
+7. restarting the app restores the selected display from `settings.json`;
+8. disconnecting the selected display falls back to the Windows primary display;
+9. single-instance, tray, refresh, startup, logging, and WorkerW recovery still work;
+10. `Exit` terminates the one wallpaper host cleanly.
 
 ## Deliberately not implemented
 
@@ -150,4 +176,4 @@ Check:
 - synthetic keyboard messages;
 - custom Korean/Japanese composition;
 - a general-purpose Wallpaper Engine;
-- explicit per-monitor wallpaper instances / monitor picker.
+- multiple simultaneous wallpaper instances across displays.
