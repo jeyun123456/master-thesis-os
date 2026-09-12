@@ -29,6 +29,10 @@ public partial class MainWindow
             enterInteractiveMode: () => Phase4RunOnUiThread(EnterInteractiveFromTray),
             returnToWallpaperMode: () => Phase4RunOnUiThread(ReturnToWallpaperFromTray),
             refresh: () => Phase4RunOnUiThread(RefreshWebView),
+            getDisplays: DisplayManager.GetDisplays,
+            getSelectedDisplayDeviceName: GetSelectedDisplayDeviceName,
+            selectDisplay: deviceName => Phase4RunOnUiThread(
+                () => SelectDisplayFromTray(deviceName)),
             isStartupEnabled: StartupManager.IsEnabled,
             setStartupEnabled: StartupManager.SetEnabled,
             exit: () => Phase4RunOnUiThread(Close));
@@ -104,9 +108,76 @@ public partial class MainWindow
         Browser.Source = ProductionUri;
     }
 
+    private string GetSelectedDisplayDeviceName()
+    {
+        if (_wallpaperAttachment is not null)
+        {
+            return _wallpaperAttachment.TargetDisplayDeviceName;
+        }
+
+        var settings = WallpaperSettings.Load();
+        return DisplayManager.ResolveTarget(
+            settings.TargetDisplayDeviceName,
+            out _).DeviceName;
+    }
+
+    private void SelectDisplayFromTray(string deviceName)
+    {
+        if (_wallpaperAttachment is null)
+        {
+            return;
+        }
+
+        var display = DisplayManager.GetDisplays().FirstOrDefault(candidate =>
+            string.Equals(
+                candidate.DeviceName,
+                deviceName,
+                StringComparison.OrdinalIgnoreCase));
+
+        if (display is null)
+        {
+            _trayIcon?.ShowInfo(
+                "Display unavailable",
+                "The selected display is no longer connected.",
+                2500);
+            _trayIcon?.RefreshState();
+            return;
+        }
+
+        try
+        {
+            WallpaperSettings.SetTargetDisplayDeviceName(display.DeviceName);
+            _wallpaperAttachment.SetTargetDisplay(display);
+
+            if (!_wallpaperAttachment.TryApplyTargetDisplayBounds(out var status))
+            {
+                AppLog.Warn(status);
+                _trayIcon?.ShowInfo(
+                    "Display change failed",
+                    status,
+                    3000);
+                return;
+            }
+
+            AppLog.Info($"Selected display changed to {display.DeviceName}. {status}");
+
+            if (Browser.CoreWebView2 is not null)
+            {
+                Browser.CoreWebView2Controller.NotifyParentWindowPositionChanged();
+            }
+
+            _trayIcon?.RefreshState();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Could not change the selected display.", ex);
+            _trayIcon?.ShowInfo("Display change failed", ex.Message, 3000);
+        }
+    }
+
     private void RefreshWallpaperBoundsAfterDisplayChange()
     {
-        if (_wallpaperAttachment?.IsAttached != true)
+        if (_wallpaperAttachment is null)
         {
             return;
         }
@@ -115,10 +186,12 @@ public partial class MainWindow
         {
             AppLog.Warn(status);
             Title = "Master Thesis OS - display refresh failed";
+            _trayIcon?.RefreshState();
             return;
         }
 
         AppLog.Info(status);
+        _trayIcon?.RefreshState();
 
         if (Browser.CoreWebView2 is not null)
         {
