@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+WRAPPER_JAR="$ROOT/gradle/wrapper/gradle-wrapper.jar"
+
+if [ -f "$WRAPPER_JAR" ]; then
+  exec java -classpath "$WRAPPER_JAR" org.gradle.wrapper.GradleWrapperMain "$@"
+fi
+
+if command -v gradle >/dev/null 2>&1; then
+  exec gradle "$@"
+fi
+
+echo "Gradle wrapper JAR is not committed in this PoC." >&2
+echo "Run bootstrap-wrapper.sh / bootstrap-wrapper.ps1, or install Gradle 8.13 and run: gradle wrapper --gradle-version 8.13" >&2
+exit 1
