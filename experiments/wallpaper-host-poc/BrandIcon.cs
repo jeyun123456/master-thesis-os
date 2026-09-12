@@ -31,7 +31,7 @@ internal static class BrandIcon
         var source = Imaging.CreateBitmapSourceFromHIcon(
             icon.Handle,
             System.Windows.Int32Rect.Empty,
-            System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+            System.Windows.Interop.BitmapSizeOptions.FromEmptyOptions());
         source.Freeze();
         return source;
     }
