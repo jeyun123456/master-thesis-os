@@ -9,12 +9,16 @@ internal sealed class TrayIconController : IDisposable
     private readonly Forms.ToolStripMenuItem _statusItem;
     private readonly Forms.ToolStripMenuItem _interactiveItem;
     private readonly Forms.ToolStripMenuItem _wallpaperItem;
+    private readonly Forms.ToolStripMenuItem _displayItem;
     private readonly Forms.ToolStripMenuItem _startupItem;
 
     private readonly Func<bool> _isWallpaperMode;
     private readonly Action _enterInteractiveMode;
     private readonly Action _returnToWallpaperMode;
     private readonly Action _refresh;
+    private readonly Func<IReadOnlyList<DisplayTarget>> _getDisplays;
+    private readonly Func<string> _getSelectedDisplayDeviceName;
+    private readonly Action<string> _selectDisplay;
     private readonly Func<bool> _isStartupEnabled;
     private readonly Action<bool> _setStartupEnabled;
     private readonly Action _exit;
@@ -24,6 +28,9 @@ internal sealed class TrayIconController : IDisposable
         Action enterInteractiveMode,
         Action returnToWallpaperMode,
         Action refresh,
+        Func<IReadOnlyList<DisplayTarget>> getDisplays,
+        Func<string> getSelectedDisplayDeviceName,
+        Action<string> selectDisplay,
         Func<bool> isStartupEnabled,
         Action<bool> setStartupEnabled,
         Action exit)
@@ -32,6 +39,9 @@ internal sealed class TrayIconController : IDisposable
         _enterInteractiveMode = enterInteractiveMode;
         _returnToWallpaperMode = returnToWallpaperMode;
         _refresh = refresh;
+        _getDisplays = getDisplays;
+        _getSelectedDisplayDeviceName = getSelectedDisplayDeviceName;
+        _selectDisplay = selectDisplay;
         _isStartupEnabled = isStartupEnabled;
         _setStartupEnabled = setStartupEnabled;
         _exit = exit;
@@ -50,6 +60,8 @@ internal sealed class TrayIconController : IDisposable
         var refreshItem = new Forms.ToolStripMenuItem("Refresh");
         refreshItem.Click += (_, _) => _refresh();
 
+        _displayItem = new Forms.ToolStripMenuItem("Display");
+
         _startupItem = new Forms.ToolStripMenuItem("Start with Windows");
         _startupItem.Click += (_, _) => ToggleStartup();
 
@@ -65,6 +77,7 @@ internal sealed class TrayIconController : IDisposable
         menu.Items.Add(_interactiveItem);
         menu.Items.Add(_wallpaperItem);
         menu.Items.Add(refreshItem);
+        menu.Items.Add(_displayItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(_startupItem);
         menu.Items.Add(logsItem);
@@ -102,6 +115,8 @@ internal sealed class TrayIconController : IDisposable
         _interactiveItem.Enabled = wallpaperMode;
         _wallpaperItem.Enabled = !wallpaperMode;
 
+        RefreshDisplayMenu();
+
         try
         {
             _startupItem.Checked = _isStartupEnabled();
@@ -117,6 +132,62 @@ internal sealed class TrayIconController : IDisposable
         _notifyIcon.BalloonTipTitle = title;
         _notifyIcon.BalloonTipText = text;
         _notifyIcon.ShowBalloonTip(timeoutMilliseconds);
+    }
+
+    private void RefreshDisplayMenu()
+    {
+        _displayItem.DropDownItems.Clear();
+
+        try
+        {
+            var displays = _getDisplays();
+            var selected = _getSelectedDisplayDeviceName();
+
+            if (displays.Count == 0)
+            {
+                _displayItem.Enabled = false;
+                _displayItem.DropDownItems.Add(new Forms.ToolStripMenuItem("No display detected")
+                {
+                    Enabled = false,
+                });
+                return;
+            }
+
+            _displayItem.Enabled = true;
+
+            foreach (var display in displays)
+            {
+                var item = new Forms.ToolStripMenuItem(display.Label)
+                {
+                    Checked = string.Equals(
+                        display.DeviceName,
+                        selected,
+                        StringComparison.OrdinalIgnoreCase),
+                    CheckOnClick = false,
+                    RadioCheck = true,
+                    Tag = display.DeviceName,
+                };
+
+                item.Click += (_, _) =>
+                {
+                    if (item.Tag is string deviceName)
+                    {
+                        _selectDisplay(deviceName);
+                    }
+                };
+
+                _displayItem.DropDownItems.Add(item);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Could not populate the display menu.", ex);
+            _displayItem.Enabled = false;
+            _displayItem.DropDownItems.Add(new Forms.ToolStripMenuItem("Display list unavailable")
+            {
+                Enabled = false,
+            });
+        }
     }
 
     private void ToggleStartup()
