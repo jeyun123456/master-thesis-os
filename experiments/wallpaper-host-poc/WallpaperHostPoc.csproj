@@ -7,6 +7,9 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <Version>0.4.0</Version>
+    <Product>Master Thesis OS Wallpaper</Product>
+    <Description>Windows wallpaper companion for Master Thesis OS</Description>
 
     <!-- Lets CI/non-Windows environments restore/build the Windows-targeted project.
          Actual execution still requires Windows. -->
