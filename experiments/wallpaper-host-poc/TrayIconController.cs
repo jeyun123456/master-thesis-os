@@ -80,7 +80,7 @@ internal sealed class TrayIconController : IDisposable
         _autoReturnItem = new Forms.ToolStripMenuItem("Return to wallpaper when inactive");
         _autoReturnItem.Click += (_, _) => ToggleAutoReturn();
 
-        _clickToInteractItem = new Forms.ToolStripMenuItem("Click wallpaper to open (experimental)");
+        _clickToInteractItem = new Forms.ToolStripMenuItem("Click wallpaper to open");
         _clickToInteractItem.Click += (_, _) => ToggleClickToInteract();
 
         _startupItem = new Forms.ToolStripMenuItem("Start with Windows");
@@ -270,8 +270,8 @@ internal sealed class TrayIconController : IDisposable
             ShowInfo(
                 BuildInfo.ShortProductName,
                 next
-                    ? "Experimental click-to-interact is enabled. Empty desktop clicks can open Master Thesis OS."
-                    : "Experimental click-to-interact is disabled.",
+                    ? "Click wallpaper to open is enabled. Empty desktop clicks can open Master Thesis OS."
+                    : "Click wallpaper to open is disabled. Use the tray or Ctrl+Alt+W to open Master Thesis OS.",
                 2200);
         }
         catch (Exception ex)
