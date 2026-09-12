@@ -28,6 +28,12 @@ internal static class NativeMethods
     internal const uint SMTO_NORMAL = 0x0000;
     internal const uint SPAWN_WORKERW_MESSAGE = 0x052C;
 
+    internal const int WM_HOTKEY = 0x0312;
+    internal const uint MOD_ALT = 0x0001;
+    internal const uint MOD_CONTROL = 0x0002;
+    internal const uint VK_W = 0x57;
+
+    internal static readonly nint HWND_TOP = nint.Zero;
     internal static readonly nint HWND_BOTTOM = new(1);
 
     internal delegate bool EnumWindowsProc(nint hWnd, nint lParam);
@@ -74,6 +80,18 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool SetForegroundWindow(nint hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool RegisterHotKey(
+        nint hWnd,
+        int id,
+        uint fsModifiers,
+        uint vk);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool UnregisterHotKey(nint hWnd, int id);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
