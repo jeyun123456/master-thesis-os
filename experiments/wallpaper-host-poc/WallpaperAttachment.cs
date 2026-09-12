@@ -45,6 +45,8 @@ internal sealed partial class WallpaperAttachment
             return true;
         }
 
+        EnsureTargetDisplayResolved();
+
         if (!TryFindWallpaperWorker(out var workerW, out var discovery))
         {
             status =
@@ -124,35 +126,23 @@ internal sealed partial class WallpaperAttachment
             return false;
         }
 
-        if (!NativeMethods.SetWindowPos(
-                _hostHwnd,
-                NativeMethods.HWND_BOTTOM,
-                0,
-                0,
-                workerRect.Width,
-                workerRect.Height,
-                NativeMethods.SWP_NOACTIVATE |
-                NativeMethods.SWP_FRAMECHANGED |
-                NativeMethods.SWP_SHOWWINDOW))
+        if (!TryPlaceAttachedHost(workerW, out var placementStatus))
         {
-            var sizingError = Marshal.GetLastWin32Error();
             var rollbackError = RestoreOriginalParentIfNeeded();
             RestoreStyles();
 
             status =
-                $"WorkerW attachment succeeded but sizing failed with Win32 error {sizingError}. " +
-                $"Rollback error={rollbackError}. Attachment was rolled back.";
+                $"WorkerW attachment succeeded, but target-display placement failed. " +
+                $"{placementStatus} Rollback error={rollbackError}.";
             return false;
         }
 
         _workerW = workerW;
-        _wallpaperWidth = workerRect.Width;
-        _wallpaperHeight = workerRect.Height;
         _attached = true;
         status =
             $"Attached host 0x{_hostHwnd.ToInt64():X} to WorkerW 0x{workerW.ToInt64():X} " +
-            $"({workerRect.Width}x{workerRect.Height}, class='{workerClass}', " +
-            $"worker parent=0x{workerParent.ToInt64():X}). Discovery: {discovery}";
+            $"(class='{workerClass}', worker parent=0x{workerParent.ToInt64():X}). " +
+            $"Target={_targetDisplayDeviceName}. {placementStatus} Discovery: {discovery}";
         return true;
     }
 
@@ -163,6 +153,8 @@ internal sealed partial class WallpaperAttachment
             status = "The host is already outside WorkerW.";
             return true;
         }
+
+        EnsureTargetDisplayResolved();
 
         var workerW = _workerW;
 
@@ -198,10 +190,10 @@ internal sealed partial class WallpaperAttachment
         if (!NativeMethods.SetWindowPos(
                 _hostHwnd,
                 NativeMethods.HWND_TOP,
-                0,
-                0,
-                _wallpaperWidth,
-                _wallpaperHeight,
+                _targetScreenBounds.Left,
+                _targetScreenBounds.Top,
+                _targetScreenBounds.Width,
+                _targetScreenBounds.Height,
                 NativeMethods.SWP_FRAMECHANGED |
                 NativeMethods.SWP_SHOWWINDOW))
         {
@@ -209,15 +201,18 @@ internal sealed partial class WallpaperAttachment
             _attached = false;
             _workerW = nint.Zero;
             status =
-                $"Detached from WorkerW, but failed to raise the interactive window. " +
-                $"Win32 error: {error}.";
+                $"Detached from WorkerW, but failed to raise the interactive window on " +
+                $"{_targetDisplayDeviceName}. Win32 error: {error}.";
             return false;
         }
 
+        _wallpaperWidth = _targetScreenBounds.Width;
+        _wallpaperHeight = _targetScreenBounds.Height;
         _attached = false;
         _workerW = nint.Zero;
         status =
-            $"Interactive mode active. Previous WorkerW=0x{workerW.ToInt64():X}; " +
+            $"Interactive mode active on {_targetDisplayDeviceName}. " +
+            $"Previous WorkerW=0x{workerW.ToInt64():X}; " +
             $"current parent=0x{actualParent.ToInt64():X}. Press Ctrl+Alt+W to return.";
         return true;
     }
