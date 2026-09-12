@@ -7,6 +7,7 @@ $ErrorActionPreference = 'Stop'
 
 $ProjectDirectory = Split-Path -Parent $PSScriptRoot
 $ProjectPath = Join-Path $ProjectDirectory 'WallpaperHostPoc.csproj'
+$IconScript = Join-Path $PSScriptRoot 'Generate-AppIcon.ps1'
 
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = Join-Path $ProjectDirectory 'artifacts\publish\win-x64'
@@ -20,13 +21,18 @@ if (-not $desktopRuntime) {
     throw 'Microsoft Windows Desktop Runtime 8.x is required.'
 }
 
+& $IconScript
+if ($LASTEXITCODE -ne 0) {
+    throw "Application icon generation failed with exit code $LASTEXITCODE."
+}
+
 if (Test-Path $OutputPath) {
     Remove-Item $OutputPath -Recurse -Force
 }
 
 New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
 
-Write-Host "Publishing Master Thesis OS Wallpaper to: $OutputPath"
+Write-Host "Publishing Master Thesis OS Wallpaper Companion to: $OutputPath"
 
 dotnet publish $ProjectPath `
     -c Release `
@@ -40,7 +46,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE."
 }
 
-$exePath = Join-Path $OutputPath 'WallpaperHostPoc.exe'
+$exePath = Join-Path $OutputPath 'MasterThesisOSWallpaper.exe'
 if (-not (Test-Path $exePath)) {
     throw "Published executable was not found: $exePath"
 }
