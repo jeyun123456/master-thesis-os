@@ -33,15 +33,20 @@ public partial class MainWindow
             getSelectedDisplayDeviceName: GetSelectedDisplayDeviceName,
             selectDisplay: deviceName => Phase4RunOnUiThread(
                 () => SelectDisplayFromTray(deviceName)),
+            isAutoReturnEnabled: IsAutoReturnToWallpaperEnabled,
+            setAutoReturnEnabled: enabled => Phase4RunOnUiThread(
+                () => SetAutoReturnToWallpaperEnabled(enabled)),
             isStartupEnabled: StartupManager.IsEnabled,
             setStartupEnabled: StartupManager.SetEnabled,
             exit: () => Phase4RunOnUiThread(Close));
 
         InitializePhase5();
+        InitializePhase6();
     }
 
     protected override void OnClosed(EventArgs e)
     {
+        DisposePhase6();
         DisposePhase5();
 
         if (_phase4HwndSource is not null)
@@ -160,12 +165,6 @@ public partial class MainWindow
             }
 
             AppLog.Info($"Selected display changed to {display.DeviceName}. {status}");
-
-            if (Browser.CoreWebView2 is not null)
-            {
-                Browser.CoreWebView2Controller.NotifyParentWindowPositionChanged();
-            }
-
             _trayIcon?.RefreshState();
         }
         catch (Exception ex)
@@ -192,11 +191,6 @@ public partial class MainWindow
 
         AppLog.Info(status);
         _trayIcon?.RefreshState();
-
-        if (Browser.CoreWebView2 is not null)
-        {
-            Browser.CoreWebView2Controller.NotifyParentWindowPositionChanged();
-        }
     }
 
     private void Phase4RunOnUiThread(Action action)
