@@ -8,7 +8,7 @@ internal sealed class WallpaperSettingsData
 
     public bool AutoReturnToWallpaper { get; set; } = true;
 
-    public bool ClickToInteractEnabled { get; set; }
+    public bool ClickToInteractEnabled { get; set; } = true;
 }
 
 internal static class WallpaperSettings
