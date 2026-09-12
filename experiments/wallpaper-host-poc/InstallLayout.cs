@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace WallpaperHostPoc;
 
 internal static class InstallLayout
@@ -12,7 +14,7 @@ internal static class InstallLayout
 
     internal static string InstalledExecutablePath { get; } = Path.Combine(
         AppDirectory,
-        "WallpaperHostPoc.exe");
+        BuildInfo.ExecutableName);
 
     internal static string PreferredExecutablePath
     {
@@ -45,5 +47,26 @@ internal static class InstallLayout
                        Path.GetFullPath(InstalledExecutablePath),
                        StringComparison.OrdinalIgnoreCase);
         }
+    }
+
+    internal static void OpenAppDirectory()
+    {
+        Directory.CreateDirectory(AppDirectory);
+        OpenFolder(AppDirectory);
+    }
+
+    internal static void OpenDataDirectory()
+    {
+        Directory.CreateDirectory(RootDirectory);
+        OpenFolder(RootDirectory);
+    }
+
+    private static void OpenFolder(string path)
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = path,
+            UseShellExecute = true,
+        });
     }
 }
