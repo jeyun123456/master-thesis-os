@@ -40,6 +40,13 @@ internal static class NativeMethods
     internal delegate bool EnumWindowsProc(nint hWnd, nint lParam);
 
     [StructLayout(LayoutKind.Sequential)]
+    internal struct POINT
+    {
+        internal int X;
+        internal int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     internal struct RECT
     {
         internal int Left;
@@ -49,13 +56,6 @@ internal static class NativeMethods
 
         internal int Width => Right - Left;
         internal int Height => Bottom - Top;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct POINT
-    {
-        internal int X;
-        internal int Y;
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -89,6 +89,14 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool SetForegroundWindow(nint hWnd);
 
+    [DllImport("user32.dll")]
+    internal static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    internal static extern uint GetWindowThreadProcessId(
+        nint hWnd,
+        out uint lpdwProcessId);
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool RegisterHotKey(
@@ -105,7 +113,7 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool IsWindow(nint hWnd);
 
-    [DllImport("user32.dll", SetLastError = true)]
+    [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool ScreenToClient(nint hWnd, ref POINT lpPoint);
 
