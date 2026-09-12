@@ -28,14 +28,8 @@ internal static class StartupManager
         key.DeleteValue(ValueName, throwOnMissingValue: false);
     }
 
-    private static string BuildCommand()
+    internal static string BuildCommand()
     {
-        var processPath = Environment.ProcessPath;
-        if (string.IsNullOrWhiteSpace(processPath))
-        {
-            throw new InvalidOperationException("Could not determine the wallpaper host executable path.");
-        }
-
-        return $"\"{processPath}\" --wallpaper";
+        return $"\"{InstallLayout.PreferredExecutablePath}\" --wallpaper";
     }
 }
