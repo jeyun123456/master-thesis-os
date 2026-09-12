@@ -65,9 +65,7 @@ internal sealed partial class WallpaperAttachment
         }
 
         if (!NativeMethods.IsWindow(replacementWorker) ||
-            !NativeMethods.GetClientRect(replacementWorker, out var workerRect) ||
-            workerRect.Width <= 0 ||
-            workerRect.Height <= 0)
+            !HasUsableClientArea(replacementWorker))
         {
             status =
                 $"Replacement WorkerW 0x{replacementWorker.ToInt64():X} is not usable yet.";
@@ -89,32 +87,21 @@ internal sealed partial class WallpaperAttachment
             return false;
         }
 
-        if (!NativeMethods.SetWindowPos(
-                _hostHwnd,
-                NativeMethods.HWND_BOTTOM,
-                0,
-                0,
-                workerRect.Width,
-                workerRect.Height,
-                NativeMethods.SWP_NOACTIVATE |
-                NativeMethods.SWP_FRAMECHANGED |
-                NativeMethods.SWP_SHOWWINDOW))
+        if (!TryPlaceAttachedHost(replacementWorker, out var placementStatus))
         {
-            var sizingError = Marshal.GetLastWin32Error();
             status =
                 $"Recovery attached to WorkerW 0x{replacementWorker.ToInt64():X}, " +
-                $"but sizing failed with Win32 error {sizingError}.";
+                $"but selected-display placement failed. {placementStatus}";
             return false;
         }
 
         _workerW = replacementWorker;
-        _wallpaperWidth = workerRect.Width;
-        _wallpaperHeight = workerRect.Height;
         _attached = true;
 
         status =
             $"Recovered wallpaper attachment from WorkerW 0x{staleWorker.ToInt64():X} " +
-            $"to 0x{replacementWorker.ToInt64():X}. Discovery: {discovery}";
+            $"to 0x{replacementWorker.ToInt64():X}. Target={_targetDisplayDeviceName}. " +
+            $"{placementStatus} Discovery: {discovery}";
         return true;
     }
 
