@@ -6,6 +6,7 @@ namespace WallpaperHostPoc;
 internal sealed class TrayIconController : IDisposable
 {
     private readonly Forms.NotifyIcon _notifyIcon;
+    private readonly Drawing.Icon _brandIcon;
     private readonly Forms.ToolStripMenuItem _statusItem;
     private readonly Forms.ToolStripMenuItem _interactiveItem;
     private readonly Forms.ToolStripMenuItem _wallpaperItem;
@@ -53,15 +54,15 @@ internal sealed class TrayIconController : IDisposable
         _setStartupEnabled = setStartupEnabled;
         _exit = exit;
 
-        _statusItem = new Forms.ToolStripMenuItem("Wallpaper mode")
+        _statusItem = new Forms.ToolStripMenuItem("Status: Wallpaper")
         {
             Enabled = false,
         };
 
-        _interactiveItem = new Forms.ToolStripMenuItem("Enter Interactive mode");
+        _interactiveItem = new Forms.ToolStripMenuItem("Open Master Thesis OS");
         _interactiveItem.Click += (_, _) => _enterInteractiveMode();
 
-        _wallpaperItem = new Forms.ToolStripMenuItem("Return to Wallpaper");
+        _wallpaperItem = new Forms.ToolStripMenuItem("Send to Wallpaper");
         _wallpaperItem.Click += (_, _) => _returnToWallpaperMode();
 
         var refreshItem = new Forms.ToolStripMenuItem("Refresh");
@@ -69,20 +70,28 @@ internal sealed class TrayIconController : IDisposable
 
         _displayItem = new Forms.ToolStripMenuItem("Display");
 
-        _autoReturnItem = new Forms.ToolStripMenuItem("Auto-return on focus loss");
+        _autoReturnItem = new Forms.ToolStripMenuItem("Return to wallpaper when inactive");
         _autoReturnItem.Click += (_, _) => ToggleAutoReturn();
 
         _startupItem = new Forms.ToolStripMenuItem("Start with Windows");
         _startupItem.Click += (_, _) => ToggleStartup();
 
-        var logsItem = new Forms.ToolStripMenuItem("Open Logs Folder");
-        logsItem.Click += (_, _) => OpenLogs();
+        var foldersItem = new Forms.ToolStripMenuItem("Folders");
 
-        var versionItem = new Forms.ToolStripMenuItem(
-            $"{BuildInfo.ProductName} v{BuildInfo.Version}")
-        {
-            Enabled = false,
-        };
+        var dataFolderItem = new Forms.ToolStripMenuItem("Open Data Folder");
+        dataFolderItem.Click += (_, _) => OpenFolder(InstallLayout.OpenDataDirectory, "data folder");
+        foldersItem.DropDownItems.Add(dataFolderItem);
+
+        var appFolderItem = new Forms.ToolStripMenuItem("Open App Folder");
+        appFolderItem.Click += (_, _) => OpenFolder(InstallLayout.OpenAppDirectory, "app folder");
+        foldersItem.DropDownItems.Add(appFolderItem);
+
+        var logsItem = new Forms.ToolStripMenuItem("Open Logs Folder");
+        logsItem.Click += (_, _) => OpenFolder(AppLog.OpenLogFolder, "logs folder");
+        foldersItem.DropDownItems.Add(logsItem);
+
+        var aboutItem = new Forms.ToolStripMenuItem($"About...  v{BuildInfo.Version}");
+        aboutItem.Click += (_, _) => ShowAbout();
 
         var exitItem = new Forms.ToolStripMenuItem("Exit");
         exitItem.Click += (_, _) => _exit();
@@ -97,31 +106,23 @@ internal sealed class TrayIconController : IDisposable
         menu.Items.Add(_autoReturnItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(_startupItem);
-        menu.Items.Add(logsItem);
-        menu.Items.Add(versionItem);
+        menu.Items.Add(foldersItem);
+        menu.Items.Add(aboutItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(exitItem);
         menu.Opening += (_, _) => RefreshState();
 
+        _brandIcon = BrandIcon.CreateIcon();
         _notifyIcon = new Forms.NotifyIcon
         {
-            Icon = Drawing.SystemIcons.Application,
-            Text = $"Master Thesis OS Wallpaper v{BuildInfo.Version}",
+            Icon = _brandIcon,
+            Text = $"{BuildInfo.ShortProductName} v{BuildInfo.Version}",
             ContextMenuStrip = menu,
             Visible = true,
         };
 
-        _notifyIcon.DoubleClick += (_, _) =>
-        {
-            if (_isWallpaperMode())
-            {
-                _enterInteractiveMode();
-            }
-            else
-            {
-                _returnToWallpaperMode();
-            }
-        };
+        // Double-click always means "open". Auto-return / Send to Wallpaper handles closing.
+        _notifyIcon.DoubleClick += (_, _) => _enterInteractiveMode();
 
         RefreshState();
     }
@@ -129,7 +130,7 @@ internal sealed class TrayIconController : IDisposable
     internal void RefreshState()
     {
         var wallpaperMode = _isWallpaperMode();
-        _statusItem.Text = wallpaperMode ? "Wallpaper mode" : "Interactive mode";
+        _statusItem.Text = wallpaperMode ? "Status: Wallpaper" : "Status: Open";
         _interactiveItem.Enabled = wallpaperMode;
         _wallpaperItem.Enabled = !wallpaperMode;
 
@@ -226,10 +227,10 @@ internal sealed class TrayIconController : IDisposable
             _autoReturnItem.Checked = _isAutoReturnEnabled();
 
             ShowInfo(
-                BuildInfo.ProductName,
+                BuildInfo.ShortProductName,
                 next
-                    ? "Automatic return to Wallpaper is enabled."
-                    : "Automatic return to Wallpaper is disabled.",
+                    ? "Automatic return to wallpaper is enabled."
+                    : "Automatic return to wallpaper is disabled.",
                 1500);
         }
         catch (Exception ex)
@@ -252,7 +253,7 @@ internal sealed class TrayIconController : IDisposable
                 : "Start with Windows disabled.");
 
             ShowInfo(
-                BuildInfo.ProductName,
+                BuildInfo.ShortProductName,
                 next
                     ? "Start with Windows enabled."
                     : "Start with Windows disabled.",
@@ -265,16 +266,33 @@ internal sealed class TrayIconController : IDisposable
         }
     }
 
-    private void OpenLogs()
+    private void ShowAbout()
     {
         try
         {
-            AppLog.OpenLogFolder();
+            AboutDialog.Show(
+                wallpaperMode: _isWallpaperMode(),
+                displayDeviceName: _getSelectedDisplayDeviceName(),
+                autoReturnEnabled: _isAutoReturnEnabled(),
+                startupEnabled: _isStartupEnabled());
         }
         catch (Exception ex)
         {
-            AppLog.Error("Could not open the log folder.", ex);
-            ShowInfo("Could not open logs", ex.Message, 3000);
+            AppLog.Error("Could not show About dialog.", ex);
+            ShowInfo("About unavailable", ex.Message, 3000);
+        }
+    }
+
+    private void OpenFolder(Action opener, string description)
+    {
+        try
+        {
+            opener();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error($"Could not open the {description}.", ex);
+            ShowInfo($"Could not open {description}", ex.Message, 3000);
         }
     }
 
@@ -282,5 +300,6 @@ internal sealed class TrayIconController : IDisposable
     {
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
+        _brandIcon.Dispose();
     }
 }
