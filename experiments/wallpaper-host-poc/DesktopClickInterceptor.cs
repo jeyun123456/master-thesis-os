@@ -84,9 +84,14 @@ internal sealed class DesktopClickInterceptor : IDisposable
                 "SysListView32",
                 "FolderView");
 
-            // If Explorer has a ListView but icon hit testing cannot be performed,
-            // fail closed: preserve Explorer's click instead of risking icon hijack.
-            return listView == nint.Zero || !IsListViewItemAtPoint(listView, screenPoint);
+            // Fail closed if Explorer's ListView cannot be resolved. Preserving the
+            // original desktop click is safer than risking an icon click being hijacked.
+            if (listView == nint.Zero)
+            {
+                return false;
+            }
+
+            return !IsListViewItemAtPoint(listView, screenPoint);
         }
 
         return className.Equals("WorkerW", StringComparison.Ordinal) ||
