@@ -16,18 +16,18 @@ $OutputDirectory = Split-Path -Parent $OutputPath
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 
 function New-IconPngBytes([int]$Size) {
-    $bitmap = New-Object System.Drawing.Bitmap $Size, $Size
+    $bitmap = New-Object -TypeName System.Drawing.Bitmap -ArgumentList $Size, $Size
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-    $stream = New-Object System.IO.MemoryStream
+    $stream = New-Object -TypeName System.IO.MemoryStream
 
     try {
         $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
         $graphics.Clear([System.Drawing.Color]::FromArgb(15, 23, 42))
 
         $scale = $Size / 32.0
-        $penWidth = [Math]::Max(2.0, 3.2 * $scale)
-        $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(248, 250, 252)), $penWidth
-        $accent = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(34, 211, 238))
+        $penWidth = [single][Math]::Max(2.0, 3.2 * $scale)
+        $pen = New-Object -TypeName System.Drawing.Pen -ArgumentList ([System.Drawing.Color]::FromArgb(248, 250, 252)), $penWidth
+        $accent = New-Object -TypeName System.Drawing.SolidBrush -ArgumentList ([System.Drawing.Color]::FromArgb(34, 211, 238))
 
         try {
             $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
@@ -35,17 +35,22 @@ function New-IconPngBytes([int]$Size) {
             $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
 
             $points = [System.Drawing.PointF[]]@(
-                [System.Drawing.PointF]::new(7 * $scale, 24 * $scale),
-                [System.Drawing.PointF]::new(7 * $scale, 9 * $scale),
-                [System.Drawing.PointF]::new(16 * $scale, 18 * $scale),
-                [System.Drawing.PointF]::new(25 * $scale, 9 * $scale),
-                [System.Drawing.PointF]::new(25 * $scale, 24 * $scale)
+                [System.Drawing.PointF]::new([single](7 * $scale), [single](24 * $scale)),
+                [System.Drawing.PointF]::new([single](7 * $scale), [single](9 * $scale)),
+                [System.Drawing.PointF]::new([single](16 * $scale), [single](18 * $scale)),
+                [System.Drawing.PointF]::new([single](25 * $scale), [single](9 * $scale)),
+                [System.Drawing.PointF]::new([single](25 * $scale), [single](24 * $scale))
             )
 
             $graphics.DrawLines($pen, $points)
-            $graphics.FillEllipse($accent, 22 * $scale, 4 * $scale, 5 * $scale, 5 * $scale)
+            $graphics.FillEllipse(
+                $accent,
+                [single](22 * $scale),
+                [single](4 * $scale),
+                [single](5 * $scale),
+                [single](5 * $scale))
             $bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
-            return $stream.ToArray()
+            return ,([byte[]]$stream.ToArray())
         } finally {
             $pen.Dispose()
             $accent.Dispose()
@@ -60,11 +65,11 @@ function New-IconPngBytes([int]$Size) {
 $sizes = @(16, 32, 48, 256)
 $images = New-Object 'System.Collections.Generic.List[byte[]]'
 foreach ($size in $sizes) {
-    $images.Add((New-IconPngBytes -Size $size))
+    $images.Add([byte[]](New-IconPngBytes -Size $size))
 }
 
 $fileStream = [System.IO.File]::Open($OutputPath, [System.IO.FileMode]::Create)
-$writer = New-Object System.IO.BinaryWriter $fileStream
+$writer = New-Object -TypeName System.IO.BinaryWriter -ArgumentList $fileStream
 
 try {
     $writer.Write([UInt16]0) # reserved
