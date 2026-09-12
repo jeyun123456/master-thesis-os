@@ -37,16 +37,21 @@ public partial class MainWindow
             isAutoReturnEnabled: IsAutoReturnToWallpaperEnabled,
             setAutoReturnEnabled: enabled => Phase4RunOnUiThread(
                 () => SetAutoReturnToWallpaperEnabled(enabled)),
+            isClickToInteractEnabled: IsClickToInteractEnabled,
+            setClickToInteractEnabled: enabled => Phase4RunOnUiThread(
+                () => SetClickToInteractEnabled(enabled)),
             isStartupEnabled: StartupManager.IsEnabled,
             setStartupEnabled: StartupManager.SetEnabled,
             exit: () => Phase4RunOnUiThread(Close));
 
         InitializePhase5();
         InitializePhase6();
+        InitializePhase7();
     }
 
     protected override void OnClosed(EventArgs e)
     {
+        DisposePhase7();
         DisposePhase6();
         DisposePhase5();
 
@@ -165,6 +170,7 @@ public partial class MainWindow
                 return;
             }
 
+            RefreshClickToInteractTargetBounds();
             AppLog.Info($"Selected display changed to {display.DeviceName}. {status}");
             _trayIcon?.RefreshState();
         }
@@ -190,6 +196,7 @@ public partial class MainWindow
             return;
         }
 
+        RefreshClickToInteractTargetBounds();
         AppLog.Info(status);
         _trayIcon?.RefreshState();
     }
