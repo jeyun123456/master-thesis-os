@@ -6,6 +6,7 @@ namespace WallpaperHostPoc;
 internal sealed class WallpaperAttachment
 {
     private readonly nint _hostHwnd;
+    private readonly nint _originalParent;
     private readonly nint _originalStyle;
     private readonly nint _originalExStyle;
 
@@ -15,6 +16,7 @@ internal sealed class WallpaperAttachment
     private WallpaperAttachment(nint hostHwnd)
     {
         _hostHwnd = hostHwnd;
+        _originalParent = NativeMethods.GetParent(hostHwnd);
         _originalStyle = NativeMethods.GetWindowLongPtr(hostHwnd, NativeMethods.GWL_STYLE);
         _originalExStyle = NativeMethods.GetWindowLongPtr(hostHwnd, NativeMethods.GWL_EXSTYLE);
     }
@@ -48,6 +50,20 @@ internal sealed class WallpaperAttachment
             return false;
         }
 
+        if (!NativeMethods.IsWindow(_hostHwnd))
+        {
+            status = $"Host HWND 0x{_hostHwnd.ToInt64():X} is no longer a valid window.";
+            return false;
+        }
+
+        if (!NativeMethods.IsWindow(workerW))
+        {
+            status =
+                $"Discovered WorkerW 0x{workerW.ToInt64():X} is no longer a valid window. " +
+                $"Discovery: {discovery}";
+            return false;
+        }
+
         if (!NativeMethods.GetClientRect(workerW, out var workerRect) ||
             workerRect.Width <= 0 ||
             workerRect.Height <= 0)
@@ -58,14 +74,20 @@ internal sealed class WallpaperAttachment
             return false;
         }
 
-        // Modify only this host. Explorer-owned DefView/icon windows are untouched.
+        var workerClass = NativeMethods.GetWindowClassName(workerW);
+        var workerParent = NativeMethods.GetParent(workerW);
+
+        // SetParent does not automatically switch WS_POPUP/WS_CHILD. Convert only
+        // our host into a child before attaching; Explorer-owned windows stay untouched.
         var style = _originalStyle.ToInt64();
         style &= ~(
+            NativeMethods.WS_POPUP |
             NativeMethods.WS_CAPTION |
             NativeMethods.WS_THICKFRAME |
             NativeMethods.WS_MINIMIZEBOX |
             NativeMethods.WS_MAXIMIZEBOX |
             NativeMethods.WS_SYSMENU);
+        style |= NativeMethods.WS_CHILD;
 
         var exStyle = _originalExStyle.ToInt64();
         exStyle &= ~NativeMethods.WS_EX_APPWINDOW;
@@ -74,16 +96,27 @@ internal sealed class WallpaperAttachment
         NativeMethods.SetWindowLongPtr(_hostHwnd, NativeMethods.GWL_STYLE, new nint(style));
         NativeMethods.SetWindowLongPtr(_hostHwnd, NativeMethods.GWL_EXSTYLE, new nint(exStyle));
 
-        _ = NativeMethods.SetParent(_hostHwnd, workerW);
+        // SetParent can legitimately return NULL when the previous parent was NULL,
+        // so clear last-error first, capture it immediately, and verify GetParent.
+        NativeMethods.SetLastError(0);
+        var previousParent = NativeMethods.SetParent(_hostHwnd, workerW);
+        var setParentError = Marshal.GetLastWin32Error();
+        var actualParent = NativeMethods.GetParent(_hostHwnd);
 
-        if (NativeMethods.GetParent(_hostHwnd) != workerW)
+        if (actualParent != workerW)
         {
+            var rollbackError = RestoreOriginalParentIfNeeded();
             RestoreStyles();
 
-            var error = Marshal.GetLastWin32Error();
             status =
-                $"SetParent did not attach the host to WorkerW 0x{workerW.ToInt64():X}. " +
-                $"Win32 error: {error}. The host remains in normal-window mode.";
+                $"SetParent did not attach host 0x{_hostHwnd.ToInt64():X} " +
+                $"to WorkerW 0x{workerW.ToInt64():X}. " +
+                $"Immediate Win32 error: {setParentError}. " +
+                $"SetParent returned previous parent 0x{previousParent.ToInt64():X}; " +
+                $"actual parent is 0x{actualParent.ToInt64():X}. " +
+                $"Worker class='{workerClass}', worker parent=0x{workerParent.ToInt64():X}, " +
+                $"discovery='{discovery}', rollback error={rollbackError}. " +
+                "The host remains in normal-window mode.";
             return false;
         }
 
@@ -98,22 +131,35 @@ internal sealed class WallpaperAttachment
                 NativeMethods.SWP_FRAMECHANGED |
                 NativeMethods.SWP_SHOWWINDOW))
         {
-            var error = Marshal.GetLastWin32Error();
-            _ = NativeMethods.SetParent(_hostHwnd, nint.Zero);
+            var sizingError = Marshal.GetLastWin32Error();
+            var rollbackError = RestoreOriginalParentIfNeeded();
             RestoreStyles();
 
             status =
-                $"WorkerW attachment succeeded but sizing failed with Win32 error {error}. " +
-                "Attachment was rolled back.";
+                $"WorkerW attachment succeeded but sizing failed with Win32 error {sizingError}. " +
+                $"Rollback error={rollbackError}. Attachment was rolled back.";
             return false;
         }
 
         _workerW = workerW;
         _attached = true;
         status =
-            $"Attached to WorkerW 0x{workerW.ToInt64():X} " +
-            $"({workerRect.Width}x{workerRect.Height}). Discovery: {discovery}";
+            $"Attached host 0x{_hostHwnd.ToInt64():X} to WorkerW 0x{workerW.ToInt64():X} " +
+            $"({workerRect.Width}x{workerRect.Height}, class='{workerClass}', " +
+            $"worker parent=0x{workerParent.ToInt64():X}). Discovery: {discovery}";
         return true;
+    }
+
+    private int RestoreOriginalParentIfNeeded()
+    {
+        if (NativeMethods.GetParent(_hostHwnd) == _originalParent)
+        {
+            return 0;
+        }
+
+        NativeMethods.SetLastError(0);
+        _ = NativeMethods.SetParent(_hostHwnd, _originalParent);
+        return Marshal.GetLastWin32Error();
     }
 
     private void RestoreStyles()
@@ -272,6 +318,7 @@ internal sealed class WallpaperAttachment
     }
 
     private static bool HasUsableClientArea(nint hwnd) =>
+        NativeMethods.IsWindow(hwnd) &&
         NativeMethods.GetClientRect(hwnd, out var rect) &&
         rect.Width > 0 &&
         rect.Height > 0;
