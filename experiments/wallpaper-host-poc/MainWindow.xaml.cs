@@ -1,4 +1,5 @@
 using Microsoft.Web.WebView2.Core;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 
@@ -6,6 +7,8 @@ namespace WallpaperHostPoc;
 
 public partial class MainWindow : Window
 {
+    private const int InteractiveHotkeyId = 0x4D54;
+
     private static readonly Uri ProductionUri =
         new("https://master-thesis-os.vercel.app/");
 
@@ -14,6 +17,9 @@ public partial class MainWindow : Window
 
     private WallpaperAttachment? _wallpaperAttachment;
     private NativeImeFocusBridge? _nativeImeFocusBridge;
+    private HwndSource? _hwndSource;
+    private nint _hostHwnd;
+    private bool _hotkeyRegistered;
 
     public MainWindow()
     {
@@ -42,6 +48,7 @@ public partial class MainWindow : Window
 
         SourceInitialized += MainWindow_SourceInitialized;
         Loaded += MainWindow_Loaded;
+        Closed += MainWindow_Closed;
     }
 
     private void MainWindow_SourceInitialized(object? sender, EventArgs e)
@@ -53,6 +60,16 @@ public partial class MainWindow : Window
             return;
         }
 
+        _hostHwnd = new WindowInteropHelper(this).Handle;
+        _hwndSource = HwndSource.FromHwnd(_hostHwnd);
+        _hwndSource?.AddHook(WndProc);
+
+        _hotkeyRegistered = NativeMethods.RegisterHotKey(
+            _hostHwnd,
+            InteractiveHotkeyId,
+            NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT,
+            NativeMethods.VK_W);
+
         _wallpaperAttachment = WallpaperAttachment.ForWindow(this);
 
         if (_wallpaperAttachment.TryAttach(out var status))
@@ -60,6 +77,17 @@ public partial class MainWindow : Window
             Title = _phase2Only
                 ? "Master Thesis OS - Phase 2 Wallpaper"
                 : "Master Thesis OS - Phase 3 Wallpaper";
+
+            if (!_hotkeyRegistered)
+            {
+                MessageBox.Show(
+                    $"Wallpaper mode is active, but Ctrl+Alt+W could not be registered. " +
+                    $"Win32 error: {Marshal.GetLastWin32Error()}.",
+                    "Interactive hotkey unavailable",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+
             return;
         }
 
@@ -142,6 +170,96 @@ public partial class MainWindow : Window
 
             Title = "Master Thesis OS - Startup Failed";
         }
+    }
+
+    private nint WndProc(
+        nint hwnd,
+        int msg,
+        nint wParam,
+        nint lParam,
+        ref bool handled)
+    {
+        if (msg == NativeMethods.WM_HOTKEY && wParam.ToInt32() == InteractiveHotkeyId)
+        {
+            handled = true;
+            ToggleInteractiveMode();
+        }
+
+        return nint.Zero;
+    }
+
+    private void ToggleInteractiveMode()
+    {
+        if (_wallpaperAttachment is null)
+        {
+            return;
+        }
+
+        if (_wallpaperAttachment.IsAttached)
+        {
+            if (!_wallpaperAttachment.TryEnterInteractiveMode(out var status))
+            {
+                MessageBox.Show(
+                    status,
+                    "Could not enter interactive mode",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            if (Browser.CoreWebView2 is not null)
+            {
+                Browser.CoreWebView2Controller.NotifyParentWindowPositionChanged();
+            }
+
+            _ = NativeMethods.SetForegroundWindow(_hostHwnd);
+            Activate();
+            Browser.Focus();
+
+            if (Browser.CoreWebView2 is not null)
+            {
+                Browser.CoreWebView2Controller.MoveFocus(
+                    CoreWebView2MoveFocusReason.Programmatic);
+            }
+
+            Title = "Master Thesis OS - Interactive mode (Ctrl+Alt+W to return)";
+            return;
+        }
+
+        if (!_wallpaperAttachment.TryAttach(out var attachStatus))
+        {
+            MessageBox.Show(
+                attachStatus,
+                "Could not return to wallpaper mode",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        if (Browser.CoreWebView2 is not null)
+        {
+            Browser.CoreWebView2Controller.NotifyParentWindowPositionChanged();
+        }
+
+        var progman = NativeMethods.FindWindow("Progman", null);
+        if (progman != nint.Zero)
+        {
+            _ = NativeMethods.SetForegroundWindow(progman);
+        }
+
+        Title = _phase2Only
+            ? "Master Thesis OS - Phase 2 Wallpaper"
+            : "Master Thesis OS - Phase 3 Wallpaper + native IME focus bridge";
+    }
+
+    private void MainWindow_Closed(object? sender, EventArgs e)
+    {
+        if (_hotkeyRegistered && _hostHwnd != nint.Zero)
+        {
+            _ = NativeMethods.UnregisterHotKey(_hostHwnd, InteractiveHotkeyId);
+        }
+
+        _hwndSource?.RemoveHook(WndProc);
     }
 
     private void CoreWebView2_NavigationCompleted(
