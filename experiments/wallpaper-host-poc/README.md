@@ -1,165 +1,156 @@
-# Master Thesis OS Wallpaper Host
+# Master Thesis OS Wallpaper Companion
 
-Windows-only WPF + Microsoft Edge WebView2 companion for the production Master Thesis OS.
+Windows 10/11 companion that keeps the production Master Thesis OS on the desktop while preserving native Windows/WebView2 input and Korean/Japanese IME behavior.
 
-Path:
+Current version: **0.5.0**
+
+Production page:
+
+`https://master-thesis-os.vercel.app/`
+
+Source:
 
 `master-thesis-os/experiments/wallpaper-host-poc/`
 
-Current app version: **0.4.0**.
+## Install / update
 
-The host is isolated from the Next.js production app, Local Bridge, and Sucrose.
-
-## Core design
-
-Run in development mode:
-
-```powershell
-dotnet run --project .\WallpaperHostPoc.csproj -- --wallpaper
-```
-
-The host attaches only its own WPF HWND to the wallpaper WorkerW. Explorer's
-`SHELLDLL_DefView` and desktop icon windows are never re-parented.
-
-The input design intentionally preserves the normal Windows/WebView2 path:
-
-- native mouse input;
-- native English keyboard input;
-- native Korean/Japanese IME composition;
-- no RawInput keyboard forwarding;
-- no `SendInput`;
-- no synthetic key-message injection;
-- no custom Hangul/Japanese composer;
-- no DOM/native focus bridge.
-
-## Wallpaper and Interactive states
-
-Wallpaper state sits behind the desktop icon layer. Explorer receives normal
-desktop clicks first, so the host does not synthesize or forward those clicks.
-
-Interactive state temporarily returns the same HWND to a normal top-level
-WebView2 window. This is the path that has been verified to preserve native IME.
-
-Manual toggle remains available:
-
-`Ctrl + Alt + W`
-
-The tray also contains `Enter Interactive mode` and `Return to Wallpaper`.
-
-## v0.4 — low-friction interaction
-
-The internal two-state design remains, but normal use requires less explicit
-mode management.
-
-While Interactive:
-
-- press `Esc` to return to Wallpaper;
-- when focus moves to another application, the host waits about 1.5 seconds and
-  automatically returns to Wallpaper;
-- re-activating Master Thesis OS during that delay cancels the return;
-- common Windows IME foreground hosts (`TextInputHost`, `ctfmon`, `TabTip`) are
-  excluded from automatic return so candidate/composition UI is not treated as
-  an ordinary app switch.
-
-The tray setting `Auto-return on focus loss` is enabled by default and persisted
-in `settings.json`. Turn it off to restore purely manual switching.
-
-`Ctrl + Alt + W` remains as the reliable manual/fallback toggle.
-
-## Tray
-
-The notification-area menu includes:
-
-- `Enter Interactive mode`
-- `Return to Wallpaper`
-- `Refresh`
-- `Display`
-- `Auto-return on focus loss`
-- `Start with Windows`
-- `Open Logs Folder`
-- version information
-- `Exit`
-
-Double-clicking the tray icon toggles Wallpaper / Interactive state.
-
-## Exactly one selected display
-
-The host always runs one process and one WebView2 instance. Even when Windows
-has several monitors, Master Thesis OS appears on exactly one selected display.
-
-Use tray `Display` to choose the monitor. The selected `\\.\DISPLAYn` is stored in:
-
-`%LOCALAPPDATA%\MasterThesisOSWallpaper\settings.json`
-
-Behavior:
-
-- Wallpaper occupies only the selected display;
-- Interactive opens on the same display;
-- display changes move the existing host rather than creating another one;
-- negative/left-side monitor coordinates are translated into WorkerW client coordinates;
-- if the selected display disappears, the primary display is used as fallback.
-
-## Runtime hardening
-
-### Single instance
-
-A named per-user mutex prevents a second wallpaper host. Launching another copy
-signals the existing instance, which enters/raises Interactive state.
-
-### WorkerW recovery
-
-While in Wallpaper state, the host periodically verifies its WorkerW parent. If
-Explorer recreates WorkerW, the host searches for a replacement and re-attaches
-only its own HWND.
-
-### Logs
-
-Logs are stored in:
-
-`%LOCALAPPDATA%\MasterThesisOSWallpaper\logs\`
-
-## v0.4 local installation
-
-The installed application lives at the stable path:
-
-`%LOCALAPPDATA%\MasterThesisOSWallpaper\app\WallpaperHostPoc.exe`
-
-Settings and logs stay outside the `app` directory, so reinstalling/updating the
-binary does not erase them.
-
-The current v0.4 publish is **framework-dependent win-x64**. Requirements:
-
-- Windows 10/11 x64;
-- .NET 8 Windows Desktop Runtime;
-- Microsoft Edge WebView2 Runtime.
-
-The development PC already needs the .NET 8 SDK to publish it.
-
-### Install or update
-
-From `experiments\wallpaper-host-poc`:
+From this directory:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\Install-WallpaperHost.ps1
 ```
 
-The installer:
+Installed executable:
 
-1. remembers whether `Start with Windows` currently has an entry;
-2. stops the running `WallpaperHostPoc` process;
-3. publishes Release/win-x64 to a temporary directory;
-4. replaces only `%LOCALAPPDATA%\MasterThesisOSWallpaper\app\`;
-5. if startup was already enabled, rewrites it to the stable installed executable;
-6. preserves `settings.json` and logs;
-7. launches the installed `--wallpaper` host.
+`%LOCALAPPDATA%\MasterThesisOSWallpaper\app\MasterThesisOSWallpaper.exe`
 
-Install without launching:
+The installer publishes the Release build, replaces only the installed `app` directory, creates Start Menu shortcuts, preserves settings/logs, migrates an existing startup entry, and launches the companion.
+
+Optional desktop shortcut:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Install-WallpaperHost.ps1 -DesktopShortcut
+```
+
+Install/update without launching:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\Install-WallpaperHost.ps1 -NoLaunch
 ```
 
-### Publish without installing
+The same install command can be run again to update the installed copy.
+
+## Start Menu
+
+Installation creates a `Master Thesis OS` folder in the current user's Start Menu with:
+
+- `Master Thesis OS Wallpaper`
+- `Uninstall Master Thesis OS Wallpaper`
+
+No administrator rights are required.
+
+## Normal use
+
+The companion has two internal states, but normal use does not require constant manual switching.
+
+- **Wallpaper**: Master Thesis OS sits behind normal desktop icons.
+- **Open**: the same WebView2 temporarily becomes a foreground top-level window for normal mouse/keyboard/IME input.
+
+Open it by:
+
+- double-clicking the tray icon;
+- tray `Open Master Thesis OS`;
+- `Ctrl + Alt + W`;
+- launching the app again while it is already running.
+
+Return it to the wallpaper by:
+
+- pressing `Esc`;
+- tray `Send to Wallpaper`;
+- `Ctrl + Alt + W`;
+- switching to another application and waiting about 1.5 seconds when automatic return is enabled.
+
+Re-activating Master Thesis OS during that delay cancels automatic return. Common Windows IME hosts are ignored so candidate/composition UI is not treated as a normal app switch.
+
+## Tray menu
+
+The notification-area menu contains:
+
+- `Status: Wallpaper` / `Status: Open`
+- `Open Master Thesis OS`
+- `Send to Wallpaper`
+- `Refresh`
+- `Display`
+- `Return to wallpaper when inactive`
+- `Start with Windows`
+- `Folders`
+  - `Open Data Folder`
+  - `Open App Folder`
+  - `Open Logs Folder`
+- `About... v0.5.0`
+- `Exit`
+
+The tray and installed executable use the Master Thesis OS Wallpaper icon generated during Release publish.
+
+## Display selection
+
+Only one process and one WebView2 instance are used, even with multiple monitors.
+
+Tray `Display` chooses exactly one target display. The selected Windows `\\.\DISPLAYn` is remembered across restarts.
+
+Behavior:
+
+- Wallpaper appears only on the selected display.
+- Open state uses the same display.
+- Negative/left-side monitor coordinates are supported.
+- If the selected display disappears, the primary display is used as fallback.
+
+## Start with Windows
+
+Tray `Start with Windows` writes a current-user entry only:
+
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+
+When an installed copy exists, the registry entry points to:
+
+`%LOCALAPPDATA%\MasterThesisOSWallpaper\app\MasterThesisOSWallpaper.exe --wallpaper`
+
+## Data and logs
+
+Persistent data lives outside the replaceable app directory:
+
+`%LOCALAPPDATA%\MasterThesisOSWallpaper\`
+
+Important files/directories:
+
+- `settings.json` — selected display and interaction preferences
+- `logs\` — runtime logs
+- `app\` — installed binaries
+
+Reinstalling/updating preserves settings and logs.
+
+## Single instance and recovery
+
+Only one companion process can run per user. A second launch signals the existing instance instead of creating another WorkerW/WebView2 host.
+
+While in Wallpaper state, the companion periodically verifies its WorkerW attachment. If Explorer recreates WorkerW, only the companion HWND is re-attached; Explorer desktop/icon windows are never re-parented.
+
+## Native input policy
+
+The stable input path intentionally remains the normal Windows/WebView2 path:
+
+- native mouse input
+- native keyboard input
+- native Korean/Japanese IME composition
+- no RawInput forwarding
+- no `SendInput`
+- no synthetic key-message injection
+- no custom Hangul/Japanese composer
+- no forced DOM/native focus bridge
+
+`NativeImeFocusBridge.cs` remains in the repository only as historical reference and is excluded from the executable.
+
+## Publish only
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\Publish-Release.ps1
@@ -169,60 +160,41 @@ Default output:
 
 `artifacts\publish\win-x64\`
 
-### Uninstall
+Release publish is framework-dependent `win-x64` and generates the application `.ico` before building.
 
-Keep settings and logs:
+Requirements:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\Uninstall-WallpaperHost.ps1
-```
+- Windows 10/11 x64
+- .NET 8 Windows Desktop Runtime
+- Microsoft Edge WebView2 Runtime
 
-Remove the app plus settings/logs:
+A .NET 8 SDK is required only to build/publish from source.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\Uninstall-WallpaperHost.ps1 -PurgeData
-```
-
-## Start with Windows
-
-The tray option writes only a current-user entry under:
-
-`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
-
-When an installed copy exists, startup always targets the stable installed exe
-instead of a Debug/Release path inside the git repository. No administrator
-rights are required.
-
-## Build
+## Development build
 
 ```powershell
 cd master-thesis-os\experiments\wallpaper-host-poc
 dotnet restore
 dotnet build -c Debug
+dotnet run --project .\WallpaperHostPoc.csproj -- --wallpaper
 ```
 
-## v0.4 validation
+## Uninstall
 
-After merging/building, verify:
+Use the Start Menu uninstall shortcut, or run:
 
-1. all existing Wallpaper, tray, display, single-instance and Korean IME behavior still works;
-2. Interactive -> `Esc` returns to Wallpaper;
-3. Interactive -> switch to another app -> about 1.5 seconds later returns to Wallpaper;
-4. switch away and immediately back -> automatic return is cancelled;
-5. Korean/Japanese IME candidate UI does not trigger an unwanted return;
-6. tray `Auto-return on focus loss` can disable/re-enable the behavior and survives restart;
-7. Release publish succeeds;
-8. installer creates `%LOCALAPPDATA%\MasterThesisOSWallpaper\app\WallpaperHostPoc.exe`;
-9. the installed copy runs with the repository/debug process stopped;
-10. if startup was enabled, its registry command points at the installed executable;
-11. reinstall/update preserves the selected display, auto-return setting, and logs.
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Uninstall-WallpaperHost.ps1
+```
 
-## Deliberately not implemented
+By default the app, Start Menu/Desktop shortcuts and startup entry are removed while settings/logs are preserved.
 
-- Explorer icon-window re-parenting;
-- RawInput keyboard forwarding;
-- `SendInput` text injection;
-- synthetic keyboard messages;
-- custom Korean/Japanese composition;
-- a general-purpose Wallpaper Engine;
-- multiple simultaneous wallpaper instances across displays.
+Remove everything including settings/logs:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Uninstall-WallpaperHost.ps1 -PurgeData
+```
+
+## Architecture boundary
+
+This is intentionally not a general-purpose Wallpaper Engine. It does not modify/re-parent Explorer's desktop icon windows and does not forward synthetic input through the wallpaper layer. The temporary foreground/open state is what preserves normal WebView2 focus and native IME reliability.
