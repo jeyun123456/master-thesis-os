@@ -2,5 +2,6 @@ bin/
 obj/
 .vs/
 artifacts/
+Assets/MasterThesisOSWallpaper.ico
 *.user
 *.suo
