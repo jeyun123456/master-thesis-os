@@ -14,8 +14,7 @@ internal static class DisplayManager
     internal static IReadOnlyList<DisplayTarget> GetDisplays()
     {
         var screens = Forms.Screen.AllScreens
-            .OrderBy(screen => screen.Bounds.X)
-            .ThenBy(screen => screen.Bounds.Y)
+            .OrderBy(screen => GetDisplayNumber(screen.DeviceName))
             .ThenBy(screen => screen.DeviceName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -25,8 +24,12 @@ internal static class DisplayManager
         {
             var screen = screens[index];
             var primarySuffix = screen.Primary ? " (Primary)" : string.Empty;
+            var displayNumber = GetDisplayNumber(screen.DeviceName);
+            var displayLabel = displayNumber == int.MaxValue
+                ? $"Display {index + 1}"
+                : $"Display {displayNumber}";
             var label =
-                $"Display {index + 1} — {screen.Bounds.Width}x{screen.Bounds.Height}{primarySuffix}";
+                $"{displayLabel} — {screen.Bounds.Width}x{screen.Bounds.Height}{primarySuffix}";
 
             result.Add(new DisplayTarget(
                 screen.DeviceName,
@@ -63,5 +66,13 @@ internal static class DisplayManager
 
         fellBack = !string.IsNullOrWhiteSpace(preferredDeviceName);
         return displays.FirstOrDefault(display => display.IsPrimary) ?? displays[0];
+    }
+
+    private static int GetDisplayNumber(string deviceName)
+    {
+        var digits = new string(deviceName.Where(char.IsDigit).ToArray());
+        return int.TryParse(digits, out var number)
+            ? number
+            : int.MaxValue;
     }
 }
