@@ -10,6 +10,7 @@ internal sealed class TrayIconController : IDisposable
     private readonly Forms.ToolStripMenuItem _interactiveItem;
     private readonly Forms.ToolStripMenuItem _wallpaperItem;
     private readonly Forms.ToolStripMenuItem _displayItem;
+    private readonly Forms.ToolStripMenuItem _autoReturnItem;
     private readonly Forms.ToolStripMenuItem _startupItem;
 
     private readonly Func<bool> _isWallpaperMode;
@@ -19,6 +20,8 @@ internal sealed class TrayIconController : IDisposable
     private readonly Func<IReadOnlyList<DisplayTarget>> _getDisplays;
     private readonly Func<string> _getSelectedDisplayDeviceName;
     private readonly Action<string> _selectDisplay;
+    private readonly Func<bool> _isAutoReturnEnabled;
+    private readonly Action<bool> _setAutoReturnEnabled;
     private readonly Func<bool> _isStartupEnabled;
     private readonly Action<bool> _setStartupEnabled;
     private readonly Action _exit;
@@ -31,6 +34,8 @@ internal sealed class TrayIconController : IDisposable
         Func<IReadOnlyList<DisplayTarget>> getDisplays,
         Func<string> getSelectedDisplayDeviceName,
         Action<string> selectDisplay,
+        Func<bool> isAutoReturnEnabled,
+        Action<bool> setAutoReturnEnabled,
         Func<bool> isStartupEnabled,
         Action<bool> setStartupEnabled,
         Action exit)
@@ -42,6 +47,8 @@ internal sealed class TrayIconController : IDisposable
         _getDisplays = getDisplays;
         _getSelectedDisplayDeviceName = getSelectedDisplayDeviceName;
         _selectDisplay = selectDisplay;
+        _isAutoReturnEnabled = isAutoReturnEnabled;
+        _setAutoReturnEnabled = setAutoReturnEnabled;
         _isStartupEnabled = isStartupEnabled;
         _setStartupEnabled = setStartupEnabled;
         _exit = exit;
@@ -62,11 +69,20 @@ internal sealed class TrayIconController : IDisposable
 
         _displayItem = new Forms.ToolStripMenuItem("Display");
 
+        _autoReturnItem = new Forms.ToolStripMenuItem("Auto-return on focus loss");
+        _autoReturnItem.Click += (_, _) => ToggleAutoReturn();
+
         _startupItem = new Forms.ToolStripMenuItem("Start with Windows");
         _startupItem.Click += (_, _) => ToggleStartup();
 
         var logsItem = new Forms.ToolStripMenuItem("Open Logs Folder");
         logsItem.Click += (_, _) => OpenLogs();
+
+        var versionItem = new Forms.ToolStripMenuItem(
+            $"{BuildInfo.ProductName} v{BuildInfo.Version}")
+        {
+            Enabled = false,
+        };
 
         var exitItem = new Forms.ToolStripMenuItem("Exit");
         exitItem.Click += (_, _) => _exit();
@@ -78,9 +94,11 @@ internal sealed class TrayIconController : IDisposable
         menu.Items.Add(_wallpaperItem);
         menu.Items.Add(refreshItem);
         menu.Items.Add(_displayItem);
+        menu.Items.Add(_autoReturnItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(_startupItem);
         menu.Items.Add(logsItem);
+        menu.Items.Add(versionItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(exitItem);
         menu.Opening += (_, _) => RefreshState();
@@ -88,7 +106,7 @@ internal sealed class TrayIconController : IDisposable
         _notifyIcon = new Forms.NotifyIcon
         {
             Icon = Drawing.SystemIcons.Application,
-            Text = "Master Thesis OS Wallpaper",
+            Text = $"Master Thesis OS Wallpaper v{BuildInfo.Version}",
             ContextMenuStrip = menu,
             Visible = true,
         };
@@ -116,6 +134,15 @@ internal sealed class TrayIconController : IDisposable
         _wallpaperItem.Enabled = !wallpaperMode;
 
         RefreshDisplayMenu();
+
+        try
+        {
+            _autoReturnItem.Checked = _isAutoReturnEnabled();
+        }
+        catch
+        {
+            _autoReturnItem.Checked = false;
+        }
 
         try
         {
@@ -190,6 +217,28 @@ internal sealed class TrayIconController : IDisposable
         }
     }
 
+    private void ToggleAutoReturn()
+    {
+        try
+        {
+            var next = !_isAutoReturnEnabled();
+            _setAutoReturnEnabled(next);
+            _autoReturnItem.Checked = _isAutoReturnEnabled();
+
+            ShowInfo(
+                BuildInfo.ProductName,
+                next
+                    ? "Automatic return to Wallpaper is enabled."
+                    : "Automatic return to Wallpaper is disabled.",
+                1500);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Auto-return setting failed.", ex);
+            ShowInfo("Auto-return setting failed", ex.Message, 3000);
+        }
+    }
+
     private void ToggleStartup()
     {
         try
@@ -203,7 +252,7 @@ internal sealed class TrayIconController : IDisposable
                 : "Start with Windows disabled.");
 
             ShowInfo(
-                "Master Thesis OS Wallpaper",
+                BuildInfo.ProductName,
                 next
                     ? "Start with Windows enabled."
                     : "Start with Windows disabled.",
