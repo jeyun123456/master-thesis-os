@@ -53,6 +53,9 @@ internal sealed class TrayIconController : IDisposable
         _startupItem = new Forms.ToolStripMenuItem("Start with Windows");
         _startupItem.Click += (_, _) => ToggleStartup();
 
+        var logsItem = new Forms.ToolStripMenuItem("Open Logs Folder");
+        logsItem.Click += (_, _) => OpenLogs();
+
         var exitItem = new Forms.ToolStripMenuItem("Exit");
         exitItem.Click += (_, _) => _exit();
 
@@ -64,6 +67,7 @@ internal sealed class TrayIconController : IDisposable
         menu.Items.Add(refreshItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(_startupItem);
+        menu.Items.Add(logsItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(exitItem);
         menu.Opening += (_, _) => RefreshState();
@@ -108,6 +112,13 @@ internal sealed class TrayIconController : IDisposable
         }
     }
 
+    internal void ShowInfo(string title, string text, int timeoutMilliseconds = 2000)
+    {
+        _notifyIcon.BalloonTipTitle = title;
+        _notifyIcon.BalloonTipText = text;
+        _notifyIcon.ShowBalloonTip(timeoutMilliseconds);
+    }
+
     private void ToggleStartup()
     {
         try
@@ -116,17 +127,34 @@ internal sealed class TrayIconController : IDisposable
             _setStartupEnabled(next);
             _startupItem.Checked = _isStartupEnabled();
 
-            _notifyIcon.BalloonTipTitle = "Master Thesis OS Wallpaper";
-            _notifyIcon.BalloonTipText = next
+            AppLog.Info(next
                 ? "Start with Windows enabled."
-                : "Start with Windows disabled.";
-            _notifyIcon.ShowBalloonTip(1500);
+                : "Start with Windows disabled.");
+
+            ShowInfo(
+                "Master Thesis OS Wallpaper",
+                next
+                    ? "Start with Windows enabled."
+                    : "Start with Windows disabled.",
+                1500);
         }
         catch (Exception ex)
         {
-            _notifyIcon.BalloonTipTitle = "Startup setting failed";
-            _notifyIcon.BalloonTipText = ex.Message;
-            _notifyIcon.ShowBalloonTip(3000);
+            AppLog.Error("Startup setting failed.", ex);
+            ShowInfo("Startup setting failed", ex.Message, 3000);
+        }
+    }
+
+    private void OpenLogs()
+    {
+        try
+        {
+            AppLog.OpenLogFolder();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Could not open the log folder.", ex);
+            ShowInfo("Could not open logs", ex.Message, 3000);
         }
     }
 
