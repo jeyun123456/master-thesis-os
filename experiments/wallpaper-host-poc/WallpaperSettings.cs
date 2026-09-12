@@ -7,6 +7,8 @@ internal sealed class WallpaperSettingsData
     public string? TargetDisplayDeviceName { get; set; }
 
     public bool AutoReturnToWallpaper { get; set; } = true;
+
+    public bool ClickToInteractEnabled { get; set; }
 }
 
 internal static class WallpaperSettings
@@ -57,6 +59,11 @@ internal static class WallpaperSettings
     internal static void SetAutoReturnToWallpaper(bool enabled)
     {
         Update(settings => settings.AutoReturnToWallpaper = enabled);
+    }
+
+    internal static void SetClickToInteractEnabled(bool enabled)
+    {
+        Update(settings => settings.ClickToInteractEnabled = enabled);
     }
 
     private static void Update(Action<WallpaperSettingsData> update)
