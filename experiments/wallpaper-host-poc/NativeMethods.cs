@@ -8,6 +8,8 @@ internal static class NativeMethods
     internal const int GWL_STYLE = -16;
     internal const int GWL_EXSTYLE = -20;
 
+    internal const long WS_CHILD = 0x40000000L;
+    internal const long WS_POPUP = 0x80000000L;
     internal const long WS_CAPTION = 0x00C00000L;
     internal const long WS_THICKFRAME = 0x00040000L;
     internal const long WS_MINIMIZEBOX = 0x00020000L;
@@ -69,10 +71,16 @@ internal static class NativeMethods
         uint uTimeout,
         out nuint lpdwResult);
 
-
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool SetForegroundWindow(nint hWnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsWindow(nint hWnd);
+
+    [DllImport("kernel32.dll")]
+    internal static extern void SetLastError(uint dwErrCode);
 
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern nint SetParent(nint hWndChild, nint hWndNewParent);
