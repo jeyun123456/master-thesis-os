@@ -32,10 +32,14 @@ public partial class MainWindow
             isStartupEnabled: StartupManager.IsEnabled,
             setStartupEnabled: StartupManager.SetEnabled,
             exit: () => Phase4RunOnUiThread(Close));
+
+        InitializePhase5();
     }
 
     protected override void OnClosed(EventArgs e)
     {
+        DisposePhase5();
+
         if (_phase4HwndSource is not null)
         {
             _phase4HwndSource.RemoveHook(Phase4WndProc);
@@ -70,6 +74,7 @@ public partial class MainWindow
         if (_wallpaperAttachment?.IsAttached == true)
         {
             ToggleInteractiveMode();
+            AppLog.Info("Tray requested Interactive mode.");
         }
 
         _trayIcon?.RefreshState();
@@ -80,6 +85,7 @@ public partial class MainWindow
         if (_wallpaperAttachment is not null && !_wallpaperAttachment.IsAttached)
         {
             ToggleInteractiveMode();
+            AppLog.Info("Tray requested Wallpaper mode.");
         }
 
         _trayIcon?.RefreshState();
@@ -87,6 +93,8 @@ public partial class MainWindow
 
     private void RefreshWebView()
     {
+        AppLog.Info("Tray requested WebView refresh.");
+
         if (Browser.CoreWebView2 is not null)
         {
             Browser.CoreWebView2.Reload();
@@ -103,11 +111,14 @@ public partial class MainWindow
             return;
         }
 
-        if (!_wallpaperAttachment.TryRefreshWallpaperBounds(out _))
+        if (!_wallpaperAttachment.TryRefreshWallpaperBounds(out var status))
         {
+            AppLog.Warn(status);
             Title = "Master Thesis OS - display refresh failed";
             return;
         }
+
+        AppLog.Info(status);
 
         if (Browser.CoreWebView2 is not null)
         {
