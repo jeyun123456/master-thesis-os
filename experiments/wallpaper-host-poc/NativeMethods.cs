@@ -51,6 +51,13 @@ internal static class NativeMethods
         internal int Height => Bottom - Top;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct POINT
+    {
+        internal int X;
+        internal int Y;
+    }
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     internal static extern nint FindWindow(string? lpClassName, string? lpWindowName);
 
@@ -97,6 +104,10 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool IsWindow(nint hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ScreenToClient(nint hWnd, ref POINT lpPoint);
 
     [DllImport("kernel32.dll")]
     internal static extern void SetLastError(uint dwErrCode);
