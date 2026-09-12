@@ -165,18 +165,35 @@ internal sealed class WallpaperAttachment
         }
 
         var workerW = _workerW;
-        var detachError = RestoreOriginalParentIfNeeded();
-        var actualParent = NativeMethods.GetParent(_hostHwnd);
 
-        if (actualParent != _originalParent)
+        // When converting a child back into a top-level window, SetParent does not
+        // remove WS_CHILD for us. Detach first, then immediately restore the saved
+        // top-level styles before judging the resulting parent relationship.
+        NativeMethods.SetLastError(0);
+        var previousParent = NativeMethods.SetParent(_hostHwnd, _originalParent);
+        var detachError = Marshal.GetLastWin32Error();
+
+        RestoreStyles();
+
+        var actualParent = NativeMethods.GetParent(_hostHwnd);
+        var restoredStyle = NativeMethods.GetWindowLongPtr(
+            _hostHwnd,
+            NativeMethods.GWL_STYLE).ToInt64();
+        var stillChild = (restoredStyle & NativeMethods.WS_CHILD) != 0;
+
+        // On some Windows builds SetParent(NULL) may transiently/report the desktop
+        // HWND instead of zero. For interactive mode the important invariants are
+        // that the host is no longer parented to WorkerW and no longer has WS_CHILD.
+        if (actualParent == workerW || stillChild)
         {
             status =
                 $"Could not detach host from WorkerW 0x{workerW.ToInt64():X}. " +
-                $"Win32 error: {detachError}; actual parent=0x{actualParent.ToInt64():X}.";
+                $"Immediate Win32 error: {detachError}; " +
+                $"SetParent returned previous parent 0x{previousParent.ToInt64():X}; " +
+                $"actual parent=0x{actualParent.ToInt64():X}; " +
+                $"WS_CHILD={stillChild}.";
             return false;
         }
-
-        RestoreStyles();
 
         if (!NativeMethods.SetWindowPos(
                 _hostHwnd,
@@ -189,17 +206,19 @@ internal sealed class WallpaperAttachment
                 NativeMethods.SWP_SHOWWINDOW))
         {
             var error = Marshal.GetLastWin32Error();
+            _attached = false;
+            _workerW = nint.Zero;
             status =
                 $"Detached from WorkerW, but failed to raise the interactive window. " +
                 $"Win32 error: {error}.";
-            _attached = false;
-            _workerW = nint.Zero;
             return false;
         }
 
         _attached = false;
         _workerW = nint.Zero;
-        status = "Interactive mode active. Press Ctrl+Alt+W to return to wallpaper mode.";
+        status =
+            $"Interactive mode active. Previous WorkerW=0x{workerW.ToInt64():X}; " +
+            $"current parent=0x{actualParent.ToInt64():X}. Press Ctrl+Alt+W to return.";
         return true;
     }
 
