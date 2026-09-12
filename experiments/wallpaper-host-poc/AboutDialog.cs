@@ -8,6 +8,7 @@ internal static class AboutDialog
         bool wallpaperMode,
         string displayDeviceName,
         bool autoReturnEnabled,
+        bool clickToInteractEnabled,
         bool startupEnabled)
     {
         var mode = wallpaperMode ? "Wallpaper" : "Interactive";
@@ -20,6 +21,7 @@ internal static class AboutDialog
             $"Mode: {mode}\n" +
             $"Display: {displayDeviceName}\n" +
             $"Auto-return: {(autoReturnEnabled ? "On" : "Off")}\n" +
+            $"Click-to-interact: {(clickToInteractEnabled ? "On (experimental)" : "Off")}\n" +
             $"Start with Windows: {(startupEnabled ? "On" : "Off")}\n" +
             $"Installed copy: {installed}\n\n" +
             $"Hotkey: Ctrl+Alt+W\n" +
