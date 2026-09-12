@@ -61,7 +61,7 @@ public partial class MainWindow
             _clickToInteractEnabled = true;
             WallpaperSettings.SetClickToInteractEnabled(true);
             AppLog.Info(status);
-            AppLog.Info("Experimental click-to-interact enabled.");
+            AppLog.Info("Click-to-interact enabled.");
             return;
         }
 
@@ -69,7 +69,7 @@ public partial class MainWindow
         _clickToInteract?.Dispose();
         _clickToInteract = null;
         WallpaperSettings.SetClickToInteractEnabled(false);
-        AppLog.Info("Experimental click-to-interact disabled.");
+        AppLog.Info("Click-to-interact disabled.");
     }
 
     private bool TryStartClickToInteract(out string status)
