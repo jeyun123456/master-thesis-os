@@ -118,21 +118,14 @@ public partial class MainWindow : Window
         {
             await Browser.EnsureCoreWebView2Async();
 
-            // Preserve the native Windows/WebView2 input path.
-            // No DOM focus bridge is installed: Phase 1 already proved that the
-            // normal top-level WebView2 path supports native Korean IME correctly.
+            // Preserve the native Windows/WebView2 input path. No DOM focus bridge
+            // and no controller-level focus forcing are installed.
             Browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             Browser.CoreWebView2.Settings.AreDevToolsEnabled = true;
             Browser.CoreWebView2.Settings.IsStatusBarEnabled = true;
             Browser.CoreWebView2.Settings.IsZoomControlEnabled = true;
 
             Browser.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
-
-            if (_wallpaperRequested)
-            {
-                Browser.CoreWebView2Controller.NotifyParentWindowPositionChanged();
-            }
-
             Browser.CoreWebView2.Navigate(ProductionUri.AbsoluteUri);
 
             // Only the ordinary Phase 1 window gets startup focus.
@@ -199,11 +192,6 @@ public partial class MainWindow : Window
                 return;
             }
 
-            if (Browser.CoreWebView2 is not null)
-            {
-                Browser.CoreWebView2Controller.NotifyParentWindowPositionChanged();
-            }
-
             // Interactive mode intentionally behaves like the already-verified
             // Phase 1 top-level WebView2 window. Do not call MoveFocus or install
             // DOM focus probes: repeatedly forcing focus breaks IME composition.
@@ -212,6 +200,7 @@ public partial class MainWindow : Window
             _ = Browser.Focus();
 
             Title = "Master Thesis OS - Interactive mode (Ctrl+Alt+W to return)";
+            _trayIcon?.RefreshState();
             return;
         }
 
@@ -225,11 +214,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (Browser.CoreWebView2 is not null)
-        {
-            Browser.CoreWebView2Controller.NotifyParentWindowPositionChanged();
-        }
-
         var progman = NativeMethods.FindWindow("Progman", null);
         if (progman != nint.Zero)
         {
@@ -239,6 +223,7 @@ public partial class MainWindow : Window
         Title = _phase2Only
             ? "Master Thesis OS - Phase 2 Wallpaper"
             : "Master Thesis OS - Wallpaper";
+        _trayIcon?.RefreshState();
     }
 
     private void MainWindow_Closed(object? sender, EventArgs e)
