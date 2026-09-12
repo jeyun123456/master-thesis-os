@@ -11,6 +11,8 @@ internal sealed class WallpaperAttachment
     private readonly nint _originalExStyle;
 
     private nint _workerW;
+    private int _wallpaperWidth;
+    private int _wallpaperHeight;
     private bool _attached;
 
     private WallpaperAttachment(nint hostHwnd)
@@ -20,6 +22,8 @@ internal sealed class WallpaperAttachment
         _originalStyle = NativeMethods.GetWindowLongPtr(hostHwnd, NativeMethods.GWL_STYLE);
         _originalExStyle = NativeMethods.GetWindowLongPtr(hostHwnd, NativeMethods.GWL_EXSTYLE);
     }
+
+    internal bool IsAttached => _attached;
 
     internal static WallpaperAttachment ForWindow(System.Windows.Window window)
     {
@@ -142,11 +146,60 @@ internal sealed class WallpaperAttachment
         }
 
         _workerW = workerW;
+        _wallpaperWidth = workerRect.Width;
+        _wallpaperHeight = workerRect.Height;
         _attached = true;
         status =
             $"Attached host 0x{_hostHwnd.ToInt64():X} to WorkerW 0x{workerW.ToInt64():X} " +
             $"({workerRect.Width}x{workerRect.Height}, class='{workerClass}', " +
             $"worker parent=0x{workerParent.ToInt64():X}). Discovery: {discovery}";
+        return true;
+    }
+
+    internal bool TryEnterInteractiveMode(out string status)
+    {
+        if (!_attached)
+        {
+            status = "The host is already outside WorkerW.";
+            return true;
+        }
+
+        var workerW = _workerW;
+        var detachError = RestoreOriginalParentIfNeeded();
+        var actualParent = NativeMethods.GetParent(_hostHwnd);
+
+        if (actualParent != _originalParent)
+        {
+            status =
+                $"Could not detach host from WorkerW 0x{workerW.ToInt64():X}. " +
+                $"Win32 error: {detachError}; actual parent=0x{actualParent.ToInt64():X}.";
+            return false;
+        }
+
+        RestoreStyles();
+
+        if (!NativeMethods.SetWindowPos(
+                _hostHwnd,
+                NativeMethods.HWND_TOP,
+                0,
+                0,
+                _wallpaperWidth,
+                _wallpaperHeight,
+                NativeMethods.SWP_FRAMECHANGED |
+                NativeMethods.SWP_SHOWWINDOW))
+        {
+            var error = Marshal.GetLastWin32Error();
+            status =
+                $"Detached from WorkerW, but failed to raise the interactive window. " +
+                $"Win32 error: {error}.";
+            _attached = false;
+            _workerW = nint.Zero;
+            return false;
+        }
+
+        _attached = false;
+        _workerW = nint.Zero;
+        status = "Interactive mode active. Press Ctrl+Alt+W to return to wallpaper mode.";
         return true;
     }
 
