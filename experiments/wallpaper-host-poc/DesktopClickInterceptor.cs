@@ -100,16 +100,17 @@ internal sealed class DesktopClickInterceptor : IDisposable
             NativeMethods.INPUT.Mouse(NativeMethods.MOUSEEVENTF_LEFTDOWN),
             NativeMethods.INPUT.Mouse(NativeMethods.MOUSEEVENTF_LEFTUP),
         };
+        var expected = checked((uint)inputs.Length);
 
         var sent = NativeMethods.SendInput(
-            checked((uint)inputs.Length),
+            expected,
             inputs,
             Marshal.SizeOf<NativeMethods.INPUT>());
 
-        if (sent != inputs.Length)
+        if (sent != expected)
         {
             status =
-                $"Mouse replay sent {sent}/{inputs.Length} events. Win32 error: " +
+                $"Mouse replay sent {sent}/{expected} events. Win32 error: " +
                 $"{Marshal.GetLastWin32Error()}.";
             return false;
         }
