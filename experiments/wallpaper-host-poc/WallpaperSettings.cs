@@ -5,6 +5,8 @@ namespace WallpaperHostPoc;
 internal sealed class WallpaperSettingsData
 {
     public string? TargetDisplayDeviceName { get; set; }
+
+    public bool AutoReturnToWallpaper { get; set; } = true;
 }
 
 internal static class WallpaperSettings
@@ -49,12 +51,22 @@ internal static class WallpaperSettings
             throw new ArgumentException("Display device name must not be empty.", nameof(deviceName));
         }
 
+        Update(settings => settings.TargetDisplayDeviceName = deviceName);
+    }
+
+    internal static void SetAutoReturnToWallpaper(bool enabled)
+    {
+        Update(settings => settings.AutoReturnToWallpaper = enabled);
+    }
+
+    private static void Update(Action<WallpaperSettingsData> update)
+    {
         lock (Sync)
         {
             Directory.CreateDirectory(SettingsDirectory);
 
             var settings = LoadUnsafe();
-            settings.TargetDisplayDeviceName = deviceName;
+            update(settings);
 
             var json = JsonSerializer.Serialize(
                 settings,
