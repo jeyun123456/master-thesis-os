@@ -21,7 +21,7 @@ internal static class AboutDialog
             $"Mode: {mode}\n" +
             $"Display: {displayDeviceName}\n" +
             $"Auto-return: {(autoReturnEnabled ? "On" : "Off")}\n" +
-            $"Click-to-interact: {(clickToInteractEnabled ? "On (experimental)" : "Off")}\n" +
+            $"Click-to-interact: {(clickToInteractEnabled ? "On" : "Off")}\n" +
             $"Start with Windows: {(startupEnabled ? "On" : "Off")}\n" +
             $"Installed copy: {installed}\n\n" +
             $"Hotkey: Ctrl+Alt+W\n" +
