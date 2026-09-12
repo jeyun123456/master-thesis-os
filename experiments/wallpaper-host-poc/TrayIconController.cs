@@ -192,7 +192,6 @@ internal sealed class TrayIconController : IDisposable
                         selected,
                         StringComparison.OrdinalIgnoreCase),
                     CheckOnClick = false,
-                    RadioCheck = true,
                     Tag = display.DeviceName,
                 };
 
