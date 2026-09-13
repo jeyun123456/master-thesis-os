@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { LibraryPanel } from '@/app/library-panel';
 import { ResearchPanel } from '@/app/research-panel';
+import { RewardSlotPanel } from '@/app/reward-slot';
 import { ShortcutList, ShortcutsPanel } from '@/app/shortcuts-panel';
 import { dashboardApi, type CalendarApiResponse } from '@/lib/client-api';
 import type { CalendarEvent } from '@/lib/calendar';
@@ -202,12 +203,12 @@ export default function Page() {
             <CalendarCard title="예정 일정" events={schedule.upcoming.slice(0, 6)} calendar={calendar} />
             <Card title="다음 마감" right="마감 · 미팅">{schedule.nextDeadline ? <div className="event priority-event"><b>{schedule.nextDeadline.title}</b><small>{formatCalendarEvent(schedule.nextDeadline)} · {deadlineLabel(schedule.nextDeadline)}</small>{schedule.nextDeadline.location && <small>{schedule.nextDeadline.location}</small>}</div> : <CalendarState calendar={calendar} />}</Card>
           </div>
+          <RewardSlotPanel tasks={activeProject?.nextTasks || researchStatus?.nextActions || []} projectTitle={activeProject ? activeProject.title : 'Wiki live'} onNotice={pop} />
           <div className="grid2 section-gap">
-            <Card title="바로 다음 작업" right={activeProject ? activeProject.title : 'Wiki live'}><NumberedList items={activeProject?.nextTasks || researchStatus?.nextActions || []} empty="활성 프로젝트의 다음 작업을 표시해." /></Card>
             <Card title="막힌 부분" right={activeProject ? activeProject.title : '확인 필요'}><NumberedList items={activeProject?.blocked || researchStatus?.unresolved || []} empty="현재 등록된 막힌 부분이 없어." /></Card>
-          </div>
-          <div className="grid2 section-gap">
             <Card title="최근 변경" right="연구 저장소 GitHub"><CommitList commits={commits.slice(0, 6)} /></Card>
+          </div>
+          <div className="section-gap">
             <Card title="작성 중 프로젝트 바로가기" right={homeShortcuts.length ? `${homeShortcuts.length}개` : '설정 필요'}><ShortcutList shortcuts={homeShortcuts} onOpenFile={openLocal} onOpenFolder={openLocalFolder} /></Card>
           </div>
         </section>}
