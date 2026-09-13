@@ -14,6 +14,8 @@ except ConfigError as exc:
     print(str(exc), file=sys.stderr)
     raise SystemExit(CONFIG_ERROR_EXIT_CODE) from exc
 
+from shortcut_launcher import launch_shortcut, normalize_shortcut_request
+
 ROOT = bridge_config.root
 TOKEN = bridge_config.token
 PORT = bridge_config.port
@@ -48,7 +50,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/health': return self.json_out(200, {'ok':True})
         return self.json_out(404, {'error':'not found'})
     def do_POST(self):
-        if self.path not in ('/open', '/open-folder'): return self.json_out(404, {'error':'not found'})
+        if self.path not in ('/open', '/open-folder', '/launch'): return self.json_out(404, {'error':'not found'})
         try:
             origin = self.headers.get('Origin','')
             if origin not in ORIGINS:
@@ -60,6 +62,10 @@ class Handler(BaseHTTPRequestHandler):
             if length <= 0 or length > MAX_BODY_BYTES: return self.json_out(413, {'error':'invalid request size'})
             body=json.loads(self.rfile.read(length))
             if not token_matches(body.get('token',''), TOKEN): return self.json_out(403, {'error':'invalid token'})
+            if self.path == '/launch':
+                request = normalize_shortcut_request(body)
+                launch_shortcut(request)
+                return self.json_out(200, {'ok':True,'type':request['type']})
             target = target_for_endpoint(ROOT, self.path, str(body.get('path','')))
             launch(target)
             return self.json_out(200, {'ok':True,'path':str(target)})

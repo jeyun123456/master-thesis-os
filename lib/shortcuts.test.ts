@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getEnabledShortcuts, getHomeShortcuts, parseShortcuts } from './shortcuts';
+import { detectShortcutType, getEnabledShortcuts, getHomeShortcuts, isAbsoluteLocalTarget, parseShortcuts } from './shortcuts';
 
 describe('shortcuts', () => {
   it('filters invalid entries and sorts enabled shortcuts predictably', () => {
@@ -22,6 +22,25 @@ describe('shortcuts', () => {
     expect(items.map((item) => item.type)).toEqual(['file', 'folder', 'web']);
     expect(getEnabledShortcuts(items).map((item) => item.id)).toEqual(['folder', 'web']);
     expect(getHomeShortcuts(items).map((item) => item.id)).toEqual(['folder', 'web']);
+  });
+
+  it('accepts local apps and commands with launcher options', () => {
+    const items = parseShortcuts([
+      { id: 'app', title: 'App', type: 'app', target: 'C:\\Tools\\tool.exe', args: '--profile thesis', workingDirectory: 'D:\\Research', runAsAdmin: true },
+      { id: 'cmd', title: 'Dev', type: 'command', target: 'npm run dev', workingDirectory: 'D:\\Research' },
+      { id: 'relative-app', title: 'Bad', type: 'app', target: 'tool.exe' },
+    ]);
+    expect(items.map((item) => item.id)).toEqual(['app', 'cmd']);
+    expect(items[0]).toMatchObject({ args: '--profile thesis', workingDirectory: 'D:\\Research', runAsAdmin: true });
+  });
+
+  it('detects common targets for the add dialog', () => {
+    expect(detectShortcutType('https://example.com')).toBe('web');
+    expect(detectShortcutType('C:\\Apps\\Obsidian.exe')).toBe('app');
+    expect(detectShortcutType('D:\\Research')).toBe('folder');
+    expect(detectShortcutType('D:\\Research\\paper.pdf')).toBe('file');
+    expect(isAbsoluteLocalTarget('C:\\Apps\\app.exe')).toBe(true);
+    expect(isAbsoluteLocalTarget('wiki/note.md')).toBe(false);
   });
 
   it('defaults optional flags without inventing a target', () => {
