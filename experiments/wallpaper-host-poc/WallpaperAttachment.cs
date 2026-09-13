@@ -25,6 +25,8 @@ internal sealed partial class WallpaperAttachment
 
     internal bool IsAttached => _attached;
 
+    internal nint WorkerWindowHandle => _workerW;
+
     internal static WallpaperAttachment ForWindow(System.Windows.Window window)
     {
         var hwnd = new WindowInteropHelper(window).Handle;

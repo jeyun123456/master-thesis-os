@@ -39,6 +39,7 @@ internal static class NativeMethods
 
     internal const int WH_MOUSE_LL = 14;
     internal const uint LLMHF_INJECTED = 0x00000001;
+    internal const uint GA_ROOT = 2;
 
     internal const uint INPUT_MOUSE = 0;
     internal const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
@@ -169,6 +170,13 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     internal static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetCursorPos(out POINT lpPoint);
+
+    [DllImport("user32.dll")]
+    internal static extern nint GetAncestor(nint hWnd, uint gaFlags);
 
     [DllImport("user32.dll")]
     internal static extern uint GetWindowThreadProcessId(

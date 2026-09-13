@@ -30,14 +30,13 @@ internal static class WallpaperSettings
         {
             try
             {
-                if (!File.Exists(SettingsPath))
-                {
-                    return new WallpaperSettingsData();
-                }
-
-                var json = File.ReadAllText(SettingsPath);
-                return JsonSerializer.Deserialize<WallpaperSettingsData>(json)
-                    ?? new WallpaperSettingsData();
+                return ReadUnsafe();
+            }
+            catch (JsonException ex)
+            {
+                AppLog.Error("Could not load wallpaper settings; defaults will be used.", ex);
+                QuarantineCorruptSettings();
+                return new WallpaperSettingsData();
             }
             catch (Exception ex)
             {
@@ -93,19 +92,55 @@ internal static class WallpaperSettings
     {
         try
         {
-            if (!File.Exists(SettingsPath))
-            {
-                return new WallpaperSettingsData();
-            }
-
-            return JsonSerializer.Deserialize<WallpaperSettingsData>(
-                       File.ReadAllText(SettingsPath))
-                   ?? new WallpaperSettingsData();
+            return ReadUnsafe();
+        }
+        catch (JsonException ex)
+        {
+            AppLog.Error("Could not read existing wallpaper settings before saving.", ex);
+            QuarantineCorruptSettings();
+            return new WallpaperSettingsData();
         }
         catch (Exception ex)
         {
             AppLog.Error("Could not read existing wallpaper settings before saving.", ex);
             return new WallpaperSettingsData();
+        }
+    }
+
+    private static WallpaperSettingsData ReadUnsafe()
+    {
+        if (!File.Exists(SettingsPath))
+        {
+            return new WallpaperSettingsData();
+        }
+
+        var json = File.ReadAllText(SettingsPath);
+        return JsonSerializer.Deserialize<WallpaperSettingsData>(json)
+            ?? new WallpaperSettingsData();
+    }
+
+    private static void QuarantineCorruptSettings()
+    {
+        if (!File.Exists(SettingsPath))
+        {
+            return;
+        }
+
+        var backupPath =
+            $"{SettingsPath}.corrupt-{DateTime.UtcNow:yyyyMMdd-HHmmssfff}-" +
+            $"{Guid.NewGuid():N}.json";
+
+        try
+        {
+            File.Move(SettingsPath, backupPath);
+            AppLog.Warn(
+                $"Corrupt wallpaper settings were moved to '{backupPath}'.");
+        }
+        catch (Exception backupException)
+        {
+            AppLog.Error(
+                "Could not preserve the corrupt wallpaper settings file.",
+                backupException);
         }
     }
 }

@@ -167,35 +167,50 @@ public partial class MainWindow : Window
         return nint.Zero;
     }
 
-    private void ToggleInteractiveMode()
+    private bool EnterInteractiveMode()
     {
         if (_wallpaperAttachment is null)
         {
-            return;
+            return false;
+        }
+
+        if (!_wallpaperAttachment.IsAttached)
+        {
+            return true;
+        }
+
+        if (!_wallpaperAttachment.TryEnterInteractiveMode(out var status))
+        {
+            MessageBox.Show(
+                status,
+                "Could not enter interactive mode",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return false;
+        }
+
+        // Interactive mode uses the normal top-level WebView2 input path.
+        // Do not call MoveFocus or install DOM focus probes: repeatedly
+        // forcing focus breaks IME composition.
+        _ = NativeMethods.SetForegroundWindow(_hostHwnd);
+        _ = Activate();
+        _ = Browser.Focus();
+
+        Title = "Master Thesis OS - Interactive mode (Ctrl+Alt+W to return)";
+        _trayIcon?.RefreshState();
+        return true;
+    }
+
+    private bool ReturnToWallpaperMode()
+    {
+        if (_wallpaperAttachment is null)
+        {
+            return false;
         }
 
         if (_wallpaperAttachment.IsAttached)
         {
-            if (!_wallpaperAttachment.TryEnterInteractiveMode(out var status))
-            {
-                MessageBox.Show(
-                    status,
-                    "Could not enter interactive mode",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
-                return;
-            }
-
-            // Interactive mode uses the normal top-level WebView2 input path.
-            // Do not call MoveFocus or install DOM focus probes: repeatedly
-            // forcing focus breaks IME composition.
-            _ = NativeMethods.SetForegroundWindow(_hostHwnd);
-            _ = Activate();
-            _ = Browser.Focus();
-
-            Title = "Master Thesis OS - Interactive mode (Ctrl+Alt+W to return)";
-            _trayIcon?.RefreshState();
-            return;
+            return true;
         }
 
         if (!_wallpaperAttachment.TryAttach(out var attachStatus))
@@ -205,7 +220,7 @@ public partial class MainWindow : Window
                 "Could not return to wallpaper mode",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
-            return;
+            return false;
         }
 
         var progman = NativeMethods.FindWindow("Progman", null);
@@ -216,6 +231,19 @@ public partial class MainWindow : Window
 
         Title = "Master Thesis OS - Wallpaper";
         _trayIcon?.RefreshState();
+        return true;
+    }
+
+    private bool ToggleInteractiveMode()
+    {
+        if (_wallpaperAttachment is null)
+        {
+            return false;
+        }
+
+        return _wallpaperAttachment.IsAttached
+            ? EnterInteractiveMode()
+            : ReturnToWallpaperMode();
     }
 
     private void MainWindow_Closed(object? sender, EventArgs e)

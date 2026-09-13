@@ -9,6 +9,7 @@ public partial class MainWindow
     private DispatcherTimer? _recoveryTimer;
     private bool _recoveryInProgress;
     private int _recoveryFailures;
+    private DateTimeOffset _nextRecoveryAttemptUtc;
 
     private void InitializeRuntimeServices()
     {
@@ -56,7 +57,7 @@ public partial class MainWindow
 
         if (_wallpaperAttachment?.IsAttached == true)
         {
-            ToggleInteractiveMode();
+            _ = EnterInteractiveMode();
             _trayIcon?.RefreshState();
             return;
         }
@@ -79,9 +80,15 @@ public partial class MainWindow
             return;
         }
 
+        if (DateTimeOffset.UtcNow < _nextRecoveryAttemptUtc)
+        {
+            return;
+        }
+
         if (_wallpaperAttachment.IsAttachmentHealthy(out _))
         {
             _recoveryFailures = 0;
+            _nextRecoveryAttemptUtc = default;
             return;
         }
 
@@ -100,14 +107,17 @@ public partial class MainWindow
                 }
 
                 _recoveryFailures = 0;
+                _nextRecoveryAttemptUtc = default;
                 _trayIcon?.RefreshState();
                 return;
             }
 
             _recoveryFailures++;
+            _nextRecoveryAttemptUtc = DateTimeOffset.UtcNow.AddSeconds(
+                GetRecoveryRetryDelaySeconds(_recoveryFailures));
 
-            // Avoid a noisy log line every five seconds while Explorer is restarting.
-            if (_recoveryFailures == 1 || _recoveryFailures % 6 == 0)
+            // Avoid a noisy log line while Explorer is restarting.
+            if (_recoveryFailures == 1 || _recoveryFailures % 3 == 0)
             {
                 AppLog.Warn(status);
             }
@@ -115,12 +125,20 @@ public partial class MainWindow
         catch (Exception ex)
         {
             _recoveryFailures++;
+            _nextRecoveryAttemptUtc = DateTimeOffset.UtcNow.AddSeconds(
+                GetRecoveryRetryDelaySeconds(_recoveryFailures));
             AppLog.Error("Automatic wallpaper recovery failed unexpectedly.", ex);
         }
         finally
         {
             _recoveryInProgress = false;
         }
+    }
+
+    private static double GetRecoveryRetryDelaySeconds(int failureCount)
+    {
+        var exponent = Math.Min(Math.Max(failureCount - 1, 0), 4);
+        return Math.Min(60, 5 * Math.Pow(2, exponent));
     }
 
     private static void RuntimeServices_DispatcherUnhandledException(

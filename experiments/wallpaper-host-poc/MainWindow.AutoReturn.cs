@@ -89,9 +89,10 @@ public partial class MainWindow
         e.Handled = true;
         _autoReturnTimer?.Stop();
 
-        ToggleInteractiveMode();
-        _trayIcon?.RefreshState();
-        AppLog.Info("Escape returned Interactive mode to Wallpaper mode.");
+        if (ReturnToWallpaperMode())
+        {
+            AppLog.Info("Escape returned Interactive mode to Wallpaper mode.");
+        }
     }
 
     private void AutoReturnTimer_Tick(object? sender, EventArgs e)
@@ -123,9 +124,12 @@ public partial class MainWindow
         }
 
         _autoReturnTimer?.Stop();
-        ToggleInteractiveMode();
-        _trayIcon?.RefreshState();
-        AppLog.Info("Interactive mode automatically returned to Wallpaper after focus moved away.");
+        if (ReturnToWallpaperMode())
+        {
+            AppLog.Info(
+                "Interactive mode automatically returned to Wallpaper after " +
+                "focus moved away.");
+        }
     }
 
     private static bool ShouldDeferAutoReturnForForegroundWindow(nint hwnd)

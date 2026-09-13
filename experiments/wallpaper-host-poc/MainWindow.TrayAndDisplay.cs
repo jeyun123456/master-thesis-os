@@ -86,9 +86,9 @@ public partial class MainWindow
 
     private void EnterInteractiveFromTray()
     {
-        if (_wallpaperAttachment?.IsAttached == true)
+        if (_wallpaperAttachment?.IsAttached == true &&
+            EnterInteractiveMode())
         {
-            ToggleInteractiveMode();
             AppLog.Info("Tray requested Interactive mode.");
         }
 
@@ -97,9 +97,10 @@ public partial class MainWindow
 
     private void ReturnToWallpaperFromTray()
     {
-        if (_wallpaperAttachment is not null && !_wallpaperAttachment.IsAttached)
+        if (_wallpaperAttachment is not null &&
+            !_wallpaperAttachment.IsAttached &&
+            ReturnToWallpaperMode())
         {
-            ToggleInteractiveMode();
             AppLog.Info("Tray requested Wallpaper mode.");
         }
 

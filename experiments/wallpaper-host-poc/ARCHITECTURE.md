@@ -15,7 +15,7 @@ Explorer's `SHELLDLL_DefView` and `SysListView32` windows belong to Explorer. Th
 
 ## Wallpaper attachment and recovery
 
-The attachment service discovers the shell's wallpaper WorkerW, saves the host's original parent and styles, and attaches only the companion HWND. The selected display's screen bounds are converted to WorkerW client coordinates, including negative monitor coordinates. The recovery timer checks the saved WorkerW relationship and re-attaches only the companion if Explorer recreates the shell surface.
+The attachment service discovers the shell's wallpaper WorkerW, saves the host's original parent and styles, and attaches only the companion HWND. The selected display's screen bounds are converted to WorkerW client coordinates, including negative monitor coordinates. The recovery timer checks the saved WorkerW relationship and re-attaches only the companion if Explorer recreates the shell surface. Failed recovery attempts use a bounded backoff so an Explorer restart does not cause repeated expensive discovery calls.
 
 If attachment or target-display resolution fails, the application remains a normal top-level WPF window. It does not guess at another Explorer window.
 
@@ -31,10 +31,10 @@ When enabled, the mouse-only low-level hook examines left-button events. It capt
 
 1. the host is attached to WorkerW;
 2. the point is inside the selected display;
-3. `WindowFromPoint` identifies the desktop surface rather than an application or taskbar; and
+3. `WindowFromPoint` identifies the selected Explorer desktop surface rather than an application or taskbar; and
 4. Explorer's desktop `SysListView32` returns no item from `LVM_HITTEST`.
 
-An icon hit-test failure is fail-closed: the hook leaves the original click alone. It never falls back to capturing an uncertain icon click. For a verified empty desktop click, the original left down/up is suppressed, the host enters Open state, and exactly one mouse left-click is replayed after activation. The replayed event is ignored by the hook using `LLMHF_INJECTED`.
+The desktop surface and icon windows are checked against their expected parent and Explorer owner process. An icon hit-test failure is fail-closed: the hook leaves the original click alone. It never falls back to capturing an uncertain icon click. For a verified empty desktop click, the original left down/up is suppressed, the host enters Open state, and exactly one mouse left-click is replayed after activation. The replay is cancelled if the cursor moved, foreground ownership changed, or the captured click is older than two seconds. The replayed event is ignored by the hook using `LLMHF_INJECTED`.
 
 This replay is mouse-only. Keyboard input and IME composition are never synthesized by the application.
 
@@ -58,7 +58,7 @@ The retired focus experiment and its failure rationale are kept in [`docs/histor
 
 ## Display, settings, and single instance
 
-`DisplayManager` enumerates connected screens and persists one Windows device name such as `\\.\DISPLAY2`. If that device disappears, the primary display is used as a safe fallback. `WallpaperSettings` stores the selected display, auto-return preference, and click-to-interact preference under `%LOCALAPPDATA%\MasterThesisOSWallpaper\settings.json`. Missing `ClickToInteractEnabled` values use the current default; an explicit `false` is preserved.
+`DisplayManager` enumerates connected screens and persists one Windows device name such as `\\.\DISPLAY2`. If that device disappears, the primary display is used as a safe fallback. `WallpaperSettings` stores the selected display, auto-return preference, and click-to-interact preference under `%LOCALAPPDATA%\MasterThesisOSWallpaper\settings.json`. Missing `ClickToInteractEnabled` values use the current default; an explicit `false` is preserved. Invalid JSON is moved to a timestamped `.corrupt-*.json` backup before defaults are used, so a recovery write does not erase the original evidence.
 
 `SingleInstanceGuard` uses one per-user identity and signals the existing process on a second launch. This prevents duplicate WorkerW hosts and duplicate WebView2 instances.
 

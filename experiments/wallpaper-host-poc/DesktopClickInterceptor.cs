@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace WallpaperHostPoc;
@@ -9,16 +10,22 @@ namespace WallpaperHostPoc;
 /// </summary>
 internal sealed class DesktopClickInterceptor : IDisposable
 {
+    internal readonly record struct CapturedClick(
+        NativeMethods.POINT Point,
+        long CapturedAtMilliseconds);
+
     private readonly Func<NativeMethods.POINT, bool> _shouldCapture;
-    private readonly Action<NativeMethods.POINT> _capturedClick;
+    private readonly Action<CapturedClick> _capturedClick;
     private readonly NativeMethods.LowLevelMouseProc _hookProc;
 
     private nint _hook;
     private bool _capturingLeftButton;
+    private NativeMethods.POINT _capturedPoint;
+    private long _capturedAtMilliseconds;
 
     internal DesktopClickInterceptor(
         Func<NativeMethods.POINT, bool> shouldCapture,
-        Action<NativeMethods.POINT> capturedClick)
+        Action<CapturedClick> capturedClick)
     {
         _shouldCapture = shouldCapture;
         _capturedClick = capturedClick;
@@ -54,7 +61,8 @@ internal sealed class DesktopClickInterceptor : IDisposable
 
     internal static bool IsEligibleDesktopPoint(
         NativeMethods.POINT screenPoint,
-        nint hostHwnd)
+        nint hostHwnd,
+        nint expectedWorkerW)
     {
         var target = NativeMethods.WindowFromPoint(screenPoint);
         if (target == nint.Zero)
@@ -73,11 +81,17 @@ internal sealed class DesktopClickInterceptor : IDisposable
         {
             // The desktop ListView fills the desktop, so distinguish an actual icon
             // from empty background before intercepting the click.
-            return !IsListViewItemAtPoint(target, screenPoint);
+            return IsDesktopIconListView(target, expectedWorkerW) &&
+                   !IsListViewItemAtPoint(target, screenPoint);
         }
 
         if (className.Equals("SHELLDLL_DefView", StringComparison.Ordinal))
         {
+            if (!IsExplorerOwnedWindow(target))
+            {
+                return false;
+            }
+
             var listView = NativeMethods.FindWindowEx(
                 target,
                 nint.Zero,
@@ -87,15 +101,64 @@ internal sealed class DesktopClickInterceptor : IDisposable
             // Fail closed if Explorer's ListView cannot be resolved. Preserving the
             // original desktop click is safer than risking an icon click being hijacked.
             return listView != nint.Zero &&
+                   IsDesktopIconListView(listView, expectedWorkerW) &&
                    !IsListViewItemAtPoint(listView, screenPoint);
         }
 
-        return className.Equals("WorkerW", StringComparison.Ordinal) ||
-               className.Equals("Progman", StringComparison.Ordinal);
+        if (!className.Equals("WorkerW", StringComparison.Ordinal) &&
+            !className.Equals("Progman", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return IsExplorerOwnedWindow(target) &&
+               IsExpectedDesktopSurface(target, className, expectedWorkerW);
     }
 
-    internal static bool ReplayLeftClick(out string status)
+    internal static bool ReplayLeftClick(
+        CapturedClick capturedClick,
+        nint hostHwnd,
+        TimeSpan maximumAge,
+        out string status)
     {
+        var age = Environment.TickCount64 - capturedClick.CapturedAtMilliseconds;
+        if (age < 0 || age > maximumAge.TotalMilliseconds)
+        {
+            status = $"Mouse replay skipped because the captured click is {age} ms old.";
+            return false;
+        }
+
+        if (!NativeMethods.GetCursorPos(out var currentPoint))
+        {
+            status =
+                "Mouse replay skipped because the current cursor position could not " +
+                $"be read. Win32 error: {Marshal.GetLastWin32Error()}.";
+            return false;
+        }
+
+        if (currentPoint.X != capturedClick.Point.X ||
+            currentPoint.Y != capturedClick.Point.Y)
+        {
+            status =
+                $"Mouse replay skipped because the cursor moved from " +
+                $"{capturedClick.Point.X},{capturedClick.Point.Y} to " +
+                $"{currentPoint.X},{currentPoint.Y}.";
+            return false;
+        }
+
+        var foreground = NativeMethods.GetForegroundWindow();
+        var foregroundRoot = foreground == nint.Zero
+            ? nint.Zero
+            : NativeMethods.GetAncestor(foreground, NativeMethods.GA_ROOT);
+
+        if (foreground != hostHwnd && foregroundRoot != hostHwnd)
+        {
+            status =
+                "Mouse replay skipped because Interactive mode no longer owns the " +
+                "foreground window.";
+            return false;
+        }
+
         var inputs = new[]
         {
             NativeMethods.INPUT.Mouse(NativeMethods.MOUSEEVENTF_LEFTDOWN),
@@ -129,6 +192,13 @@ internal sealed class DesktopClickInterceptor : IDisposable
 
         try
         {
+            var message = unchecked((uint)wParam.ToInt64());
+            if (message != NativeMethods.WM_LBUTTONDOWN &&
+                message != NativeMethods.WM_LBUTTONUP)
+            {
+                return NativeMethods.CallNextHookEx(_hook, code, wParam, lParam);
+            }
+
             var mouse = Marshal.PtrToStructure<NativeMethods.MSLLHOOKSTRUCT>(lParam);
 
             // Never intercept our own one-shot mouse replay or another injected click.
@@ -137,23 +207,26 @@ internal sealed class DesktopClickInterceptor : IDisposable
                 return NativeMethods.CallNextHookEx(_hook, code, wParam, lParam);
             }
 
-            var message = unchecked((uint)wParam.ToInt64());
-
             if (message == NativeMethods.WM_LBUTTONDOWN)
             {
                 if (_shouldCapture(mouse.Point))
                 {
                     _capturingLeftButton = true;
+                    _capturedPoint = mouse.Point;
+                    _capturedAtMilliseconds = Environment.TickCount64;
                     return new nint(1);
                 }
             }
             else if (message == NativeMethods.WM_LBUTTONUP && _capturingLeftButton)
             {
                 _capturingLeftButton = false;
+                var capturedClick = new CapturedClick(
+                    _capturedPoint,
+                    _capturedAtMilliseconds);
 
                 try
                 {
-                    _capturedClick(mouse.Point);
+                    _capturedClick(capturedClick);
                 }
                 catch (Exception ex)
                 {
@@ -275,9 +348,96 @@ internal sealed class DesktopClickInterceptor : IDisposable
         }
     }
 
+    private static bool IsDesktopIconListView(
+        nint listView,
+        nint expectedWorkerW)
+    {
+        if (!IsExplorerOwnedWindow(listView))
+        {
+            return false;
+        }
+
+        var defView = NativeMethods.GetParent(listView);
+        if (defView == nint.Zero ||
+            !NativeMethods.GetWindowClassName(defView).Equals(
+                   "SHELLDLL_DefView",
+                   StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        // A normal Explorer folder also uses SHELLDLL_DefView/SysListView32.
+        // Walk only its existing parent chain and accept the list view when it
+        // belongs to the selected desktop hierarchy. Explorer windows are never
+        // modified here.
+        var current = defView;
+        var progman = NativeMethods.FindWindow("Progman", null);
+
+        for (var depth = 0; depth < 8 && current != nint.Zero; depth++)
+        {
+            if (current == expectedWorkerW ||
+                (progman != nint.Zero && current == progman))
+            {
+                return true;
+            }
+
+            current = NativeMethods.GetParent(current);
+        }
+
+        return false;
+    }
+
+    private static bool IsExplorerOwnedWindow(nint hwnd)
+    {
+        _ = NativeMethods.GetWindowThreadProcessId(hwnd, out var processId);
+        if (processId == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var process = Process.GetProcessById(unchecked((int)processId));
+            return process.ProcessName.Equals(
+                "explorer",
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            // Unknown ownership is unsafe for click interception.
+            return false;
+        }
+    }
+
+    private static bool IsExpectedDesktopSurface(
+        nint target,
+        string className,
+        nint expectedWorkerW)
+    {
+        if (className.Equals("WorkerW", StringComparison.Ordinal))
+        {
+            return target == expectedWorkerW;
+        }
+
+        if (!className.Equals("Progman", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (target == NativeMethods.FindWindow("Progman", null))
+        {
+            return true;
+        }
+
+        return expectedWorkerW != nint.Zero &&
+               NativeMethods.GetParent(expectedWorkerW) == target;
+    }
+
     public void Dispose()
     {
         _capturingLeftButton = false;
+        _capturedPoint = default;
+        _capturedAtMilliseconds = 0;
 
         if (_hook != nint.Zero)
         {

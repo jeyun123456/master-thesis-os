@@ -5,6 +5,9 @@ namespace WallpaperHostPoc;
 
 public partial class MainWindow
 {
+    private static readonly TimeSpan MaximumClickReplayAge =
+        TimeSpan.FromSeconds(2);
+
     private DesktopClickInterceptor? _clickToInteract;
     private bool _clickToInteractEnabled;
     private int _clickTargetLeft;
@@ -110,17 +113,22 @@ public partial class MainWindow
             return false;
         }
 
-        return DesktopClickInterceptor.IsEligibleDesktopPoint(point, _hostHwnd);
+        return DesktopClickInterceptor.IsEligibleDesktopPoint(
+            point,
+            _hostHwnd,
+            _wallpaperAttachment.WorkerWindowHandle);
     }
 
-    private void OnWallpaperClickCaptured(NativeMethods.POINT point)
+    private void OnWallpaperClickCaptured(
+        DesktopClickInterceptor.CapturedClick capturedClick)
     {
         Dispatcher.BeginInvoke(
             DispatcherPriority.Input,
-            new Action(() => HandleWallpaperClickCaptured(point)));
+            new Action(() => HandleWallpaperClickCaptured(capturedClick)));
     }
 
-    private void HandleWallpaperClickCaptured(NativeMethods.POINT point)
+    private void HandleWallpaperClickCaptured(
+        DesktopClickInterceptor.CapturedClick capturedClick)
     {
         if (!_clickToInteractEnabled ||
             _wallpaperAttachment?.IsAttached != true)
@@ -128,19 +136,19 @@ public partial class MainWindow
             return;
         }
 
-        ToggleInteractiveMode();
-        _trayIcon?.RefreshState();
-
-        if (_wallpaperAttachment?.IsAttached != false)
+        if (!EnterInteractiveMode())
         {
             AppLog.Warn(
                 $"Click-to-interact could not enter Interactive mode for " +
-                $"desktop click at {point.X},{point.Y}.");
+                $"desktop click at {capturedClick.Point.X},{capturedClick.Point.Y}.");
             return;
         }
 
+        _trayIcon?.RefreshState();
+
         AppLog.Info(
-            $"Click-to-interact opened Master Thesis OS from {point.X},{point.Y}.");
+            $"Click-to-interact opened Master Thesis OS from " +
+            $"{capturedClick.Point.X},{capturedClick.Point.Y}.");
 
         // Let WPF/WebView2 complete the already-existing native activation path,
         // then replay only the captured mouse click. No keyboard input is synthesized.
@@ -148,7 +156,11 @@ public partial class MainWindow
             DispatcherPriority.ContextIdle,
             new Action(() =>
             {
-                if (DesktopClickInterceptor.ReplayLeftClick(out var replayStatus))
+                if (DesktopClickInterceptor.ReplayLeftClick(
+                        capturedClick,
+                        _hostHwnd,
+                        MaximumClickReplayAge,
+                        out var replayStatus))
                 {
                     AppLog.Info(replayStatus);
                 }
