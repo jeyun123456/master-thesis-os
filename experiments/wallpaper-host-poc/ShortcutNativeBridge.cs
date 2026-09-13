@@ -2,6 +2,7 @@ using Microsoft.Web.WebView2.Core;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.IO;
 using System.Text.Json;
 using Forms = System.Windows.Forms;
 
@@ -11,12 +12,6 @@ public partial class MainWindow
 {
     private const string ShortcutBridgeChannel = "master-thesis-os.shortcuts.v1";
     private bool _shortcutBridgeInstalled;
-
-    protected override void OnContentRendered(EventArgs e)
-    {
-        base.OnContentRendered(e);
-        _ = InstallShortcutNativeBridgeAsync();
-    }
 
     private async Task InstallShortcutNativeBridgeAsync()
     {

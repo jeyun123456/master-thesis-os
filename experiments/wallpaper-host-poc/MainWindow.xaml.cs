@@ -118,6 +118,8 @@ public partial class MainWindow : Window
             Browser.CoreWebView2.Settings.IsStatusBarEnabled = true;
             Browser.CoreWebView2.Settings.IsZoomControlEnabled = true;
 
+            await InstallShortcutNativeBridgeAsync();
+
             Browser.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
 
             Browser.CoreWebView2.Navigate(ProductionUri.AbsoluteUri);
