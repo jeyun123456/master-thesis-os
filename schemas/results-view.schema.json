@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://master-thesis-os.local/schemas/results-view.schema.json",
+  "title": "Master Thesis OS Results View",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "items"],
+  "properties": {
+    "version": { "const": 1 },
+    "items": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/metric" },
+          { "$ref": "#/$defs/table" },
+          { "$ref": "#/$defs/chart" }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "base": {
+      "type": "object",
+      "required": ["type", "datasetId"],
+      "properties": {
+        "type": { "type": "string" },
+        "datasetId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "metric": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "datasetId", "row"],
+          "properties": {
+            "type": { "const": "metric" },
+            "datasetId": { "type": "string", "minLength": 1 },
+            "row": { "type": "integer", "minimum": 0 },
+            "label": { "type": "string" },
+            "prefix": { "type": "string" },
+            "suffix": { "type": "string" },
+            "decimals": { "type": "integer", "minimum": 0, "maximum": 12 }
+          }
+        }
+      ]
+    },
+    "table": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "datasetId", "transpose"],
+          "properties": {
+            "type": { "const": "table" },
+            "datasetId": { "type": "string", "minLength": 1 },
+            "transpose": { "type": "boolean" }
+          }
+        }
+      ]
+    },
+    "chart": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "datasetId", "transpose", "chartType", "xColumn", "seriesColumns"],
+          "properties": {
+            "type": { "const": "chart" },
+            "datasetId": { "type": "string", "minLength": 1 },
+            "transpose": { "type": "boolean" },
+            "chartType": { "enum": ["line", "bar", "scatter"] },
+            "xColumn": { "type": "integer", "minimum": -1 },
+            "seriesColumns": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 0 },
+              "uniqueItems": true
+            }
+          }
+        }
+      ]
+    }
+  }
+}
