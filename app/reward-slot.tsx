@@ -177,7 +177,7 @@ export function RewardSlotPanel({ tasks, projectTitle, onNotice }: RewardSlotPan
             {tasks.map((task, index) => {
               const completed = state.completedTasks.includes(task);
               return (
-                <div className={`numbered-item ${completed ? styles.completedTask : ''}`} key={`${index}-${task}`}>
+                <div className={`numbered-item ${styles.rewardTask} ${completed ? styles.completedTask : ''}`} key={`${index}-${task}`}>
                   <span>{completed ? '✓' : index + 1}</span>
                   <p>{task}</p>
                   <button
