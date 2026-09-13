@@ -12,7 +12,7 @@ public partial class MainWindow
     private int _clickTargetRight;
     private int _clickTargetBottom;
 
-    private void InitializePhase7()
+    private void InitializeClickToInteract()
     {
         _clickToInteractEnabled = WallpaperSettings.Load().ClickToInteractEnabled;
         RefreshClickToInteractTargetBounds();
@@ -31,10 +31,10 @@ public partial class MainWindow
         }
 
         AppLog.Info(
-            $"Phase 7 click-to-interact initialized. Enabled={_clickToInteractEnabled}.");
+            $"Click-to-interact initialized. Enabled={_clickToInteractEnabled}.");
     }
 
-    private void DisposePhase7()
+    private void DisposeClickToInteract()
     {
         _clickToInteract?.Dispose();
         _clickToInteract = null;

@@ -72,8 +72,8 @@ $fileStream = [System.IO.File]::Open($OutputPath, [System.IO.FileMode]::Create)
 $writer = New-Object -TypeName System.IO.BinaryWriter -ArgumentList $fileStream
 
 try {
-    $writer.Write([UInt16]0) # reserved
-    $writer.Write([UInt16]1) # icon
+    $writer.Write([UInt16]0)
+    $writer.Write([UInt16]1)
     $writer.Write([UInt16]$sizes.Count)
 
     $offset = 6 + (16 * $sizes.Count)

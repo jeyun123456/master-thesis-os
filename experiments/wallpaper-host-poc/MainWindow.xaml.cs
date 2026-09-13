@@ -2,6 +2,7 @@ using Microsoft.Web.WebView2.Core;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using MessageBox = System.Windows.MessageBox;
 
 namespace WallpaperHostPoc;
 
@@ -13,8 +14,6 @@ public partial class MainWindow : Window
         new("https://master-thesis-os.vercel.app/");
 
     private readonly bool _wallpaperRequested;
-    private readonly bool _phase2Only;
-
     private WallpaperAttachment? _wallpaperAttachment;
     private HwndSource? _hwndSource;
     private nint _hostHwnd;
@@ -30,11 +29,6 @@ public partial class MainWindow : Window
         _wallpaperRequested = args.Any(arg => string.Equals(
             arg,
             "--wallpaper",
-            StringComparison.OrdinalIgnoreCase));
-
-        _phase2Only = args.Any(arg => string.Equals(
-            arg,
-            "--phase2-only",
             StringComparison.OrdinalIgnoreCase));
 
         if (_wallpaperRequested)
@@ -79,9 +73,7 @@ public partial class MainWindow : Window
 
         if (_wallpaperAttachment.TryAttach(out var status))
         {
-            Title = _phase2Only
-                ? "Master Thesis OS - Phase 2 Wallpaper"
-                : "Master Thesis OS - Wallpaper";
+            Title = "Master Thesis OS - Wallpaper";
 
             if (!_hotkeyRegistered)
             {
@@ -118,17 +110,19 @@ public partial class MainWindow : Window
         {
             await Browser.EnsureCoreWebView2Async();
 
-            // Preserve the native Windows/WebView2 input path. No DOM focus bridge
-            // and no controller-level focus forcing are installed.
+            // Preserve the native Windows/WebView2 input path.
+            // No DOM focus bridge is installed. The normal top-level WebView2 path
+            // is the supported native Korean/Japanese IME path.
             Browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             Browser.CoreWebView2.Settings.AreDevToolsEnabled = true;
             Browser.CoreWebView2.Settings.IsStatusBarEnabled = true;
             Browser.CoreWebView2.Settings.IsZoomControlEnabled = true;
 
             Browser.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
+
             Browser.CoreWebView2.Navigate(ProductionUri.AbsoluteUri);
 
-            // Only the ordinary Phase 1 window gets startup focus.
+            // Only the ordinary top-level window gets startup focus.
             if (!_wallpaperRequested)
             {
                 Browser.Focus();
@@ -149,7 +143,7 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(
                 ex.ToString(),
-                "Wallpaper Host PoC startup failed",
+                "Master Thesis OS Wallpaper Companion startup failed",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
 
@@ -192,9 +186,9 @@ public partial class MainWindow : Window
                 return;
             }
 
-            // Interactive mode intentionally behaves like the already-verified
-            // Phase 1 top-level WebView2 window. Do not call MoveFocus or install
-            // DOM focus probes: repeatedly forcing focus breaks IME composition.
+            // Interactive mode uses the normal top-level WebView2 input path.
+            // Do not call MoveFocus or install DOM focus probes: repeatedly
+            // forcing focus breaks IME composition.
             _ = NativeMethods.SetForegroundWindow(_hostHwnd);
             _ = Activate();
             _ = Browser.Focus();
@@ -220,9 +214,7 @@ public partial class MainWindow : Window
             _ = NativeMethods.SetForegroundWindow(progman);
         }
 
-        Title = _phase2Only
-            ? "Master Thesis OS - Phase 2 Wallpaper"
-            : "Master Thesis OS - Wallpaper";
+        Title = "Master Thesis OS - Wallpaper";
         _trayIcon?.RefreshState();
     }
 
@@ -248,12 +240,10 @@ public partial class MainWindow : Window
 
         if (!_wallpaperRequested)
         {
-            Title = "Master Thesis OS - Phase 1";
+            Title = "Master Thesis OS";
             return;
         }
 
-        Title = _phase2Only
-            ? "Master Thesis OS - Phase 2 Wallpaper"
-            : "Master Thesis OS - Wallpaper";
+        Title = "Master Thesis OS - Wallpaper";
     }
 }

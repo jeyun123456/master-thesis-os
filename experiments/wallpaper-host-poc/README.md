@@ -1,18 +1,16 @@
 # Master Thesis OS Wallpaper Companion
 
-Windows 10/11 companion that keeps the production Master Thesis OS on the desktop while preserving native Windows/WebView2 keyboard input and Korean/Japanese IME behavior.
-
-Current version: **0.6.1**
-
-Production page:
+Windows 10/11 companion for the production Master Thesis OS page:
 
 `https://master-thesis-os.vercel.app/`
 
-Source:
+Current version: **0.6.1**
 
-`master-thesis-os/experiments/wallpaper-host-poc/`
+The companion uses one WPF host and one WebView2 instance. In Wallpaper state, only that host HWND is attached to the selected WorkerW, behind normal desktop icons. In Open state, the same host is a normal top-level window so Windows, WebView2, and Korean/Japanese native IME input continue to work normally.
 
-## Install / update
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the runtime boundaries and maintainer invariants.
+
+## Install or update
 
 From this directory:
 
@@ -24,194 +22,83 @@ Installed executable:
 
 `%LOCALAPPDATA%\MasterThesisOSWallpaper\app\MasterThesisOSWallpaper.exe`
 
-The installer publishes the Release build, replaces only the installed `app` directory, creates Start Menu shortcuts, preserves settings/logs, migrates an existing startup entry, and launches the companion.
+The installer publishes the Release build, replaces only the app directory, preserves `settings.json` and `logs\`, updates an existing startup entry, and creates the Start Menu shortcuts. Run the same command again to update.
 
-Optional desktop shortcut:
+Use `-NoLaunch` to install without starting the companion:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Install-WallpaperHost.ps1 -NoLaunch
+```
+
+Use `-DesktopShortcut` when a Desktop shortcut is wanted:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\Install-WallpaperHost.ps1 -DesktopShortcut
 ```
 
-The same install command can be run again to update the installed copy.
+The default installation does not create a Desktop shortcut. An existing Desktop shortcut is preserved and refreshed during later updates.
 
-## Normal use
+## Start Menu and tray
 
-The companion has two internal states:
+The current-user Start Menu folder `Master Thesis OS` contains:
 
-- **Wallpaper**: Master Thesis OS sits behind normal desktop icons.
-- **Open**: the same WebView2 temporarily becomes a foreground top-level window for normal mouse/keyboard/IME input.
+- `Master Thesis OS Wallpaper`
+- `Uninstall Master Thesis OS Wallpaper`
 
-By default, click-to-interact is enabled. Clicking eligible empty desktop space on the selected display opens Master Thesis OS and replays that one left click into the WebView, so normal use feels like interacting directly with the wallpaper.
+The tray menu provides status, Open/Wallpaper transitions, Refresh, Display, `Click wallpaper to open`, `Return to wallpaper when inactive`, `Start with Windows`, data/app/log folders, About, and Exit.
 
-You can also open it by:
+`Click wallpaper to open` is enabled by default for new settings. It is a mouse-only convenience: an eligible empty desktop click on the selected display opens the companion and replays exactly that one left click into WebView2. Desktop icons, the taskbar, other application windows, and non-selected displays are not intercepted. If Explorer icon hit testing cannot be completed, the click is left untouched (fail-closed).
 
-- double-clicking the tray icon;
-- tray `Open Master Thesis OS`;
-- `Ctrl + Alt + W`;
-- launching the app again while it is already running.
+Manual fallback paths remain available through the tray, `Ctrl + Alt + W`, double-clicking the tray icon, or launching the installed executable again.
 
-Return it to the wallpaper by:
+## States and input
 
-- pressing `Esc`;
-- tray `Send to Wallpaper`;
-- `Ctrl + Alt + W`;
-- switching to another application and waiting about 1.5 seconds when automatic return is enabled.
+Return from Open to Wallpaper with `Esc`, the tray, or `Ctrl + Alt + W`. When auto-return is enabled, focus loss returns to Wallpaper after about 1.5 seconds; returning focus to the companion during that delay cancels the return. Windows IME helper windows are deferred so candidate/composition UI is not treated as a normal application switch.
 
-## Click-to-interact
+Keyboard input always follows the normal Windows/WPF/WebView2 path. This project does not synthesize keyboard input, forward keyboard through RawInput, post keyboard messages, implement a custom composer, or force browser/DOM focus in a loop. The only permitted synthetic input is the one captured mouse left-click replay described above.
 
-Tray `Click wallpaper to open` is **on by default** for new/default settings.
-
-When enabled, the companion installs a low-level **mouse-only** hook. A left click is intercepted only when all of these are true:
-
-1. the companion is currently in Wallpaper state;
-2. the pointer is inside the selected display;
-3. the actual click target is the Windows desktop surface rather than another application/taskbar;
-4. Explorer's desktop ListView hit test says the pointer is not on a desktop icon.
-
-For an eligible empty-desktop click, the original left-button down/up is suppressed, the existing host HWND enters the normal Open state, and **one mouse left-click only** is replayed so the first click can reach WebView2.
-
-Safety boundary:
-
-- no keyboard `SendInput`;
-- no RawInput keyboard forwarding;
-- no synthetic `WM_KEYDOWN` / `WM_KEYUP`;
-- no custom Hangul/Japanese composition;
-- Korean/Japanese IME continues through the normal top-level WebView2 path;
-- the one-shot mouse replay is ignored by the hook itself using the injected-event flag.
-
-If desktop-icon hit testing cannot be performed safely, the feature fails closed and leaves the click with Explorer instead of risking an icon hijack.
-
-Turn `Click wallpaper to open` off at any time to use the manual fallback path: tray open, tray double-click, second launch, or `Ctrl + Alt + W`. An explicit saved `false` remains respected across upgrades.
-
-## Tray menu
-
-The notification-area menu contains:
-
-- `Status: Wallpaper` / `Status: Open`
-- `Open Master Thesis OS`
-- `Send to Wallpaper`
-- `Refresh`
-- `Display`
-- `Return to wallpaper when inactive`
-- `Click wallpaper to open`
-- `Start with Windows`
-- `Folders`
-  - `Open Data Folder`
-  - `Open App Folder`
-  - `Open Logs Folder`
-- `About... v0.6.1`
-- `Exit`
+Explorer's desktop icon windows are never re-parented, hidden, or resized. The WorkerW and desktop ListView are used only for shell discovery and safe icon hit-testing.
 
 ## Display selection
 
-Only one process and one WebView2 instance are used, even with multiple monitors.
+The tray `Display` submenu selects exactly one connected display. The Windows device name, including negative-coordinate displays such as `\\.\DISPLAY2`, is stored in settings and restored on restart. If it is unavailable, the primary display is selected. Wallpaper, Open state, and click-to-interact all use the same target display.
 
-Tray `Display` chooses exactly one target display. The selected Windows `\\.\DISPLAYn` is remembered across restarts.
+## Data, logs, and startup
 
-- Wallpaper appears only on the selected display.
-- Open state uses the same display.
-- Click-to-interact is restricted to the selected display.
-- Negative/left-side monitor coordinates are supported.
-- If the selected display disappears, the primary display is used as fallback.
-
-## Start with Windows
-
-Tray `Start with Windows` writes a current-user entry only:
-
-`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
-
-When an installed copy exists, the registry entry points to:
-
-`%LOCALAPPDATA%\MasterThesisOSWallpaper\app\MasterThesisOSWallpaper.exe --wallpaper`
-
-## Data and logs
-
-Persistent data lives outside the replaceable app directory:
+Persistent data is stored outside the replaceable app directory:
 
 `%LOCALAPPDATA%\MasterThesisOSWallpaper\`
 
-Important files/directories:
+- `settings.json` stores the target display and user preferences;
+- `logs\` stores runtime logs;
+- `app\` stores installed binaries.
 
-- `settings.json` — selected display and interaction preferences
-- `logs\` — runtime logs
-- `app\` — installed binaries
+An absent `ClickToInteractEnabled` setting uses the current default `true`; an explicit `false` remains false across updates. The current-user startup entry points to the installed executable with `--wallpaper`, and its existing enabled state is preserved during updates.
 
-Reinstalling/updating preserves settings and logs.
+Only one companion process can run. A second launch activates the existing instance instead of creating another WorkerW host or WebView2 instance. The runtime periodically checks the WorkerW relationship and re-attaches only the companion HWND after shell recovery.
 
-For click-to-interact migration:
+## Build and publish
 
-- missing `ClickToInteractEnabled` uses the new default `true`;
-- explicit `true` stays enabled;
-- explicit `false` stays disabled.
-
-## Single instance and recovery
-
-Only one companion process can run per user. A second launch signals the existing instance instead of creating another WorkerW/WebView2 host.
-
-While in Wallpaper state, the companion periodically verifies its WorkerW attachment. If Explorer recreates WorkerW, only the companion HWND is re-attached; Explorer desktop/icon windows are never re-parented.
-
-## Native input policy
-
-The stable keyboard/IME path remains the normal Windows/WebView2 path:
-
-- native keyboard input
-- native Korean/Japanese IME composition
-- no RawInput keyboard forwarding
-- no keyboard `SendInput`
-- no synthetic keyboard messages
-- no custom Hangul/Japanese composer
-- no forced DOM/native focus bridge
-
-Click-to-interact uses `SendInput` only for the single captured **mouse left-click replay** after Open state has already been established.
-
-`NativeImeFocusBridge.cs` remains in the repository only as historical reference and is excluded from the executable.
-
-## Publish / development
-
-Publish:
+Requirements: Windows 10/11 x64, .NET 8 SDK/Desktop Runtime, and Microsoft Edge WebView2 Runtime.
 
 ```powershell
+dotnet restore
+dotnet build -c Debug
 powershell -ExecutionPolicy Bypass -File .\scripts\Publish-Release.ps1
 ```
 
-Development build:
+Release output:
 
-```powershell
-cd master-thesis-os\experiments\wallpaper-host-poc
-dotnet restore
-dotnet build -c Debug
-dotnet run --project .\WallpaperHostPoc.csproj -- --wallpaper
-```
+`artifacts\publish\win-x64\MasterThesisOSWallpaper.exe`
 
-Requirements:
-
-- Windows 10/11 x64
-- .NET 8 Windows Desktop Runtime
-- Microsoft Edge WebView2 Runtime
-
-## v0.6.1 validation
-
-After updating:
-
-1. a new/default settings object should report click-to-interact enabled;
-2. an existing saved `ClickToInteractEnabled: false` should remain disabled;
-3. tray should show `Click wallpaper to open` without experimental wording;
-4. empty desktop on the selected display should open Master Thesis OS and deliver the first click;
-5. desktop icons, taskbar, another application and non-selected displays must keep their normal click behavior;
-6. Korean/Japanese IME, `Esc`, focus-loss auto-return and `Ctrl+Alt+W` must remain unchanged;
-7. turning `Click wallpaper to open` off should dispose the mouse hook and leave the manual fallback paths working;
-8. restart should preserve the explicit user choice.
+The publish script generates the application icon before publishing.
 
 ## Uninstall
 
-Use the Start Menu uninstall shortcut, or run:
+Use the Start Menu uninstall shortcut or run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\Uninstall-WallpaperHost.ps1
 ```
 
-By default settings/logs are preserved. Use `-PurgeData` to remove them too.
-
-## Architecture boundary
-
-This is intentionally not a general-purpose Wallpaper Engine. Explorer's desktop icon windows are never re-parented. The temporary Open state remains the mechanism that gives WebView2 normal foreground focus and reliable native IME; click-to-interact makes entry into that state feel like direct wallpaper interaction while keeping the stable manual fallback available.
+This removes the app, shortcuts, and startup entry while preserving settings and logs. Add `-PurgeData` only when those data files should also be removed.

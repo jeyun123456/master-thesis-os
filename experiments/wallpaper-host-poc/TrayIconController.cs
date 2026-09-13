@@ -100,9 +100,6 @@ internal sealed class TrayIconController : IDisposable
         logsItem.Click += (_, _) => OpenFolder(AppLog.OpenLogFolder, "logs folder");
         foldersItem.DropDownItems.Add(logsItem);
 
-        var aboutItem = new Forms.ToolStripMenuItem($"About...  v{BuildInfo.Version}");
-        aboutItem.Click += (_, _) => ShowAbout();
-
         var exitItem = new Forms.ToolStripMenuItem("Exit");
         exitItem.Click += (_, _) => _exit();
 
@@ -118,6 +115,8 @@ internal sealed class TrayIconController : IDisposable
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(_startupItem);
         menu.Items.Add(foldersItem);
+        var aboutItem = new Forms.ToolStripMenuItem($"About...  v{BuildInfo.Version}");
+        aboutItem.Click += (_, _) => ShowAbout();
         menu.Items.Add(aboutItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(exitItem);
@@ -175,13 +174,6 @@ internal sealed class TrayIconController : IDisposable
         }
     }
 
-    internal void ShowInfo(string title, string text, int timeoutMilliseconds = 2000)
-    {
-        _notifyIcon.BalloonTipTitle = title;
-        _notifyIcon.BalloonTipText = text;
-        _notifyIcon.ShowBalloonTip(timeoutMilliseconds);
-    }
-
     private void RefreshDisplayMenu()
     {
         _displayItem.DropDownItems.Clear();
@@ -235,6 +227,13 @@ internal sealed class TrayIconController : IDisposable
                 Enabled = false,
             });
         }
+    }
+
+    internal void ShowInfo(string title, string text, int timeoutMilliseconds = 2000)
+    {
+        _notifyIcon.BalloonTipTitle = title;
+        _notifyIcon.BalloonTipText = text;
+        _notifyIcon.ShowBalloonTip(timeoutMilliseconds);
     }
 
     private void ToggleAutoReturn()

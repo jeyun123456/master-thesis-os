@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Windows.Input;
 using System.Windows.Threading;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace WallpaperHostPoc;
 
@@ -8,39 +9,39 @@ public partial class MainWindow
 {
     private static readonly TimeSpan AutoReturnDelay = TimeSpan.FromMilliseconds(1500);
 
-    private DispatcherTimer? _phase6AutoReturnTimer;
+    private DispatcherTimer? _autoReturnTimer;
     private bool _autoReturnToWallpaper = true;
 
-    private void InitializePhase6()
+    private void InitializeAutoReturn()
     {
         _autoReturnToWallpaper = WallpaperSettings.Load().AutoReturnToWallpaper;
 
-        _phase6AutoReturnTimer = new DispatcherTimer(
+        _autoReturnTimer = new DispatcherTimer(
             AutoReturnDelay,
             DispatcherPriority.Background,
-            Phase6AutoReturnTimer_Tick,
+            AutoReturnTimer_Tick,
             Dispatcher)
         {
             IsEnabled = false,
         };
 
-        Activated += Phase6_Activated;
-        Deactivated += Phase6_Deactivated;
-        PreviewKeyDown += Phase6_PreviewKeyDown;
+        Activated += AutoReturn_Activated;
+        Deactivated += AutoReturn_Deactivated;
+        PreviewKeyDown += AutoReturn_PreviewKeyDown;
 
         AppLog.Info(
-            $"Phase 6 interaction UX initialized. AutoReturn={_autoReturnToWallpaper}; " +
+            $"Auto-return initialized. Enabled={_autoReturnToWallpaper}; " +
             $"installedCopy={InstallLayout.IsRunningInstalledCopy}; version={BuildInfo.Version}.");
     }
 
-    private void DisposePhase6()
+    private void DisposeAutoReturn()
     {
-        Activated -= Phase6_Activated;
-        Deactivated -= Phase6_Deactivated;
-        PreviewKeyDown -= Phase6_PreviewKeyDown;
+        Activated -= AutoReturn_Activated;
+        Deactivated -= AutoReturn_Deactivated;
+        PreviewKeyDown -= AutoReturn_PreviewKeyDown;
 
-        _phase6AutoReturnTimer?.Stop();
-        _phase6AutoReturnTimer = null;
+        _autoReturnTimer?.Stop();
+        _autoReturnTimer = null;
     }
 
     private bool IsAutoReturnToWallpaperEnabled() => _autoReturnToWallpaper;
@@ -52,18 +53,18 @@ public partial class MainWindow
 
         if (!enabled)
         {
-            _phase6AutoReturnTimer?.Stop();
+            _autoReturnTimer?.Stop();
         }
 
         AppLog.Info($"Auto-return to Wallpaper set to {enabled}.");
     }
 
-    private void Phase6_Activated(object? sender, EventArgs e)
+    private void AutoReturn_Activated(object? sender, EventArgs e)
     {
-        _phase6AutoReturnTimer?.Stop();
+        _autoReturnTimer?.Stop();
     }
 
-    private void Phase6_Deactivated(object? sender, EventArgs e)
+    private void AutoReturn_Deactivated(object? sender, EventArgs e)
     {
         if (!_autoReturnToWallpaper ||
             _wallpaperAttachment is null ||
@@ -72,11 +73,11 @@ public partial class MainWindow
             return;
         }
 
-        _phase6AutoReturnTimer?.Stop();
-        _phase6AutoReturnTimer?.Start();
+        _autoReturnTimer?.Stop();
+        _autoReturnTimer?.Start();
     }
 
-    private void Phase6_PreviewKeyDown(object sender, KeyEventArgs e)
+    private void AutoReturn_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key != Key.Escape ||
             _wallpaperAttachment is null ||
@@ -86,33 +87,33 @@ public partial class MainWindow
         }
 
         e.Handled = true;
-        _phase6AutoReturnTimer?.Stop();
+        _autoReturnTimer?.Stop();
 
         ToggleInteractiveMode();
         _trayIcon?.RefreshState();
         AppLog.Info("Escape returned Interactive mode to Wallpaper mode.");
     }
 
-    private void Phase6AutoReturnTimer_Tick(object? sender, EventArgs e)
+    private void AutoReturnTimer_Tick(object? sender, EventArgs e)
     {
         if (!_autoReturnToWallpaper ||
             _wallpaperAttachment is null ||
             _wallpaperAttachment.IsAttached)
         {
-            _phase6AutoReturnTimer?.Stop();
+            _autoReturnTimer?.Stop();
             return;
         }
 
         if (IsActive)
         {
-            _phase6AutoReturnTimer?.Stop();
+            _autoReturnTimer?.Stop();
             return;
         }
 
         var foregroundWindow = NativeMethods.GetForegroundWindow();
         if (foregroundWindow == _hostHwnd)
         {
-            _phase6AutoReturnTimer?.Stop();
+            _autoReturnTimer?.Stop();
             return;
         }
 
@@ -121,7 +122,7 @@ public partial class MainWindow
             return;
         }
 
-        _phase6AutoReturnTimer?.Stop();
+        _autoReturnTimer?.Stop();
         ToggleInteractiveMode();
         _trayIcon?.RefreshState();
         AppLog.Info("Interactive mode automatically returned to Wallpaper after focus moved away.");

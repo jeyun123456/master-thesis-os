@@ -6,59 +6,59 @@ namespace WallpaperHostPoc;
 public partial class MainWindow
 {
     private TrayIconController? _trayIcon;
-    private HwndSource? _phase4HwndSource;
-    private bool _phase4Initialized;
+    private HwndSource? _trayHwndSource;
+    private bool _trayInitialized;
 
     protected override void OnContentRendered(EventArgs e)
     {
         base.OnContentRendered(e);
 
-        if (!_wallpaperRequested || _phase4Initialized)
+        if (!_wallpaperRequested || _trayInitialized)
         {
             return;
         }
 
-        _phase4Initialized = true;
+        _trayInitialized = true;
         Icon = BrandIcon.CreateImageSource();
 
         var hwnd = new WindowInteropHelper(this).Handle;
-        _phase4HwndSource = HwndSource.FromHwnd(hwnd);
-        _phase4HwndSource?.AddHook(Phase4WndProc);
+        _trayHwndSource = HwndSource.FromHwnd(hwnd);
+        _trayHwndSource?.AddHook(TrayWndProc);
 
         _trayIcon = new TrayIconController(
             isWallpaperMode: () => _wallpaperAttachment?.IsAttached == true,
-            enterInteractiveMode: () => Phase4RunOnUiThread(EnterInteractiveFromTray),
-            returnToWallpaperMode: () => Phase4RunOnUiThread(ReturnToWallpaperFromTray),
-            refresh: () => Phase4RunOnUiThread(RefreshWebView),
+            enterInteractiveMode: () => RunOnUiThread(EnterInteractiveFromTray),
+            returnToWallpaperMode: () => RunOnUiThread(ReturnToWallpaperFromTray),
+            refresh: () => RunOnUiThread(RefreshWebView),
             getDisplays: DisplayManager.GetDisplays,
             getSelectedDisplayDeviceName: GetSelectedDisplayDeviceName,
-            selectDisplay: deviceName => Phase4RunOnUiThread(
+            selectDisplay: deviceName => RunOnUiThread(
                 () => SelectDisplayFromTray(deviceName)),
             isAutoReturnEnabled: IsAutoReturnToWallpaperEnabled,
-            setAutoReturnEnabled: enabled => Phase4RunOnUiThread(
+            setAutoReturnEnabled: enabled => RunOnUiThread(
                 () => SetAutoReturnToWallpaperEnabled(enabled)),
             isClickToInteractEnabled: IsClickToInteractEnabled,
-            setClickToInteractEnabled: enabled => Phase4RunOnUiThread(
+            setClickToInteractEnabled: enabled => RunOnUiThread(
                 () => SetClickToInteractEnabled(enabled)),
             isStartupEnabled: StartupManager.IsEnabled,
             setStartupEnabled: StartupManager.SetEnabled,
-            exit: () => Phase4RunOnUiThread(Close));
+            exit: () => RunOnUiThread(Close));
 
-        InitializePhase5();
-        InitializePhase6();
-        InitializePhase7();
+        InitializeRuntimeServices();
+        InitializeAutoReturn();
+        InitializeClickToInteract();
     }
 
     protected override void OnClosed(EventArgs e)
     {
-        DisposePhase7();
-        DisposePhase6();
-        DisposePhase5();
+        DisposeClickToInteract();
+        DisposeAutoReturn();
+        DisposeRuntimeServices();
 
-        if (_phase4HwndSource is not null)
+        if (_trayHwndSource is not null)
         {
-            _phase4HwndSource.RemoveHook(Phase4WndProc);
-            _phase4HwndSource = null;
+            _trayHwndSource.RemoveHook(TrayWndProc);
+            _trayHwndSource = null;
         }
 
         _trayIcon?.Dispose();
@@ -67,7 +67,7 @@ public partial class MainWindow
         base.OnClosed(e);
     }
 
-    private nint Phase4WndProc(
+    private nint TrayWndProc(
         nint hwnd,
         int msg,
         nint wParam,
@@ -201,7 +201,7 @@ public partial class MainWindow
         _trayIcon?.RefreshState();
     }
 
-    private void Phase4RunOnUiThread(Action action)
+    private void RunOnUiThread(Action action)
     {
         if (Dispatcher.CheckAccess())
         {

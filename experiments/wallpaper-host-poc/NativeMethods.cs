@@ -33,7 +33,6 @@ internal static class NativeMethods
     internal const int WM_HOTKEY = 0x0312;
     internal const uint WM_LBUTTONDOWN = 0x0201;
     internal const uint WM_LBUTTONUP = 0x0202;
-
     internal const uint MOD_ALT = 0x0001;
     internal const uint MOD_CONTROL = 0x0002;
     internal const uint VK_W = 0x57;
@@ -62,13 +61,6 @@ internal static class NativeMethods
     internal delegate nint LowLevelMouseProc(int nCode, nint wParam, nint lParam);
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct POINT
-    {
-        internal int X;
-        internal int Y;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
     internal struct RECT
     {
         internal int Left;
@@ -78,6 +70,13 @@ internal static class NativeMethods
 
         internal int Width => Right - Left;
         internal int Height => Bottom - Top;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct POINT
+    {
+        internal int X;
+        internal int Y;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -172,12 +171,12 @@ internal static class NativeMethods
     internal static extern nint GetForegroundWindow();
 
     [DllImport("user32.dll")]
-    internal static extern nint WindowFromPoint(POINT point);
-
-    [DllImport("user32.dll")]
     internal static extern uint GetWindowThreadProcessId(
         nint hWnd,
         out uint lpdwProcessId);
+
+    [DllImport("user32.dll")]
+    internal static extern nint WindowFromPoint(POINT point);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -219,7 +218,7 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool IsWindow(nint hWnd);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool ScreenToClient(nint hWnd, ref POINT lpPoint);
 

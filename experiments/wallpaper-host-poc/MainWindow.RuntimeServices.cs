@@ -1,18 +1,19 @@
 using System.Windows;
 using System.Windows.Threading;
+using Application = System.Windows.Application;
 
 namespace WallpaperHostPoc;
 
 public partial class MainWindow
 {
-    private DispatcherTimer? _phase5RecoveryTimer;
-    private bool _phase5RecoveryInProgress;
-    private int _phase5RecoveryFailures;
+    private DispatcherTimer? _recoveryTimer;
+    private bool _recoveryInProgress;
+    private int _recoveryFailures;
 
-    private void InitializePhase5()
+    private void InitializeRuntimeServices()
     {
         AppLog.Initialize();
-        AppLog.Info("Phase 5 runtime services initialized.");
+        AppLog.Info("Runtime services initialized.");
 
         SingleInstanceGuard.StartActivationListener(() =>
         {
@@ -23,27 +24,27 @@ public partial class MainWindow
 
         if (Application.Current is not null)
         {
-            Application.Current.DispatcherUnhandledException += Phase5_DispatcherUnhandledException;
+            Application.Current.DispatcherUnhandledException += RuntimeServices_DispatcherUnhandledException;
         }
 
-        _phase5RecoveryTimer = new DispatcherTimer(
+        _recoveryTimer = new DispatcherTimer(
             TimeSpan.FromSeconds(5),
             DispatcherPriority.Background,
-            Phase5RecoveryTimer_Tick,
+            RecoveryTimer_Tick,
             Dispatcher);
-        _phase5RecoveryTimer.Start();
+        _recoveryTimer.Start();
     }
 
-    private void DisposePhase5()
+    private void DisposeRuntimeServices()
     {
-        _phase5RecoveryTimer?.Stop();
-        _phase5RecoveryTimer = null;
+        _recoveryTimer?.Stop();
+        _recoveryTimer = null;
 
         SingleInstanceGuard.StopActivationListener();
 
         if (Application.Current is not null)
         {
-            Application.Current.DispatcherUnhandledException -= Phase5_DispatcherUnhandledException;
+            Application.Current.DispatcherUnhandledException -= RuntimeServices_DispatcherUnhandledException;
         }
 
         AppLog.Info("Wallpaper host is shutting down.");
@@ -70,9 +71,9 @@ public partial class MainWindow
         _trayIcon?.RefreshState();
     }
 
-    private void Phase5RecoveryTimer_Tick(object? sender, EventArgs e)
+    private void RecoveryTimer_Tick(object? sender, EventArgs e)
     {
-        if (_phase5RecoveryInProgress ||
+        if (_recoveryInProgress ||
             _wallpaperAttachment?.IsAttached != true)
         {
             return;
@@ -80,17 +81,17 @@ public partial class MainWindow
 
         if (_wallpaperAttachment.IsAttachmentHealthy(out _))
         {
-            _phase5RecoveryFailures = 0;
+            _recoveryFailures = 0;
             return;
         }
 
-        _phase5RecoveryInProgress = true;
+        _recoveryInProgress = true;
 
         try
         {
             if (_wallpaperAttachment.TryRecoverWallpaperAttachment(out var status))
             {
-                if (_phase5RecoveryFailures > 0)
+                if (_recoveryFailures > 0)
                 {
                     AppLog.Info(status);
                     _trayIcon?.ShowInfo(
@@ -98,31 +99,31 @@ public partial class MainWindow
                         "Desktop host recovered after Explorer/WorkerW changed.");
                 }
 
-                _phase5RecoveryFailures = 0;
+                _recoveryFailures = 0;
                 _trayIcon?.RefreshState();
                 return;
             }
 
-            _phase5RecoveryFailures++;
+            _recoveryFailures++;
 
             // Avoid a noisy log line every five seconds while Explorer is restarting.
-            if (_phase5RecoveryFailures == 1 || _phase5RecoveryFailures % 6 == 0)
+            if (_recoveryFailures == 1 || _recoveryFailures % 6 == 0)
             {
                 AppLog.Warn(status);
             }
         }
         catch (Exception ex)
         {
-            _phase5RecoveryFailures++;
+            _recoveryFailures++;
             AppLog.Error("Automatic wallpaper recovery failed unexpectedly.", ex);
         }
         finally
         {
-            _phase5RecoveryInProgress = false;
+            _recoveryInProgress = false;
         }
     }
 
-    private static void Phase5_DispatcherUnhandledException(
+    private static void RuntimeServices_DispatcherUnhandledException(
         object sender,
         DispatcherUnhandledExceptionEventArgs e)
     {

@@ -86,12 +86,8 @@ internal sealed class DesktopClickInterceptor : IDisposable
 
             // Fail closed if Explorer's ListView cannot be resolved. Preserving the
             // original desktop click is safer than risking an icon click being hijacked.
-            if (listView == nint.Zero)
-            {
-                return false;
-            }
-
-            return !IsListViewItemAtPoint(listView, screenPoint);
+            return listView != nint.Zero &&
+                   !IsListViewItemAtPoint(listView, screenPoint);
         }
 
         return className.Equals("WorkerW", StringComparison.Ordinal) ||

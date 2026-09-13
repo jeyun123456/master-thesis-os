@@ -101,7 +101,7 @@ internal sealed partial class WallpaperAttachment
         {
             status =
                 $"Could not convert {_targetDisplayDeviceName} screen coordinates " +
-                $"to WorkerW client coordinates. Win32 error: " +
+                "to WorkerW client coordinates. Win32 error: " +
                 $"{System.Runtime.InteropServices.Marshal.GetLastWin32Error()}.";
             return false;
         }
