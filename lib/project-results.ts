@@ -3,11 +3,13 @@ import type { RepositoryItem } from './repository';
 
 const RESULT_DIRECTORY_NAMES = new Set(['result', 'results', 'output', 'outputs', '결과', '산출물']);
 const DASHBOARD_FILES = new Set(['necessary_labour.json', 'decomposition.json', 'validation.json']);
+const STANDARD_RESULT_FILES = ['result.json', 'view.json', 'sources/scalar.csv', 'sources/matrix.xlsx'];
 
 export type ProjectResultInventory = {
   roots: string[];
   files: RepositoryItem[];
   totalFiles: number;
+  standardPath: string | null;
   dashboardPath: string | null;
 };
 
@@ -49,18 +51,20 @@ export function projectResultInventory(project: ResearchProject, tree: Repositor
   const matchingFiles = tree
     .filter((item) => item.type === 'blob' && sortedRoots.some((root) => item.path === root.slice(0, -1) || item.path.startsWith(root)))
     .sort((a, b) => compareText(a.path, b.path));
+  const standardPath = findStandardResultPath(matchingFiles);
   const dashboardPath = findDashboardPath(matchingFiles);
 
   return {
     roots: sortedRoots,
     files: matchingFiles.slice(0, Math.max(0, limit)),
     totalFiles: matchingFiles.length,
+    standardPath,
     dashboardPath,
   };
 }
 
 export function emptyProjectResultInventory(): ProjectResultInventory {
-  return { roots: [], files: [], totalFiles: 0, dashboardPath: null };
+  return { roots: [], files: [], totalFiles: 0, standardPath: null, dashboardPath: null };
 }
 
 function projectPathCandidates(project: ResearchProject, value: string, tree: RepositoryItem[]) {
@@ -86,6 +90,19 @@ function rootPath(candidate: string, tree: RepositoryItem[]) {
     return separator === -1 ? '' : `${normalized.slice(0, separator)}/`;
   }
   return normalized ? `${normalized}/` : '';
+}
+
+function findStandardResultPath(files: RepositoryItem[]) {
+  const paths = new Set(files.filter((item) => item.type === 'blob').map((item) => item.path));
+  return files
+    .filter((item) => item.type === 'blob' && item.path.endsWith('/result.json'))
+    .map((item) => item.path.slice(0, -'/result.json'.length))
+    .filter((root) => STANDARD_RESULT_FILES.every((relative) => paths.has(`${root}/${relative}`)))
+    .sort((left, right) => {
+      const leftStandard = basename(left).toLocaleLowerCase() === 'results' ? 0 : 1;
+      const rightStandard = basename(right).toLocaleLowerCase() === 'results' ? 0 : 1;
+      return leftStandard - rightStandard || depth(left) - depth(right) || compareText(left, right);
+    })[0] || null;
 }
 
 function findDashboardPath(files: RepositoryItem[]) {

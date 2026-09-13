@@ -15,6 +15,21 @@ ${markdown}`, 'projects/thesis/project.md');
 }
 
 describe('project result discovery', () => {
+  it('discovers the standard project result bundle', () => {
+    const tree = [
+      { path: 'projects/thesis/results/result.json', type: 'blob' },
+      { path: 'projects/thesis/results/view.json', type: 'blob' },
+      { path: 'projects/thesis/results/sources/scalar.csv', type: 'blob' },
+      { path: 'projects/thesis/results/sources/matrix.xlsx', type: 'blob' },
+    ] as RepositoryItem[];
+
+    const inventory = projectResultInventory(project(), tree);
+    expect(inventory.roots).toEqual(['projects/thesis/results/']);
+    expect(inventory.totalFiles).toBe(4);
+    expect(inventory.standardPath).toBe('projects/thesis/results');
+    expect(inventory.dashboardPath).toBeNull();
+  });
+
   it('discovers the project result convention and a valid dashboard', () => {
     const tree = [
       { path: 'projects/thesis/코드/결과/05.xlsx', type: 'blob' },
@@ -27,12 +42,14 @@ describe('project result discovery', () => {
     const inventory = projectResultInventory(project(), tree);
     expect(inventory.roots).toEqual(['projects/thesis/코드/결과/']);
     expect(inventory.totalFiles).toBe(4);
+    expect(inventory.standardPath).toBeNull();
     expect(inventory.dashboardPath).toBe('projects/thesis/코드/결과/dashboard');
   });
 
   it('uses an explicit result path even when the folder is not populated yet', () => {
     const inventory = projectResultInventory(project('## 결과 경로\n- projects/thesis/exports/'), []);
     expect(inventory.roots).toEqual(['projects/thesis/exports/']);
+    expect(inventory.standardPath).toBeNull();
     expect(inventory.dashboardPath).toBeNull();
   });
 
