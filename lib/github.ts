@@ -1,5 +1,39 @@
-const owner = process.env.GITHUB_OWNER;
-const repo = process.env.GITHUB_REPO;
+export function normalizeGithubRepository(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const input = value.trim();
+  if (!input || input.includes('\0')) return null;
+
+  let path = input;
+  if (/^https?:\/\//i.test(input)) {
+    try {
+      const url = new URL(input);
+      const host = url.hostname.toLowerCase();
+      if ((host !== 'github.com' && host !== 'www.github.com') || url.port || url.username || url.password || url.search || url.hash) return null;
+      path = url.pathname;
+    } catch {
+      return null;
+    }
+  } else if (/^(?:ssh:\/\/)?git@github\.com[:/]/i.test(input)) {
+    path = input.replace(/^(?:ssh:\/\/)?git@github\.com[:/]/i, '');
+  } else if (/^[a-z][a-z\d+.-]*:\/\//i.test(input)) {
+    return null;
+  }
+
+  path = path.replace(/^\/+|\/+$/g, '').replace(/\.git$/i, '').replace(/\/+$/, '');
+  const [ownerPart, repoPart, extra] = path.split('/');
+  if (extra !== undefined || !ownerPart || !repoPart) return null;
+  if (![ownerPart, repoPart].every((part) => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(part))) return null;
+  return `${ownerPart}/${repoPart}`;
+}
+
+export const normalizeGitHubRepository = normalizeGithubRepository;
+export const parseGitHubRepository = normalizeGithubRepository;
+export const parseRepositoryIdentifier = normalizeGithubRepository;
+
+const configuredRepository = normalizeGithubRepository(process.env.GITHUB_REPO)
+  ?? normalizeGithubRepository(process.env.GITHUB_REPOSITORY)
+  ?? normalizeGithubRepository([process.env.GITHUB_OWNER, process.env.GITHUB_REPO].filter(Boolean).join('/'));
+const [owner, repo] = configuredRepository?.split('/') ?? ['', ''];
 const branch = process.env.GITHUB_BRANCH || 'master';
 const token = process.env.GITHUB_TOKEN;
 const TREE_CACHE_TTL_MS = 60_000;

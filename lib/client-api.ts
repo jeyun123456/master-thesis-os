@@ -22,7 +22,7 @@ async function calendarRequest():Promise<CalendarApiResponse>{const response=awa
 export const dashboardApi = {
   tree: () => request<ApiEnvelope<RepositoryItem[]>>('/api/github/tree'),
   calendar: calendarRequest,
-  results: () => request<DashboardBundle>('/api/results'),
+  results: (resultsPath?: string) => request<DashboardBundle>(resultsPath ? `/api/results?path=${encodeURIComponent(resultsPath)}` : '/api/results'),
   commits: () => request<ApiEnvelope<GitHubCommitSummary[]>>('/api/github/commits'),
   researchStatus: () => request<ResearchStatusApiResponse>('/api/research/status'),
   projects: () => request<ApiEnvelope<ResearchProject[]>>('/api/research/projects'),

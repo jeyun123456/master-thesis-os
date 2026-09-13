@@ -34,6 +34,7 @@ export async function pickShortcutTarget(kind: 'app' | 'file' | 'folder'): Promi
 }
 
 export async function launchExternalShortcut(shortcut: Shortcut): Promise<{ ok: boolean; message: string }> {
+  const embeddedWebView = getWebView() !== null;
   const hostResponse = await requestHost('execute', { shortcut });
   if (hostResponse) {
     return hostResponse.ok
@@ -70,6 +71,10 @@ export async function launchExternalShortcut(shortcut: Shortcut): Promise<{ ok: 
       window.clearTimeout(timeout);
     }
   } catch (error) {
+    if (shortcut.type === 'web' && !embeddedWebView) {
+      window.open(shortcut.target, '_blank', 'noopener,noreferrer');
+      return { ok: true, message: '' };
+    }
     if (error instanceof DOMException && error.name === 'AbortError') return { ok: false, message: '로컬 실행 요청 시간이 초과됐어.' };
     return { ok: false, message: 'Windows Wallpaper Host 또는 로컬 브리지가 필요해.' };
   }

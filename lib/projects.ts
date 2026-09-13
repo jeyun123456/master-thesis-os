@@ -16,6 +16,7 @@ export type ResearchProject = {
   nextTasks: string[];
   blocked: string[];
   relatedPaths: string[];
+  resultPaths: string[];
 };
 
 export type RelatedFolderGroup = {
@@ -24,12 +25,13 @@ export type RelatedFolderGroup = {
   files: RepositoryItem[];
 };
 
-const sectionAliases: Record<string, keyof Pick<ResearchProject, 'currentFocus' | 'questions' | 'nextTasks' | 'blocked' | 'relatedPaths'>> = {
+const sectionAliases: Record<string, keyof Pick<ResearchProject, 'currentFocus' | 'questions' | 'nextTasks' | 'blocked' | 'relatedPaths' | 'resultPaths'>> = {
   '현재 집중': 'currentFocus',
   '연구 질문': 'questions',
   '다음 작업': 'nextTasks',
   '막힌 부분': 'blocked',
   '관련 경로': 'relatedPaths',
+  '결과 경로': 'resultPaths',
 };
 
 export function parseProjectManifest(markdown: string, sourcePath: string): ResearchProject {
@@ -51,6 +53,10 @@ export function parseProjectManifest(markdown: string, sourcePath: string): Rese
     nextTasks: sections.nextTasks,
     blocked: sections.blocked,
     relatedPaths: sections.relatedPaths.map(normalizeRelatedPath).filter(Boolean),
+    resultPaths: uniquePaths([
+      ...sections.resultPaths,
+      frontmatter.results_path || frontmatter.result_path || frontmatter.results || '',
+    ]),
   };
 }
 
@@ -65,9 +71,16 @@ export function projectRelatedFiles(project: ResearchProject, tree: RepositoryIt
   if (!project.relatedPaths.length) return [];
   const matched = tree.filter((item) => {
     if (item.type !== 'blob') return false;
-    return project.relatedPaths.some((path) => path.endsWith('/') ? item.path.startsWith(path) : item.path === path);
+    return project.relatedPaths.some((path) => relatedPathMatches(project, item.path, path));
   });
   return matched.sort((a, b) => compareText(a.path, b.path)).slice(0, Math.max(0, limit));
+}
+
+function relatedPathMatches(project: ResearchProject, itemPath: string, relatedPath: string) {
+  const candidates = relatedPath.startsWith('projects/')
+    ? [relatedPath]
+    : [relatedPath, `projects/${project.id}/${relatedPath}`];
+  return candidates.some((path) => path.endsWith('/') ? itemPath.startsWith(path) : itemPath === path);
 }
 
 export function groupFilesByParentFolder(items: RepositoryItem[]): RelatedFolderGroup[] {
@@ -140,6 +153,7 @@ function parseSections(markdown: string) {
     nextTasks: [] as string[],
     blocked: [] as string[],
     relatedPaths: [] as string[],
+    resultPaths: [] as string[],
   };
   const headings = [...markdown.matchAll(/^##\s+(.+?)\s*$/gm)];
   for (let index = 0; index < headings.length; index += 1) {
@@ -195,6 +209,13 @@ function stripQuotes(value: string): string {
 
 function normalizeRelatedPath(value: string): string {
   return value.replace(/^\[\[|\]\]$/g, '').trim().replace(/^\.\//, '');
+}
+
+function uniquePaths(values: string[]) {
+  return [...new Set(values
+    .flatMap((value) => value.split(','))
+    .map(normalizeRelatedPath)
+    .filter(Boolean))];
 }
 
 function cleanInline(value: string): string {

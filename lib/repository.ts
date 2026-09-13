@@ -19,6 +19,7 @@ const RESULTS_ROOTS = [
   'calc/data/results/',
   'wiki/findings/',
 ];
+const PROJECT_RESULT_SEGMENTS = new Set(['result', 'results', 'output', 'outputs', '결과', '산출물']);
 const RESEARCH_ROOTS = ['calc/', '연구/', 'wiki/'];
 
 function normalized(path: string) {
@@ -32,10 +33,15 @@ function under(path: string, roots: string[]) {
 export function classifyRepositoryPath(path: string): RepositoryCategory {
   const value = normalized(path);
   if (under(value, LITERATURE_ROOTS)) return 'literature';
-  if (under(value, RESULTS_ROOTS)) return 'results';
+  if (under(value, RESULTS_ROOTS) || isProjectResultPath(value)) return 'results';
   if (under(value, WIKI_ROOTS)) return 'wiki';
   if (under(value, RESEARCH_ROOTS)) return 'research';
   return 'other';
+}
+
+function isProjectResultPath(path: string) {
+  const segments = path.split('/');
+  return segments[0] === 'projects' && segments.length > 2 && segments.slice(2).some((segment) => PROJECT_RESULT_SEGMENTS.has(segment));
 }
 
 export function classifyRepositoryItems(items: RepositoryItem[]) {

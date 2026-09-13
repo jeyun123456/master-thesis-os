@@ -13,6 +13,7 @@ public partial class MainWindow : Window
     private static readonly Uri ProductionUri =
         new("https://master-thesis-os.vercel.app/");
 
+    private readonly Uri _contentUri;
     private readonly bool _wallpaperRequested;
     private WallpaperAttachment? _wallpaperAttachment;
     private HwndSource? _hwndSource;
@@ -25,6 +26,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         var args = Environment.GetCommandLineArgs();
+        _contentUri = ResolveContentUri(args);
 
         _wallpaperRequested = args.Any(arg => string.Equals(
             arg,
@@ -122,7 +124,7 @@ public partial class MainWindow : Window
 
             Browser.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
 
-            Browser.CoreWebView2.Navigate(ProductionUri.AbsoluteUri);
+            Browser.CoreWebView2.Navigate(_contentUri.AbsoluteUri);
 
             // Only the ordinary top-level window gets startup focus.
             if (!_wallpaperRequested)
@@ -201,6 +203,28 @@ public partial class MainWindow : Window
         Title = "Master Thesis OS - Interactive mode (Ctrl+Alt+W to return)";
         _trayIcon?.RefreshState();
         return true;
+    }
+
+    private static Uri ResolveContentUri(string[] args)
+    {
+        for (var index = 0; index < args.Length - 1; index++)
+        {
+            if (!string.Equals(args[index], "--url", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var candidate = args[index + 1];
+            if (Uri.TryCreate(candidate, UriKind.Absolute, out var uri) &&
+                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+            {
+                return uri;
+            }
+
+            AppLog.Warn($"Ignoring invalid --url value: {candidate}");
+        }
+
+        return ProductionUri;
     }
 
     private bool ReturnToWallpaperMode()

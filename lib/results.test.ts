@@ -74,6 +74,7 @@ describe('dashboard results loading', () => {
     const localRepositoryRoot = await createDashboardFixture();
     const bundle = await getDashboardBundle({ preferGithub: false, localRepositoryRoot });
     expect(bundle.source).toBe('local');
+    expect(bundle.resultPath).toBe('projects/interim-presentation/코드/결과/주요결과/dashboard');
     expect(bundle.necessaryLabour?.series.map((item) => item.year)).toEqual([2010, 2015, 2020]);
     expect(bundle.decomposition?.periods[1].totalChange).toBeCloseTo(-4.326876593298721, 10);
     expect(bundle.validation?.status).toBe('pass');
@@ -86,6 +87,7 @@ describe('dashboard results loading', () => {
       resultsPath: 'does-not-exist',
     });
     expect(bundle.source).toBe('empty');
+    expect(bundle.resultPath).toBe('does-not-exist');
     expect(bundle.necessaryLabour).toBeNull();
     expect(bundle.error).toBe('Dashboard JSON is missing, invalid, or has a non-passing validation status.');
   });

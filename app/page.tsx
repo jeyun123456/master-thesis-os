@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { LibraryPanel } from '@/app/library-panel';
 import { ResearchPanel } from '@/app/research-panel';
+import { ResultsPanel as ResultsDashboardPanel } from '@/app/results-panel';
 import { RewardSlotPanel } from '@/app/reward-slot';
 import { ShortcutList, ShortcutsPanel } from '@/app/shortcuts-panel';
 import { dashboardApi, type CalendarApiResponse } from '@/lib/client-api';
@@ -29,6 +30,7 @@ const initialCalendar: CalendarApiResponse = {
 
 const initialDashboard: DashboardBundle = {
   source: 'empty',
+  resultPath: null,
   necessaryLabour: null,
   decomposition: null,
   validation: null,
@@ -102,6 +104,7 @@ export default function Page() {
   const [tree, setTree] = useState<RepositoryItem[]>([]);
   const [calendar, setCalendar] = useState<CalendarApiResponse>(initialCalendar);
   const [dashboard, setDashboard] = useState<DashboardBundle>(initialDashboard);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
   const [researchStatus, setResearchStatus] = useState<ResearchStatus | null>(null);
   const [projects, setProjects] = useState<ResearchProject[]>([]);
   const [commits, setCommits] = useState<GitHubCommitSummary[]>([]);
@@ -143,6 +146,7 @@ export default function Page() {
       } else nextErrors.push(errorMessage(projectResult.reason, '연구 프로젝트를 불러오지 못했습니다.'));
 
       setErrors(nextErrors);
+      setDashboardLoading(false);
     })();
   }, []);
 
@@ -214,7 +218,7 @@ export default function Page() {
         </section>}
 
         {page === 'research' && <section className="page active"><ResearchPanel projects={projects} tree={tree} onOpen={openLocal} onOpenFolder={openLocalFolder} /></section>}
-        {page === 'results' && <section className="page active"><ResultsPanel dashboard={dashboard} /></section>}
+        {page === 'results' && <section className="page active"><ResultsDashboardPanel dashboard={dashboard} loading={dashboardLoading} projects={projects} tree={tree} onOpen={openLocal} onOpenFolder={openLocalFolder} /></section>}
         {page === 'library' && <section className="page active"><LibraryPanel tree={tree} researchStatus={researchStatus} onOpen={openLocal} /></section>}
         {page === 'shortcuts' && <section className="page active"><ShortcutsPanel shortcuts={enabledShortcuts} onOpenFile={openLocal} onOpenFolder={openLocalFolder} /></section>}
 
@@ -244,23 +248,9 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub: string 
 function NumberedList({ items, empty }: { items: string[]; empty: string }) { if (!items.length) return <div className="empty compact-empty">{empty}</div>; return <div className="numbered-list">{items.map((item, index) => <div className="numbered-item" key={`${index}-${item}`}><span>{index + 1}</span><p>{item}</p></div>)}</div>; }
 function CommitList({ commits }: { commits: GitHubCommitSummary[] }) { if (!commits.length) return <div className="empty compact-empty">최근 GitHub 변경을 불러오는 중이거나 연결 정보가 없어.</div>; return <div>{commits.map((commit) => <div className="commit" key={commit.sha}><div><b>{commit.message}</b><small>{commit.author} · {relativeDate(commit.date)}</small></div><code>{commit.sha.slice(0, 7)}</code></div>)}</div>; }
 
-function ResultsPanel({ dashboard }: { dashboard: DashboardBundle }) {
-  if (!dashboard.necessaryLabour || !dashboard.decomposition || !dashboard.validation) return <div className="card empty result-empty"><h3>분석 결과를 불러올 수 없어</h3><p>{dashboard.error || 'exporter를 실행하고 검증된 JSON을 GitHub에 반영해줘.'}</p><code>python exporter/export_results.py</code></div>;
-  const levels = dashboard.necessaryLabour.series;
-  const periods = dashboard.decomposition.periods;
-  const maxLevel = Math.max(...levels.map((item) => item.value));
-  const focus = periods.find((item) => item.period === '2015-2020') || periods[0];
-  const contributions = [...focus.contributions].sort((a, b) => Math.abs(b.totalChange) - Math.abs(a.totalChange)).slice(0, 8);
-  return <>
-    <div className="kpis">{levels.map((point) => <Kpi key={point.year} label={`${point.year}년`} value={`${formatHours(point.value)}h`} sub={`${point.sourceCell} · 2020년 가격`} />)}<Kpi label="검증 상태" value={dashboard.validation.status === 'pass' ? '통과' : dashboard.validation.status.toUpperCase()} sub={`${dashboard.validation.checks.length}개 exporter 검사`} /></div>
-    <div className="grid2 results-grid"><Card title="필요노동 추이" right={dashboard.source === 'github' ? 'GitHub live' : dashboard.source}>{levels.map((point) => <div className="result-bar" key={point.year}><span>{point.year}</span><div className="result-track"><div style={{ width: `${point.value / maxLevel * 100}%` }} /></div><b>{formatHours(point.value)}h</b></div>)}</Card><Card title="기간별 2요인 분해" right="시간"><table className="result-table"><thead><tr><th>기간</th><th>변화량</th><th>바스켓</th><th>투하노동량</th></tr></thead><tbody>{periods.map((item) => <tr key={item.period}><td>{item.period}</td><td>{signed(item.totalChange)}</td><td>{signed(item.basketEffect)}</td><td>{signed(item.embodiedLabourEffect)}</td></tr>)}</tbody></table></Card></div>
-    <div className="grid2 results-grid"><Card title={`주요 부문 변화 · ${focus.period}`} right="절대값 순"><table className="result-table"><thead><tr><th>코드</th><th>부문</th><th>변화량</th></tr></thead><tbody>{contributions.map((item) => <tr key={item.code}><td>{item.code}</td><td>{item.name}</td><td>{signed(item.totalChange)}</td></tr>)}</tbody></table></Card><Card title="결과 검증" right={dashboard.validation.scope}>{dashboard.validation.checks.map((check) => <div className="validation-row" key={check.id}><b>{check.status === 'pass' ? '통과' : check.status.toUpperCase()}</b><span>{check.message}</span></div>)}<p className="muted validation-limit">{dashboard.validation.limitation}</p></Card></div>
-    <div className="note result-source">출처: <code>{dashboard.necessaryLabour.source.workbook}</code> · <code>{dashboard.decomposition.source.workbook}</code> · 생성 {formatDate(dashboard.validation.generatedAt)}</div>
-  </>;
-}
-
 function BridgeToken({ onSave, onNotice }: { onSave: () => void; onNotice: (message: string) => void }) {
   const [value, setValue] = useState('');
+  const [visible, setVisible] = useState(false);
   useEffect(() => setValue(localStorage.getItem('thesisBridgeToken') || ''), []);
   async function pasteToken() {
     try {
@@ -276,12 +266,23 @@ function BridgeToken({ onSave, onNotice }: { onSave: () => void; onNotice: (mess
       onNotice('브라우저의 클립보드 접근을 허용해줘');
     }
   }
-  return <div className="toolbar bridge-toolbar"><input className="search" placeholder="Bridge token" value={value} onChange={(event) => setValue(event.target.value)} /><button className="btn" type="button" onClick={() => void pasteToken()}>붙여넣기</button><button className="btn" type="button" onClick={() => { localStorage.setItem('thesisBridgeToken', value); onSave(); }}>저장</button></div>;
+  async function copyToken() {
+    if (!value.trim()) {
+      onNotice('저장된 Bridge token이 없어');
+      return;
+    }
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
+      await navigator.clipboard.writeText(value);
+      onNotice('Bridge token을 클립보드에 복사했어');
+    } catch {
+      onNotice('브라우저의 클립보드 접근을 허용해줘');
+    }
+  }
+  return <div className="toolbar bridge-toolbar"><input className="search" type={visible ? 'text' : 'password'} autoComplete="off" spellCheck={false} placeholder="Bridge token" value={value} onChange={(event) => setValue(event.target.value)} /><button className="btn" type="button" onClick={() => setVisible((current) => !current)}>{visible ? '숨기기' : '보기'}</button><button className="btn" type="button" onClick={() => void copyToken()}>복사</button><button className="btn" type="button" onClick={() => void pasteToken()}>붙여넣기</button><button className="btn" type="button" onClick={() => { localStorage.setItem('thesisBridgeToken', value); onSave(); }}>저장</button></div>;
 }
 function errorMessage(error: unknown, fallback: string) { return error instanceof Error ? error.message : fallback; }
 function formatDate(value: string) { if (!value) return ''; try { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)); } catch { return value; } }
 function formatCalendarEvent(event: CalendarEvent) { if (event.allDay) return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'short', day: 'numeric' }).format(new Date(`${event.start}T00:00:00+09:00`)); return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(event.start)); }
-function formatHours(value: number) { return value.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function signed(value: number) { return `${value >= 0 ? '+' : ''}${formatHours(value)}`; }
 function deadlineLabel(event: CalendarEvent) { const days = daysUntil(event); return days <= 0 ? '오늘' : `D-${days}`; }
 function relativeDate(value: string) { if (!value) return '시간 정보 없음'; const diff = Date.now() - new Date(value).getTime(); const minutes = Math.max(0, Math.floor(diff / 60_000)); if (minutes < 60) return `${minutes}분 전`; const hours = Math.floor(minutes / 60); if (hours < 24) return `${hours}시간 전`; const days = Math.floor(hours / 24); if (days < 14) return `${days}일 전`; return formatDate(value); }

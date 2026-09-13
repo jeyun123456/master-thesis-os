@@ -117,7 +117,7 @@ public partial class MainWindow
             return;
         }
 
-        Browser.Source = ProductionUri;
+        Browser.Source = _contentUri;
     }
 
     private string GetSelectedDisplayDeviceName()

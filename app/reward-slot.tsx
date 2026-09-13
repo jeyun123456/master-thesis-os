@@ -29,6 +29,7 @@ type RewardSlotPanelProps = {
 };
 
 const STORAGE_KEY = 'masterThesisOS.rewardSlot.v1';
+const DEFAULT_SLOT_CREDITS = 100;
 const SPIN_DURATION_MS = 1100;
 const REEL_TICK_MS = 85;
 
@@ -56,7 +57,7 @@ function emptyState(): RewardState {
   return {
     completionDate: seoulDateKey(),
     completedTasks: [],
-    credits: 0,
+    credits: DEFAULT_SLOT_CREDITS,
     history: [],
   };
 }

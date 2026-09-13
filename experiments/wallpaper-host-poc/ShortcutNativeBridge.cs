@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Forms = System.Windows.Forms;
 
 namespace WallpaperHostPoc;
@@ -195,6 +196,22 @@ internal static class ShortcutNativeBridge
                 StartShell(target, null, workingDirectory, false);
                 return;
 
+            case "uri":
+                if (!IsSupportedExternalUri(target))
+                {
+                    throw new InvalidOperationException("지원하지 않는 외부 URI야.");
+                }
+                StartShell(target, null, null, false);
+                return;
+
+            case "shell":
+                if (!IsWindowsShellTarget(target))
+                {
+                    throw new InvalidOperationException("지원하지 않는 Windows shell 항목이야.");
+                }
+                StartShell("explorer.exe", target, null, false);
+                return;
+
             case "file":
                 EnsureAbsoluteExisting(target, expectDirectory: false);
                 StartShell(target, null, workingDirectory, false);
@@ -262,6 +279,26 @@ internal static class ShortcutNativeBridge
         {
             throw new FileNotFoundException("파일을 찾을 수 없어.", target);
         }
+    }
+
+    private static bool IsSupportedExternalUri(string target)
+    {
+        if (target.Any(char.IsWhiteSpace) || target.Any(char.IsControl))
+        {
+            return false;
+        }
+
+        return Uri.TryCreate(target, UriKind.Absolute, out var uri) &&
+            (string.Equals(uri.Scheme, "steam", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(uri.Scheme, "steamlink", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsWindowsShellTarget(string target)
+    {
+        return Regex.IsMatch(
+            target,
+            @"^shell:(?:[a-z][a-z0-9._-]*|::\{[0-9a-f-]{36}\})$",
+            RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
     }
 
     private static string RequiredString(JsonElement root, string name)

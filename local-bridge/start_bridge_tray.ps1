@@ -76,9 +76,11 @@ $notifyIcon.Visible = $true
 
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
 $copyToken = New-Object System.Windows.Forms.ToolStripMenuItem('Bridge token 복사')
+$viewToken = New-Object System.Windows.Forms.ToolStripMenuItem('Bridge token 보기')
 $openHealth = New-Object System.Windows.Forms.ToolStripMenuItem('브리지 상태 확인')
 $exitBridge = New-Object System.Windows.Forms.ToolStripMenuItem('브리지 종료')
 [void]$menu.Items.Add($copyToken)
+[void]$menu.Items.Add($viewToken)
 [void]$menu.Items.Add($openHealth)
 [void]$menu.Items.Add($exitBridge)
 $notifyIcon.ContextMenuStrip = $menu
@@ -98,6 +100,65 @@ $copyToken.Add_Click({
         $notifyIcon.BalloonTipTitle = 'Master Thesis OS Bridge'
         $notifyIcon.BalloonTipText = 'Bridge token을 복사하지 못했어.'
         $notifyIcon.ShowBalloonTip(2200)
+    }
+})
+
+$viewToken.Add_Click({
+    try {
+        $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+        $token = [string]$config.token
+        if ([string]::IsNullOrWhiteSpace($token)) {
+            throw 'token is empty'
+        }
+
+        $dialog = New-Object System.Windows.Forms.Form
+        $dialog.Text = 'Master Thesis OS Bridge token'
+        $dialog.StartPosition = 'CenterScreen'
+        $dialog.ClientSize = New-Object System.Drawing.Size(560, 132)
+        $dialog.FormBorderStyle = 'FixedDialog'
+        $dialog.MaximizeBox = $false
+        $dialog.MinimizeBox = $false
+        $dialog.ShowInTaskbar = $false
+        $dialog.TopMost = $true
+
+        $tokenBox = New-Object System.Windows.Forms.TextBox
+        $tokenBox.Location = New-Object System.Drawing.Point(12, 14)
+        $tokenBox.Size = New-Object System.Drawing.Size(536, 23)
+        $tokenBox.ReadOnly = $true
+        $tokenBox.UseSystemPasswordChar = $true
+        $tokenBox.Text = $token
+
+        $showValue = New-Object System.Windows.Forms.CheckBox
+        $showValue.Text = '토큰 표시'
+        $showValue.AutoSize = $true
+        $showValue.Location = New-Object System.Drawing.Point(12, 48)
+        $showValue.Add_CheckedChanged({ $tokenBox.UseSystemPasswordChar = -not $showValue.Checked })
+
+        $copy = New-Object System.Windows.Forms.Button
+        $copy.Text = '복사'
+        $copy.Size = New-Object System.Drawing.Size(78, 27)
+        $copy.Location = New-Object System.Drawing.Point(370, 88)
+        $copy.Add_Click({
+            Set-Clipboard -Value $token
+            $dialog.Close()
+            Show-BridgeNotice 'Bridge token을 클립보드에 복사했어.'
+        })
+
+        $close = New-Object System.Windows.Forms.Button
+        $close.Text = '닫기'
+        $close.Size = New-Object System.Drawing.Size(78, 27)
+        $close.Location = New-Object System.Drawing.Point(458, 88)
+        $close.Add_Click({ $dialog.Close() })
+
+        [void]$dialog.Controls.Add($tokenBox)
+        [void]$dialog.Controls.Add($showValue)
+        [void]$dialog.Controls.Add($copy)
+        [void]$dialog.Controls.Add($close)
+        $dialog.Add_Shown({ $dialog.Activate(); $close.Focus() })
+        [void]$dialog.ShowDialog()
+        $dialog.Dispose()
+    } catch {
+        Show-BridgeNotice 'Bridge token을 표시하지 못했어.'
     }
 })
 

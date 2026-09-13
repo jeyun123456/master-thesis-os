@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectShortcutType, getEnabledShortcuts, getHomeShortcuts, isAbsoluteLocalTarget, parseShortcuts } from './shortcuts';
+import { detectShortcutType, getEnabledShortcuts, getHomeShortcuts, isAbsoluteLocalTarget, isSupportedExternalUri, isWindowsShellTarget, parseShortcuts } from './shortcuts';
 
 describe('shortcuts', () => {
   it('filters invalid entries and sorts enabled shortcuts predictably', () => {
@@ -36,11 +36,27 @@ describe('shortcuts', () => {
 
   it('detects common targets for the add dialog', () => {
     expect(detectShortcutType('https://example.com')).toBe('web');
+    expect(detectShortcutType('steam://rungameid/3548580')).toBe('uri');
+    expect(detectShortcutType('shell:RecycleBinFolder')).toBe('shell');
     expect(detectShortcutType('C:\\Apps\\Obsidian.exe')).toBe('app');
     expect(detectShortcutType('D:\\Research')).toBe('folder');
     expect(detectShortcutType('D:\\Research\\paper.pdf')).toBe('file');
     expect(isAbsoluteLocalTarget('C:\\Apps\\app.exe')).toBe(true);
     expect(isAbsoluteLocalTarget('wiki/note.md')).toBe(false);
+  });
+
+  it('accepts allowlisted external URI and Windows shell targets only', () => {
+    const items = parseShortcuts([
+      { id: 'steam', title: 'Steam', type: 'uri', target: 'steam://rungameid/3548580' },
+      { id: 'recycle-bin', title: '휴지통', type: 'shell', target: 'shell:RecycleBinFolder' },
+      { id: 'bad-uri', title: 'Bad URI', type: 'uri', target: 'javascript:alert(1)' },
+      { id: 'bad-shell', title: 'Bad shell', type: 'shell', target: 'shell:bad target' },
+    ]);
+    expect(items.map((item) => item.id)).toEqual(['steam', 'recycle-bin']);
+    expect(isSupportedExternalUri('steam://rungameid/3548580')).toBe(true);
+    expect(isSupportedExternalUri('javascript:alert(1)')).toBe(false);
+    expect(isWindowsShellTarget('shell:RecycleBinFolder')).toBe(true);
+    expect(isWindowsShellTarget('shell:bad target')).toBe(false);
   });
 
   it('defaults optional flags without inventing a target', () => {

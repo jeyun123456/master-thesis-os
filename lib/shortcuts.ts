@@ -1,7 +1,7 @@
 import rawShortcuts from '../config/shortcuts.json';
 import { isSafeRepositoryPath } from './repository';
 
-export type ShortcutType = 'web' | 'app' | 'file' | 'folder' | 'command';
+export type ShortcutType = 'web' | 'uri' | 'shell' | 'app' | 'file' | 'folder' | 'command';
 
 export type Shortcut = {
   id: string;
@@ -18,8 +18,13 @@ export type Shortcut = {
   order: number;
 };
 
-const shortcutTypes = new Set<ShortcutType>(['web', 'app', 'file', 'folder', 'command']);
+const shortcutTypes = new Set<ShortcutType>(['web', 'uri', 'shell', 'app', 'file', 'folder', 'command']);
 const SHORTCUT_STORAGE_KEY = 'masterThesisOs.shortcuts.v2';
+
+// Registered app URIs and Windows Shell targets are launched through the OS
+// shell, never through a command interpreter.
+const externalUriSchemes = new Set(['steam:', 'steamlink:']);
+const windowsShellTargetPattern = /^shell:(?:[a-z][a-z0-9._-]*|::\{[0-9a-f-]{36}\})$/i;
 
 export function parseShortcuts(input: unknown): Shortcut[] {
   if (!Array.isArray(input)) return [];
@@ -72,6 +77,8 @@ export function isRepositoryShortcut(shortcut: Shortcut) {
 export function detectShortcutType(target: string): ShortcutType {
   const value = target.trim();
   if (/^https?:\/\//i.test(value)) return 'web';
+  if (isWindowsShellTarget(value)) return 'shell';
+  if (isSupportedExternalUri(value)) return 'uri';
   if (/\.exe(?:$|\s)/i.test(value)) return 'app';
   const leaf = value.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || '';
   if (value.endsWith('\\') || value.endsWith('/') || (isAbsoluteLocalTarget(value) && !leaf.includes('.'))) return 'folder';
@@ -87,6 +94,17 @@ export function shortcutTitleFromTarget(target: string, type: ShortcutType) {
     } catch {
       return value;
     }
+  }
+  if (type === 'uri') {
+    try {
+      const uri = new URL(value);
+      return `${uri.protocol.replace(/:$/, '')}${uri.hostname ? ` · ${uri.hostname}` : ''}`;
+    } catch {
+      return value;
+    }
+  }
+  if (type === 'shell') {
+    return /^shell:RecycleBinFolder$/i.test(value) ? '휴지통' : value.replace(/^shell:/i, '');
   }
   if (type === 'command') return value.length > 28 ? `${value.slice(0, 28)}…` : value;
   const leaf = value.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || value;
@@ -123,11 +141,26 @@ function validTarget(type: ShortcutType, target: string) {
       return false;
     }
   }
+  if (type === 'uri') return isSupportedExternalUri(target);
+  if (type === 'shell') return isWindowsShellTarget(target);
   if (type === 'command') return target.length > 0;
   if (type === 'app') return isAbsoluteLocalTarget(target);
   if (type === 'folder' && target === '') return true;
   if (isAbsoluteLocalTarget(target)) return true;
   return isSafeRepositoryPath(target);
+}
+
+export function isSupportedExternalUri(target: string) {
+  try {
+    const uri = new URL(target.trim());
+    return externalUriSchemes.has(uri.protocol.toLowerCase()) && !/[\u0000-\u001f\u007f\s]/.test(target);
+  } catch {
+    return false;
+  }
+}
+
+export function isWindowsShellTarget(target: string) {
+  return windowsShellTargetPattern.test(target.trim()) && !/[\u0000-\u001f\u007f]/.test(target);
 }
 
 function compareShortcuts(a: Shortcut, b: Shortcut) {

@@ -37,6 +37,25 @@ class ShortcutLauncherValidationTests(unittest.TestCase):
         self.assertEqual(item['workingDirectory'], str(self.folder))
         self.assertTrue(item['runAsAdmin'])
 
+    def test_accepts_http_web_targets(self):
+        item = normalize_shortcut_request({'type': 'web', 'target': 'https://example.com/path?q=1'})
+        self.assertEqual(item['type'], 'web')
+        self.assertEqual(item['target'], 'https://example.com/path?q=1')
+
+        with self.assertRaises(ValueError):
+            normalize_shortcut_request({'type': 'web', 'target': 'javascript:alert(1)'})
+
+    def test_accepts_allowlisted_external_uri_and_shell_targets(self):
+        steam = normalize_shortcut_request({'type': 'uri', 'target': 'steam://rungameid/3548580'})
+        recycle_bin = normalize_shortcut_request({'type': 'shell', 'target': 'shell:RecycleBinFolder'})
+        self.assertEqual(steam['type'], 'uri')
+        self.assertEqual(recycle_bin['target'], 'shell:RecycleBinFolder')
+
+        with self.assertRaises(ValueError):
+            normalize_shortcut_request({'type': 'uri', 'target': 'javascript:alert(1)'})
+        with self.assertRaises(ValueError):
+            normalize_shortcut_request({'type': 'shell', 'target': 'shell:bad target'})
+
     def test_rejects_relative_or_missing_local_targets(self):
         with self.assertRaises(ValueError):
             normalize_shortcut_request({'type': 'app', 'target': 'tool.exe'})

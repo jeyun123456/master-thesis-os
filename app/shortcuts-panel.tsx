@@ -261,7 +261,7 @@ function ShortcutEditDialog({ source, nextOrder, onSave, onClose, onNotice }: {
       <div className="shortcut-dialog-preview"><ShortcutIcon shortcut={preview} /><b>{preview.title}</b><small>{typeLabel(type)}</small></div>
       <div className="shortcut-form-row">
         <label>유형<select value={mode} onChange={(event) => setMode(event.target.value as ShortcutType | 'auto')}>
-          <option value="auto">자동 감지</option><option value="web">웹사이트</option><option value="app">프로그램</option><option value="file">파일</option><option value="folder">폴더</option><option value="command">명령어</option>
+          <option value="auto">자동 감지</option><option value="web">웹사이트</option><option value="uri">외부 URI</option><option value="shell">Windows 항목</option><option value="app">프로그램</option><option value="file">파일</option><option value="folder">폴더</option><option value="command">명령어</option>
         </select></label>
       </div>
       <div className="shortcut-form-row shortcut-target-row">
@@ -298,9 +298,9 @@ function ShortcutIcon({ shortcut, compact = false }: { shortcut: Shortcut; compa
 }
 
 async function openShortcut(shortcut: Shortcut, onOpenFile: OpenLocal, onOpenFolder: OpenLocal) {
-  if (shortcut.type === 'web') {
-    window.open(shortcut.target, '_blank', 'noopener,noreferrer');
-    return '';
+  if (shortcut.type === 'web' || shortcut.type === 'uri' || shortcut.type === 'shell') {
+    const result = await launchExternalShortcut(shortcut);
+    return result.ok ? '' : result.message;
   }
   if (isRepositoryShortcut(shortcut)) {
     if (shortcut.type === 'file') onOpenFile(shortcut.target);
@@ -317,6 +317,8 @@ function faviconUrl(target: string) {
 
 function targetPlaceholder(type: ShortcutType) {
   if (type === 'web') return 'https://example.com';
+  if (type === 'uri') return 'steam://rungameid/3548580';
+  if (type === 'shell') return 'shell:RecycleBinFolder';
   if (type === 'app') return 'C:\\Program Files\\App\\App.exe';
   if (type === 'folder') return 'D:\\Research';
   if (type === 'command') return 'npm run dev';
@@ -324,11 +326,11 @@ function targetPlaceholder(type: ShortcutType) {
 }
 
 function typeLabel(type: ShortcutType) {
-  return type === 'web' ? '웹' : type === 'app' ? '프로그램' : type === 'file' ? '파일' : type === 'folder' ? '폴더' : '명령어';
+  return type === 'web' ? '웹' : type === 'uri' ? '외부 URI' : type === 'shell' ? 'Windows 항목' : type === 'app' ? '프로그램' : type === 'file' ? '파일' : type === 'folder' ? '폴더' : '명령어';
 }
 
 function typeIcon(type: ShortcutType) {
-  return type === 'web' ? '🌐' : type === 'app' ? '▣' : type === 'file' ? '📄' : type === 'folder' ? '📁' : '>_';
+  return type === 'web' ? '🌐' : type === 'uri' ? '↗' : type === 'shell' ? '◈' : type === 'app' ? '▣' : type === 'file' ? '📄' : type === 'folder' ? '📁' : '>_';
 }
 
 function createShortcutId() {

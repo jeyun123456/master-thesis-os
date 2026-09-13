@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getJsonFile, githubConfigured } from './github';
+import { isSafeRepositoryPath } from './repository';
 
 export type NecessaryLabourDashboard = {
   schemaVersion: '1.1.0'; generatedAt: string; unit: 'hours';
@@ -37,13 +38,14 @@ export type ValidationDashboard = {
 
 export type DashboardBundle = {
   source: 'github' | 'local' | 'empty';
+  resultPath: string | null;
   necessaryLabour: NecessaryLabourDashboard | null;
   decomposition: DecompositionDashboard | null;
   validation: ValidationDashboard | null;
   error?: string;
 };
 
-const defaultResultsPath = 'projects/interim-presentation/코드/결과/주요결과/dashboard';
+export const defaultResultsPath = 'projects/interim-presentation/코드/결과/주요결과/dashboard';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -77,13 +79,15 @@ async function loadLocalDocuments(resultsPath: string, localRepositoryRoot?: str
 }
 
 export async function getDashboardBundle(options: { resultsPath?: string; localRepositoryRoot?: string; preferGithub?: boolean } = {}): Promise<DashboardBundle> {
+  let configuredPath: string | null = null;
   try {
-    const configuredPath = (options.resultsPath || process.env.GITHUB_RESULTS_PATH || defaultResultsPath).replace(/\/$/, '');
+    configuredPath = (options.resultsPath || process.env.GITHUB_RESULTS_PATH || defaultResultsPath).replace(/\/$/, '');
+    if (!isSafeRepositoryPath(configuredPath)) throw new Error('Invalid results path');
     const source = (options.preferGithub ?? githubConfigured()) ? 'github' : 'local';
     const documents = source === 'github' ? await loadGithubDocuments(configuredPath) : await loadLocalDocuments(configuredPath, options.localRepositoryRoot);
     validateDashboardDocuments(documents);
-    return { source, necessaryLabour: documents[0], decomposition: documents[1], validation: documents[2] };
+    return { source, resultPath: configuredPath, necessaryLabour: documents[0], decomposition: documents[1], validation: documents[2] };
   } catch {
-    return { source: 'empty', necessaryLabour: null, decomposition: null, validation: null, error: 'Dashboard JSON is missing, invalid, or has a non-passing validation status.' };
+    return { source: 'empty', resultPath: configuredPath, necessaryLabour: null, decomposition: null, validation: null, error: 'Dashboard JSON is missing, invalid, or has a non-passing validation status.' };
   }
 }

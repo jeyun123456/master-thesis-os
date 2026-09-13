@@ -5,7 +5,7 @@
 ## 구성
 
 - `app/`: 9개 필수 페이지 UI와 서버 API routes
-- `lib/`: GitHub·Calendar 서버 클라이언트, repository 분류, Results 데이터 계약
+- `lib/`: GitHub·Calendar 서버 클라이언트, project/result discovery, repository 분류, Results 데이터 계약
 - `schemas/`: Excel과 UI 사이의 dashboard JSON Schema
 - `exporter/`: canonical 결과 workbook을 검증된 dashboard JSON으로 변환
 - `local-bridge/`: GitHub 상대경로로 로컬 파일을 여는 loopback 전용 브리지
@@ -55,7 +55,7 @@ GitHub·Google 비밀값은 `.env.local` 또는 배포 플랫폼의 서버 환�
 | `GITHUB_REPO` | GitHub 연결 시 | repository 이름 |
 | `GITHUB_BRANCH` | 아니오 | 기본값 `master` |
 | `GITHUB_TOKEN` | private repo에서 필수 | Contents 읽기 권한의 fine-grained token |
-| `GITHUB_RESULTS_PATH` | 아니오 | 기본값 `projects/interim-presentation/코드/결과/주요결과/dashboard` |
+| `GITHUB_RESULTS_PATH` | 아니오 | 프로젝트별 경로가 없을 때 사용하는 전역 dashboard fallback. 기본값 `projects/interim-presentation/코드/결과/주요결과/dashboard` |
 | `LOCAL_REPOSITORY_ROOT` | 별도 checkout의 로컬 fallback/exporter 시 | 기존 `Obsidian-Vault` checkout의 절대 경로. Vercel에는 설정하지 않음 |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Calendar 연결 시 | Google Service Account 이메일 |
 | `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | Calendar 연결 시 | Service Account RS256 private key. Vercel에서는 `\n` escape를 허용 |
@@ -71,7 +71,7 @@ GitHub tree의 상대경로를 공통 식별자로 사용한다. 실제 저장�
 
 - Wiki: `wiki/**` (기존 `concepts`, `methodology`, `data`, `decisions`, `findings`, `literature` 유지)
 - Literature: `연구/문헌/**`, `연구/선행연구/**`, `wiki/literature/**`
-- Results: `projects/interim-presentation/코드/결과/주요결과/**` (legacy `Calc/data/results/**`, `wiki/findings/**`도 분류)
+- Results: 모든 프로젝트의 `projects/<id>/(코드/결과|results|outputs|산출물)/**`와 기존 `Calc/data/results/**`, `wiki/findings/**`
 - Research: 나머지 `Calc/**`, `연구/**`, `wiki/**`
 
 GitHub recursive tree가 API 한계로 잘리면 불완전한 목록을 사용하지 않고 오류를 표시한다.
@@ -84,8 +84,8 @@ GitHub recursive tree가 API 한계로 잘리면 불완전한 목록을 사용�
 {
   "id": "unique-id",
   "title": "표시 이름",
-  "type": "web | file | folder",
-  "target": "https://example.com 또는 Vault 기준 상대경로",
+  "type": "web | uri | shell | app | file | folder | command",
+  "target": "URL, 외부 URI, shell 항목, 절대 경로 또는 Vault 기준 상대경로",
   "description": "선택 설명",
   "icon": "선택 아이콘",
   "pinnedToHome": true,
@@ -94,7 +94,16 @@ GitHub recursive tree가 API 한계로 잘리면 불완전한 목록을 사용�
 }
 ```
 
-`web`은 새 탭 링크로 열고, `file`은 기존 Local Bridge의 `/open`, `folder`는 `/open-folder`로 전달한다. `enabled: false`는 모든 화면에서 숨기며, Home에는 `enabled: true`와 `pinnedToHome: true`인 항목만 표시한다. 파일·폴더 target은 연구 repository root 기준 안전한 상대경로여야 하고, 잘못된 항목은 무시된다. 파일·폴더를 열려면 로컬 PC에서 bridge를 실행하고 Settings에 같은 token을 저장해야 한다.
+`web`은 HTTP/HTTPS 링크, `uri`는 허용된 외부 앱 URI(`steam://`, `steamlink:`), `shell`은 제한된 Windows Shell 항목(`shell:RecycleBinFolder` 등)으로 열고, `file`은 기존 Local Bridge의 `/open`, `folder`는 `/open-folder`로 전달한다. `app`은 실행 파일과 인자를, `command`는 명령어를 사용한다. `enabled: false`는 모든 화면에서 숨기며, Home에는 `enabled: true`와 `pinnedToHome: true`인 항목만 표시한다. 파일·폴더 target은 연구 repository root 기준 안전한 상대경로여야 하고, 잘못된 항목은 무시된다. 외부 URI와 Windows Shell 항목은 명령어로 실행하지 않고 OS Shell에 직접 전달한다. 파일·폴더와 외부 대상 실행을 사용하려면 로컬 PC에서 bridge를 실행하고 Settings에 같은 token을 저장해야 한다.
+
+예를 들어 바로가기 추가 화면에서 다음처럼 등록할 수 있다.
+
+```json
+[
+  { "id": "maple-story", "title": "메이플스토리", "type": "uri", "target": "steam://rungameid/3548580", "enabled": true, "pinnedToHome": false, "order": 50 },
+  { "id": "recycle-bin", "title": "휴지통", "type": "shell", "target": "shell:RecycleBinFolder", "enabled": true, "pinnedToHome": false, "order": 60 }
+]
+```
 
 자료실 검색창은 한국어·일본어 IME 조합 중 Enter/Escape와 전역 단축키 처리를 중지하고 composition이 끝난 뒤에만 처리한다. 따라서 조합 중인 입력이 검색어를 지우거나 제출하는 문제를 피한다.
 
@@ -172,7 +181,7 @@ python bridge.py
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. 실제 `config.json`은 git에서 제외된다.
+브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. Settings의 token은 `보기/숨기기`와 `복사`로 관리할 수 있고, tray의 **Bridge token 보기**에서도 로컬 config 값을 확인·복사할 수 있다. token을 HTTP endpoint나 원격 페이지에 자동 노출하지는 않는다. 실제 `config.json`은 git에서 제외된다.
 
 ### 브리지 상시 실행
 
@@ -211,9 +220,31 @@ Sucrose DevTools Network에서 `/open` 또는 `/open-folder` 요청을 확인한
 
 앱의 Sucrose UA 감지 시 `targetAddressSpace: 'loopback'`을 지정하는 로직은 유지한다. 이는 현재 WebViewLive에서 `/health`와 bridge 요청의 loopback/LNA 호환성을 위한 보조 설정이며, Origin 검증을 대체하지 않는다.
 
+## 프로젝트별 결과 구조
+
+분석 결과 탭은 연구 탭과 마찬가지로 `projects/*/project.md`를 기준으로 프로젝트 목록을 만들고, 선택한 프로젝트의 결과 파일을 GitHub tree에서 자동 발견한다. 계산 원자료나 결과 파일을 앱 repository에 복제하지 않는다.
+
+권장 구조는 다음과 같다.
+
+```text
+projects/<project-id>/
+├─ project.md
+└─ 코드/
+   └─ 결과/
+      ├─ <run-or-method>/      # CSV, XLSX, 검증·재현 산출물
+      └─ dashboard/            # 선택적 UI용 검증 bundle
+         ├─ necessary_labour.json
+         ├─ decomposition.json
+         └─ validation.json
+```
+
+기존 Vault의 `코드/결과`, `results`, `outputs`, `산출물` 폴더는 별도 이동 없이 자동 인식한다. 더 특수한 위치를 사용하면 `project.md` frontmatter의 `results_path` 또는 `## 결과 경로` 목록에 repository-relative 경로를 등록한다. dashboard는 위 세 JSON이 같은 폴더에 모두 있고 `validation.json.status`가 `pass`일 때만 대표 결과로 표시된다. 나머지 CSV·XLSX·PDF 등의 결과 파일은 프로젝트별 파일 목록에서 확인하고 로컬 브리지로 열 수 있다.
+
+선택한 프로젝트에 dashboard bundle이 없으면 다른 프로젝트의 수치를 섞어 표시하지 않고, 결과 파일 목록과 명확한 empty state만 표시한다. 프로젝트 선택 전의 `/api/results`와 `GITHUB_RESULTS_PATH`는 기존 사용자를 위한 전역 fallback으로 유지된다.
+
 ## Results JSON 계약
 
-웹은 Excel을 파싱하지 않는다. 별도 Python exporter가 연구 Vault의 canonical workbook을 read-only로 열어 다음 JSON을 `projects/interim-presentation/코드/결과/주요결과/dashboard/`에 생성한다.
+웹은 Excel을 파싱하지 않는다. 별도 Python exporter가 연구 Vault의 canonical workbook을 read-only로 열어 선택한 프로젝트의 dashboard 폴더에 다음 JSON을 생성한다. 현재 필요노동 dashboard의 canonical 경로는 `projects/interim-presentation/코드/결과/주요결과/dashboard/`다.
 
 - `necessary_labour.json`: 연도별 필요노동 시간
 - `decomposition.json`: 기간별 총변화·바스켓 효과·투하노동량 효과
@@ -237,9 +268,10 @@ git push origin master
 ```text
 Calc result workbook
 → exporter/export_results.py
-→ projects/interim-presentation/코드/결과/주요결과/dashboard/*.json
+→ projects/<project-id>/코드/결과/**
+→ dashboard/*.json (선택)
 → Git commit/push
-→ /api/results
+→ /api/results?path=<dashboard-path>
 → Master Thesis OS Results
 ```
 
