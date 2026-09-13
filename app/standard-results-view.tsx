@@ -43,6 +43,8 @@ export function StandardResultsView({ resultPath }: { resultPath: string }) {
 
   const metricItems = bundle.view.items.filter((item): item is MetricView => item.type === 'metric');
   const contentItems = bundle.view.items.filter((item) => item.type !== 'metric');
+  const chartItems = contentItems.filter((item) => item.type === 'chart');
+  const tableItems = contentItems.filter((item) => item.type === 'table');
 
   return <>
     <div className="result-controls card section">
@@ -52,8 +54,9 @@ export function StandardResultsView({ resultPath }: { resultPath: string }) {
     {metricItems.length > 0 && <div className="kpis">
       {metricItems.map((item, index) => <MetricCard key={`${item.datasetId}-${item.row}-${index}`} item={item} dataset={datasets.get(item.datasetId)} />)}
     </div>}
-    <div className="grid2 results-grid">
-      {contentItems.map((item, index) => <ResultItem key={`${item.datasetId}-${item.type}-${index}`} item={item} dataset={datasets.get(item.datasetId)} />)}
+    <div className="results-stack">
+      {chartItems.map((item, index) => <ResultItem key={`${item.datasetId}-${item.type}-${index}`} item={item} dataset={datasets.get(item.datasetId)} />)}
+      {tableItems.map((item, index) => <ResultItem key={`${item.datasetId}-${item.type}-${index}`} item={item} dataset={datasets.get(item.datasetId)} />)}
     </div>
   </>;
 }
