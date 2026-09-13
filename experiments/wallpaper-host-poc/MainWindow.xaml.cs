@@ -2,6 +2,7 @@ using Microsoft.Web.WebView2.Core;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using MessageBox = System.Windows.MessageBox;
 
 namespace WallpaperHostPoc;
 
@@ -13,10 +14,7 @@ public partial class MainWindow : Window
         new("https://master-thesis-os.vercel.app/");
 
     private readonly bool _wallpaperRequested;
-    private readonly bool _phase2Only;
-
     private WallpaperAttachment? _wallpaperAttachment;
-    private NativeImeFocusBridge? _nativeImeFocusBridge;
     private HwndSource? _hwndSource;
     private nint _hostHwnd;
     private bool _hotkeyRegistered;
@@ -31,11 +29,6 @@ public partial class MainWindow : Window
         _wallpaperRequested = args.Any(arg => string.Equals(
             arg,
             "--wallpaper",
-            StringComparison.OrdinalIgnoreCase));
-
-        _phase2Only = args.Any(arg => string.Equals(
-            arg,
-            "--phase2-only",
             StringComparison.OrdinalIgnoreCase));
 
         if (_wallpaperRequested)
@@ -80,9 +73,7 @@ public partial class MainWindow : Window
 
         if (_wallpaperAttachment.TryAttach(out var status))
         {
-            Title = _phase2Only
-                ? "Master Thesis OS - Phase 2 Wallpaper"
-                : "Master Thesis OS - Phase 3 Wallpaper";
+            Title = "Master Thesis OS - Wallpaper";
 
             if (!_hotkeyRegistered)
             {
@@ -120,6 +111,8 @@ public partial class MainWindow : Window
             await Browser.EnsureCoreWebView2Async();
 
             // Preserve the native Windows/WebView2 input path.
+            // No DOM focus bridge is installed. The normal top-level WebView2 path
+            // is the supported native Korean/Japanese IME path.
             Browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             Browser.CoreWebView2.Settings.AreDevToolsEnabled = true;
             Browser.CoreWebView2.Settings.IsStatusBarEnabled = true;
@@ -127,29 +120,9 @@ public partial class MainWindow : Window
 
             Browser.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
 
-            if (_wallpaperRequested)
-            {
-                Browser.CoreWebView2Controller.NotifyParentWindowPositionChanged();
-            }
-
-            // Phase 3 is enabled by default in wallpaper mode.
-            // Use --phase2-only for an A/B baseline with no focus bridge.
-            if (_wallpaperRequested && !_phase2Only)
-            {
-                var hwnd = new WindowInteropHelper(this).Handle;
-
-                _nativeImeFocusBridge = new NativeImeFocusBridge(
-                    this,
-                    Browser,
-                    hwnd);
-
-                await _nativeImeFocusBridge.InstallAsync();
-                _nativeImeFocusBridge.NotifyWallpaperParentReady();
-            }
-
             Browser.CoreWebView2.Navigate(ProductionUri.AbsoluteUri);
 
-            // Only the ordinary Phase 1 window gets startup focus.
+            // Only the ordinary top-level window gets startup focus.
             if (!_wallpaperRequested)
             {
                 Browser.Focus();
@@ -170,7 +143,7 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(
                 ex.ToString(),
-                "Wallpaper Host PoC startup failed",
+                "Master Thesis OS Wallpaper Companion startup failed",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
 
@@ -213,22 +186,15 @@ public partial class MainWindow : Window
                 return;
             }
 
-            if (Browser.CoreWebView2 is not null)
-            {
-                Browser.CoreWebView2Controller.NotifyParentWindowPositionChanged();
-            }
-
+            // Interactive mode uses the normal top-level WebView2 input path.
+            // Do not call MoveFocus or install DOM focus probes: repeatedly
+            // forcing focus breaks IME composition.
             _ = NativeMethods.SetForegroundWindow(_hostHwnd);
-            Activate();
-            Browser.Focus();
-
-            if (Browser.CoreWebView2 is not null)
-            {
-                Browser.CoreWebView2Controller.MoveFocus(
-                    CoreWebView2MoveFocusReason.Programmatic);
-            }
+            _ = Activate();
+            _ = Browser.Focus();
 
             Title = "Master Thesis OS - Interactive mode (Ctrl+Alt+W to return)";
+            _trayIcon?.RefreshState();
             return;
         }
 
@@ -242,20 +208,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (Browser.CoreWebView2 is not null)
-        {
-            Browser.CoreWebView2Controller.NotifyParentWindowPositionChanged();
-        }
-
         var progman = NativeMethods.FindWindow("Progman", null);
         if (progman != nint.Zero)
         {
             _ = NativeMethods.SetForegroundWindow(progman);
         }
 
-        Title = _phase2Only
-            ? "Master Thesis OS - Phase 2 Wallpaper"
-            : "Master Thesis OS - Phase 3 Wallpaper + native IME focus bridge";
+        Title = "Master Thesis OS - Wallpaper";
+        _trayIcon?.RefreshState();
     }
 
     private void MainWindow_Closed(object? sender, EventArgs e)
@@ -280,12 +240,10 @@ public partial class MainWindow : Window
 
         if (!_wallpaperRequested)
         {
-            Title = "Master Thesis OS - Phase 1";
+            Title = "Master Thesis OS";
             return;
         }
 
-        Title = _phase2Only
-            ? "Master Thesis OS - Phase 2 Wallpaper"
-            : "Master Thesis OS - Phase 3 Wallpaper + native IME focus bridge";
+        Title = "Master Thesis OS - Wallpaper";
     }
 }

@@ -26,17 +26,39 @@ internal static class NativeMethods
     internal const uint SWP_SHOWWINDOW = 0x0040;
 
     internal const uint SMTO_NORMAL = 0x0000;
+    internal const uint SMTO_ABORTIFHUNG = 0x0002;
     internal const uint SPAWN_WORKERW_MESSAGE = 0x052C;
 
+    internal const int WM_DISPLAYCHANGE = 0x007E;
     internal const int WM_HOTKEY = 0x0312;
+    internal const uint WM_LBUTTONDOWN = 0x0201;
+    internal const uint WM_LBUTTONUP = 0x0202;
     internal const uint MOD_ALT = 0x0001;
     internal const uint MOD_CONTROL = 0x0002;
     internal const uint VK_W = 0x57;
+
+    internal const int WH_MOUSE_LL = 14;
+    internal const uint LLMHF_INJECTED = 0x00000001;
+
+    internal const uint INPUT_MOUSE = 0;
+    internal const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+    internal const uint MOUSEEVENTF_LEFTUP = 0x0004;
+
+    internal const uint LVM_FIRST = 0x1000;
+    internal const uint LVM_HITTEST = LVM_FIRST + 18;
+
+    internal const uint PROCESS_VM_OPERATION = 0x0008;
+    internal const uint PROCESS_VM_WRITE = 0x0020;
+    internal const uint MEM_COMMIT = 0x1000;
+    internal const uint MEM_RESERVE = 0x2000;
+    internal const uint MEM_RELEASE = 0x8000;
+    internal const uint PAGE_READWRITE = 0x04;
 
     internal static readonly nint HWND_TOP = nint.Zero;
     internal static readonly nint HWND_BOTTOM = new(1);
 
     internal delegate bool EnumWindowsProc(nint hWnd, nint lParam);
+    internal delegate nint LowLevelMouseProc(int nCode, nint wParam, nint lParam);
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct RECT
@@ -48,6 +70,70 @@ internal static class NativeMethods
 
         internal int Width => Right - Left;
         internal int Height => Bottom - Top;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct POINT
+    {
+        internal int X;
+        internal int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MSLLHOOKSTRUCT
+    {
+        internal POINT Point;
+        internal uint MouseData;
+        internal uint Flags;
+        internal uint Time;
+        internal nuint ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct LVHITTESTINFO
+    {
+        internal POINT Point;
+        internal uint Flags;
+        internal int Item;
+        internal int SubItem;
+        internal int Group;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MOUSEINPUT
+    {
+        internal int Dx;
+        internal int Dy;
+        internal uint MouseData;
+        internal uint Flags;
+        internal uint Time;
+        internal nuint ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    internal struct INPUTUNION
+    {
+        [FieldOffset(0)]
+        internal MOUSEINPUT MouseInput;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct INPUT
+    {
+        internal uint Type;
+        internal INPUTUNION Union;
+
+        internal static INPUT Mouse(uint flags) => new()
+        {
+            Type = INPUT_MOUSE,
+            Union = new INPUTUNION
+            {
+                MouseInput = new MOUSEINPUT
+                {
+                    Flags = flags,
+                },
+            },
+        };
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -81,6 +167,17 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool SetForegroundWindow(nint hWnd);
 
+    [DllImport("user32.dll")]
+    internal static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    internal static extern uint GetWindowThreadProcessId(
+        nint hWnd,
+        out uint lpdwProcessId);
+
+    [DllImport("user32.dll")]
+    internal static extern nint WindowFromPoint(POINT point);
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool RegisterHotKey(
@@ -93,9 +190,75 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool UnregisterHotKey(nint hWnd, int id);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern nint SetWindowsHookEx(
+        int idHook,
+        LowLevelMouseProc lpfn,
+        nint hMod,
+        uint dwThreadId);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool UnhookWindowsHookEx(nint hhk);
+
+    [DllImport("user32.dll")]
+    internal static extern nint CallNextHookEx(
+        nint hhk,
+        int nCode,
+        nint wParam,
+        nint lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern uint SendInput(
+        uint cInputs,
+        INPUT[] pInputs,
+        int cbSize);
+
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool IsWindow(nint hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ScreenToClient(nint hWnd, ref POINT lpPoint);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern nint GetModuleHandle(string? lpModuleName);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern nint OpenProcess(
+        uint dwDesiredAccess,
+        [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle,
+        uint dwProcessId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern nint VirtualAllocEx(
+        nint hProcess,
+        nint lpAddress,
+        nuint dwSize,
+        uint flAllocationType,
+        uint flProtect);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool VirtualFreeEx(
+        nint hProcess,
+        nint lpAddress,
+        nuint dwSize,
+        uint dwFreeType);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool WriteProcessMemory(
+        nint hProcess,
+        nint lpBaseAddress,
+        nint lpBuffer,
+        nuint nSize,
+        out nuint lpNumberOfBytesWritten);
+
+    [DllImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool CloseHandle(nint hObject);
 
     [DllImport("kernel32.dll")]
     internal static extern void SetLastError(uint dwErrCode);

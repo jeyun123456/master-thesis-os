@@ -3,7 +3,7 @@ using System.Windows.Interop;
 
 namespace WallpaperHostPoc;
 
-internal sealed class WallpaperAttachment
+internal sealed partial class WallpaperAttachment
 {
     private readonly nint _hostHwnd;
     private readonly nint _originalParent;
@@ -44,6 +44,8 @@ internal sealed class WallpaperAttachment
             status = $"Already attached to 0x{_workerW.ToInt64():X}.";
             return true;
         }
+
+        EnsureTargetDisplayResolved();
 
         if (!TryFindWallpaperWorker(out var workerW, out var discovery))
         {
@@ -124,35 +126,23 @@ internal sealed class WallpaperAttachment
             return false;
         }
 
-        if (!NativeMethods.SetWindowPos(
-                _hostHwnd,
-                NativeMethods.HWND_BOTTOM,
-                0,
-                0,
-                workerRect.Width,
-                workerRect.Height,
-                NativeMethods.SWP_NOACTIVATE |
-                NativeMethods.SWP_FRAMECHANGED |
-                NativeMethods.SWP_SHOWWINDOW))
+        if (!TryPlaceAttachedHost(workerW, out var placementStatus))
         {
-            var sizingError = Marshal.GetLastWin32Error();
             var rollbackError = RestoreOriginalParentIfNeeded();
             RestoreStyles();
 
             status =
-                $"WorkerW attachment succeeded but sizing failed with Win32 error {sizingError}. " +
-                $"Rollback error={rollbackError}. Attachment was rolled back.";
+                $"WorkerW attachment succeeded, but target-display placement failed. " +
+                $"{placementStatus} Rollback error={rollbackError}.";
             return false;
         }
 
         _workerW = workerW;
-        _wallpaperWidth = workerRect.Width;
-        _wallpaperHeight = workerRect.Height;
         _attached = true;
         status =
             $"Attached host 0x{_hostHwnd.ToInt64():X} to WorkerW 0x{workerW.ToInt64():X} " +
-            $"({workerRect.Width}x{workerRect.Height}, class='{workerClass}', " +
-            $"worker parent=0x{workerParent.ToInt64():X}). Discovery: {discovery}";
+            $"(class='{workerClass}', worker parent=0x{workerParent.ToInt64():X}). " +
+            $"Target={_targetDisplayDeviceName}. {placementStatus} Discovery: {discovery}";
         return true;
     }
 
@@ -164,42 +154,66 @@ internal sealed class WallpaperAttachment
             return true;
         }
 
-        var workerW = _workerW;
-        var detachError = RestoreOriginalParentIfNeeded();
-        var actualParent = NativeMethods.GetParent(_hostHwnd);
+        EnsureTargetDisplayResolved();
 
-        if (actualParent != _originalParent)
+        var workerW = _workerW;
+
+        // When converting a child back into a top-level window, SetParent does not
+        // remove WS_CHILD for us. Detach first, then immediately restore the saved
+        // top-level styles before judging the resulting parent relationship.
+        NativeMethods.SetLastError(0);
+        var previousParent = NativeMethods.SetParent(_hostHwnd, _originalParent);
+        var detachError = Marshal.GetLastWin32Error();
+
+        RestoreStyles();
+
+        var actualParent = NativeMethods.GetParent(_hostHwnd);
+        var restoredStyle = NativeMethods.GetWindowLongPtr(
+            _hostHwnd,
+            NativeMethods.GWL_STYLE).ToInt64();
+        var stillChild = (restoredStyle & NativeMethods.WS_CHILD) != 0;
+
+        // On some Windows builds SetParent(NULL) may transiently/report the desktop
+        // HWND instead of zero. For interactive mode the important invariants are
+        // that the host is no longer parented to WorkerW and no longer has WS_CHILD.
+        if (actualParent == workerW || stillChild)
         {
             status =
                 $"Could not detach host from WorkerW 0x{workerW.ToInt64():X}. " +
-                $"Win32 error: {detachError}; actual parent=0x{actualParent.ToInt64():X}.";
+                $"Immediate Win32 error: {detachError}; " +
+                $"SetParent returned previous parent 0x{previousParent.ToInt64():X}; " +
+                $"actual parent=0x{actualParent.ToInt64():X}; " +
+                $"WS_CHILD={stillChild}.";
             return false;
         }
-
-        RestoreStyles();
 
         if (!NativeMethods.SetWindowPos(
                 _hostHwnd,
                 NativeMethods.HWND_TOP,
-                0,
-                0,
-                _wallpaperWidth,
-                _wallpaperHeight,
+                _targetScreenBounds.Left,
+                _targetScreenBounds.Top,
+                _targetScreenBounds.Width,
+                _targetScreenBounds.Height,
                 NativeMethods.SWP_FRAMECHANGED |
                 NativeMethods.SWP_SHOWWINDOW))
         {
             var error = Marshal.GetLastWin32Error();
-            status =
-                $"Detached from WorkerW, but failed to raise the interactive window. " +
-                $"Win32 error: {error}.";
             _attached = false;
             _workerW = nint.Zero;
+            status =
+                $"Detached from WorkerW, but failed to raise the interactive window on " +
+                $"{_targetDisplayDeviceName}. Win32 error: {error}.";
             return false;
         }
 
+        _wallpaperWidth = _targetScreenBounds.Width;
+        _wallpaperHeight = _targetScreenBounds.Height;
         _attached = false;
         _workerW = nint.Zero;
-        status = "Interactive mode active. Press Ctrl+Alt+W to return to wallpaper mode.";
+        status =
+            $"Interactive mode active on {_targetDisplayDeviceName}. " +
+            $"Previous WorkerW=0x{workerW.ToInt64():X}; " +
+            $"current parent=0x{actualParent.ToInt64():X}. Press Ctrl+Alt+W to return.";
         return true;
     }
 

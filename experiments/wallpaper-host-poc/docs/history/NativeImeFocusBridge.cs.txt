@@ -40,28 +40,18 @@ internal sealed class NativeImeFocusBridge
             return;
         }
 
-        if (_browser.CoreWebView2 is null ||
-            _browser.CoreWebView2Controller is null)
+        if (_browser.CoreWebView2 is null)
         {
             throw new InvalidOperationException(
                 "WebView2 must be initialized before installing the focus bridge.");
         }
 
         _browser.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
-        _browser.CoreWebView2Controller.GotFocus += CoreWebView2Controller_GotFocus;
-        _browser.CoreWebView2Controller.LostFocus += CoreWebView2Controller_LostFocus;
 
         await _browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
             BuildEditableFocusProbe());
 
         _installed = true;
-    }
-
-    internal void NotifyWallpaperParentReady()
-    {
-        // WebView2 documents this as the mechanism for notifying the controller
-        // when its parent or any ancestor HWND moved.
-        _browser.CoreWebView2Controller?.NotifyParentWindowPositionChanged();
     }
 
     private void CoreWebView2_WebMessageReceived(
@@ -117,29 +107,7 @@ internal sealed class NativeImeFocusBridge
                 _ = _browser.Focus();
                 _ = Keyboard.Focus(_browser);
 
-                _browser.CoreWebView2Controller?.MoveFocus(
-                    CoreWebView2MoveFocusReason.Programmatic);
             }));
-    }
-
-    private void CoreWebView2Controller_GotFocus(
-        object? sender,
-        object e)
-    {
-        if (_editableFocused)
-        {
-            _window.Title = "Master Thesis OS - Phase 3 IME focus active";
-        }
-    }
-
-    private void CoreWebView2Controller_LostFocus(
-        object? sender,
-        object e)
-    {
-        if (_editableFocused)
-        {
-            _window.Title = "Master Thesis OS - Phase 3 IME focus lost";
-        }
     }
 
     private static string BuildEditableFocusProbe() => $$"""

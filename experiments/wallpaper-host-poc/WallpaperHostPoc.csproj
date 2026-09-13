@@ -4,8 +4,17 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>WallpaperHostPoc</RootNamespace>
+    <AssemblyName>MasterThesisOSWallpaper</AssemblyName>
+    <Version>0.6.1</Version>
+    <AssemblyVersion>0.6.1.0</AssemblyVersion>
+    <FileVersion>0.6.1.0</FileVersion>
+    <Product>Master Thesis OS Wallpaper Companion</Product>
+    <Description>Windows wallpaper companion for Master Thesis OS</Description>
+    <ApplicationIcon Condition="Exists('Assets\MasterThesisOSWallpaper.ico')">Assets\MasterThesisOSWallpaper.ico</ApplicationIcon>
 
     <!-- Lets CI/non-Windows environments restore/build the Windows-targeted project.
          Actual execution still requires Windows. -->
