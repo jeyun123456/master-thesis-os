@@ -347,7 +347,7 @@ async function inflateRaw(bytes: Uint8Array) {
 
 function parseWorkbookSheets(xml: string) {
   const sheets: Array<{ name: string; relationshipId: string }> = [];
-  for (const match of xml.matchAll(/<sheet\b([^>]*)\/?\s*>/g)) {
+  for (const match of xml.matchAll(/<(?:[A-Za-z_][\w.-]*:)?sheet\b([^>]*)\/?\s*>/g)) {
     const attrs = match[1];
     const name = decodeXml(attribute(attrs, 'name') || 'Sheet');
     const relationshipId = attribute(attrs, 'r:id');
@@ -380,8 +380,8 @@ function resolveWorkbookPart(target: string) {
 }
 
 function parseSharedStrings(xml: string) {
-  return [...xml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)].map((match) =>
-    [...match[1].matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)].map((part) => decodeXml(part[1])).join(''),
+  return [...xml.matchAll(/<(?:[A-Za-z_][\w.-]*:)?si\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?si>/g)].map((match) =>
+    [...match[1].matchAll(/<(?:[A-Za-z_][\w.-]*:)?t\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?t>/g)].map((part) => decodeXml(part[1])).join(''),
   );
 }
 
@@ -389,7 +389,7 @@ function parseWorksheet(xml: string, sharedStrings: string[]) {
   const cells: Array<{ row: number; column: number; value: ResultCell }> = [];
   let maxRow = -1;
   let maxColumn = -1;
-  for (const match of xml.matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)) {
+  for (const match of xml.matchAll(/<(?:[A-Za-z_][\w.-]*:)?c\b([^>]*)>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?c>/g)) {
     const attrs = match[1];
     const body = match[2];
     const reference = attribute(attrs, 'r');
@@ -409,9 +409,9 @@ function parseWorksheet(xml: string, sharedStrings: string[]) {
 
 function worksheetCellValue(type: string | null, body: string, sharedStrings: string[]): ResultCell {
   if (type === 'inlineStr') {
-    return [...body.matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)].map((match) => decodeXml(match[1])).join('');
+    return [...body.matchAll(/<(?:[A-Za-z_][\w.-]*:)?t\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?t>/g)].map((match) => decodeXml(match[1])).join('');
   }
-  const raw = body.match(/<v\b[^>]*>([\s\S]*?)<\/v>/)?.[1];
+  const raw = body.match(/<(?:[A-Za-z_][\w.-]*:)?v\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?v>/)?.[1];
   if (raw === undefined) return null;
   const decoded = decodeXml(raw);
   if (type === 's') return sharedStrings[Number(decoded)] ?? '';

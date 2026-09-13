@@ -34,14 +34,14 @@ function bytes(values: number[]) {
   return Uint8Array.from(values);
 }
 
-function storedZip(entries: Array<{ name: string; content: string }>) {
+function storedZip(entries: Array<{ name: string; content: string }>, transformContent: (entry: { name: string; content: string }) => string = (entry) => entry.content) {
   const localParts: Uint8Array[] = [];
   const centralParts: Uint8Array[] = [];
   let localOffset = 0;
 
   for (const entry of entries) {
     const name = encoder.encode(entry.name);
-    const content = encoder.encode(entry.content);
+    const content = encoder.encode(transformContent(entry));
     const localHeader = bytes([
       ...u32(0x04034b50), ...u16(20), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0),
       ...u32(content.length), ...u32(content.length), ...u16(name.length), ...u16(0),
@@ -67,7 +67,7 @@ function storedZip(entries: Array<{ name: string; content: string }>) {
   return concat([locals, central, eocd]);
 }
 
-function workbookFixture() {
+function workbookFixture(namespaced = false) {
   return storedZip([
     {
       name: 'xl/workbook.xml',
@@ -89,7 +89,13 @@ function workbookFixture() {
       name: 'xl/worksheets/sheet2.xml',
       content: `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>연도</t></is></c><c r="B1" t="inlineStr"><is><t>GDP</t></is></c><c r="C1" t="inlineStr"><is><t>소비</t></is></c></row><row r="2"><c r="A2"><v>2020</v></c><c r="B2"><v>100</v></c><c r="C2"><v>60</v></c></row><row r="3"><c r="A3"><v>2021</v></c><c r="B3"><v>110</v></c><c r="C3"><v>65</v></c></row></sheetData></worksheet>`,
     },
-  ]);
+  ], namespaced ? ({ content }) => namespaceSpreadsheetXml(content) : undefined);
+}
+
+function namespaceSpreadsheetXml(xml: string) {
+  const names = 'workbook|sheets|sheet|sst|si|t|worksheet|sheetData|row|c|v|is';
+  const prefixed = xml.replace(new RegExp(`<(/?)(${names})(?=[\\s/>])`, 'g'), '<$1x:$2');
+  return prefixed.replace(/<x:(workbook|sst|worksheet)(?=[\s>])/, '<x:$1 xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"');
 }
 
 describe('results editor data import', () => {
@@ -137,6 +143,13 @@ describe('results editor data import', () => {
     expect(source.datasets[0].suggestedKind).toBe('metrics');
     expect(source.datasets[0].rows).toEqual([['매출', 100], ['이익', 20]]);
     expect(source.datasets[1].columns.map((column) => column.label)).toEqual(['연도', 'GDP', '소비']);
+    expect(source.datasets[1].rows).toEqual([[2020, 100, 60], [2021, 110, 65]]);
+  });
+
+  it('imports namespace-prefixed Excel worksheet XML', async () => {
+    const source = await importXlsxBytes('namespaced.xlsx', workbookFixture(true));
+    expect(source.datasets).toHaveLength(2);
+    expect(source.datasets[0].rows.map((row) => row[1])).toEqual([100, 20]);
     expect(source.datasets[1].rows).toEqual([[2020, 100, 60], [2021, 110, 65]]);
   });
 });
