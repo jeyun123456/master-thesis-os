@@ -37,6 +37,8 @@
           "properties": {
             "type": { "const": "metric" },
             "datasetId": { "type": "string", "minLength": 1 },
+            "id": { "type": "string", "minLength": 1 },
+            "title": { "type": "string" },
             "row": { "type": "integer", "minimum": 0 },
             "label": { "type": "string" },
             "prefix": { "type": "string" },
@@ -56,6 +58,8 @@
           "properties": {
             "type": { "const": "table" },
             "datasetId": { "type": "string", "minLength": 1 },
+            "id": { "type": "string", "minLength": 1 },
+            "title": { "type": "string" },
             "transpose": { "type": "boolean" }
           }
         }
@@ -71,9 +75,15 @@
           "properties": {
             "type": { "const": "chart" },
             "datasetId": { "type": "string", "minLength": 1 },
+            "id": { "type": "string", "minLength": 1 },
+            "title": { "type": "string" },
             "transpose": { "type": "boolean" },
             "chartType": { "enum": ["line", "bar", "scatter"] },
             "xColumn": { "type": "integer", "minimum": -1 },
+            "xMin": { "type": "number" },
+            "xMax": { "type": "number" },
+            "yMin": { "type": "number" },
+            "yMax": { "type": "number" },
             "seriesColumns": {
               "type": "array",
               "items": { "type": "integer", "minimum": 0 },

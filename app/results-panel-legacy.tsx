@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
+import { ResultChart, ResultTable } from '@/app/result-view-components';
 import { dashboardApi } from '@/lib/client-api';
 import { groupFilesByParentFolder, projectStatusLabel, stageLabel, type ResearchProject } from '@/lib/projects';
 import { emptyProjectResultInventory, projectResultInventory, type ProjectResultInventory } from '@/lib/project-results';
@@ -11,13 +12,9 @@ import {
   defaultChartView,
   importResultFile,
   type ChartView,
-  type ResultCell,
   type ResultDataSource,
-  type ResultDataset,
   type TableView,
 } from '@/lib/results-data';
-
-const PREVIEW_ROW_LIMIT = 100;
 
 type ResultsPanelProps = {
   dashboard: DashboardBundle;
@@ -201,9 +198,9 @@ export function ResultsPanel({ dashboard, loading = false, projects = [], tree =
             <label className="result-checkbox"><input type="checkbox" checked={transpose} onChange={(event) => setTranspose(event.target.checked)} /> 행/열 바꾸기</label>
           </div>
           {importedView === 'chart' && chartDataset && chartView ? (
-            <ImportedChart dataset={chartDataset} view={chartView} />
+            <ResultChart dataset={chartDataset} view={chartView} />
           ) : tableDataset ? (
-            <ImportedTable dataset={tableDataset} />
+            <ResultTable dataset={tableDataset} />
           ) : null}
         </>
       )}
@@ -317,58 +314,12 @@ function CanonicalResults({ dashboard, selectedPeriod, onPeriodChange }: {
   </>;
 }
 
-function ImportedTable({ dataset }: { dataset: ResultDataset }) {
-  const rows = dataset.rows.slice(0, PREVIEW_ROW_LIMIT);
-  return <>
-    <div className="result-import-table-wrap">
-      <table className="result-import-table"><thead><tr>{dataset.columns.map((column) => <th key={column.id}>{column.label}</th>)}</tr></thead><tbody>{rows.map((row, rowIndex) => <tr key={`${rowIndex}-${row.join('|')}`}>{dataset.columns.map((column, columnIndex) => <td key={column.id}>{formatCell(row[columnIndex] ?? null)}</td>)}</tr>)}</tbody></table>
-    </div>
-    {dataset.rows.length > rows.length && <p className="muted result-import-limit">처음 {rows.length}개 행만 미리 보여줘.</p>}
-  </>;
-}
-
-function ImportedChart({ dataset, view }: { dataset: ResultDataset; view: ChartView }) {
-  const seriesColumns = view.seriesColumns.filter((column) => dataset.columns[column]);
-  const rows = dataset.rows.slice(0, PREVIEW_ROW_LIMIT);
-  const values = seriesColumns.flatMap((column) => rows.map((row) => numericValue(row[column])).filter((value): value is number => value !== null));
-  const maxAbs = Math.max(1, ...values.map((value) => Math.abs(value)));
-  if (!seriesColumns.length || !values.length) return <div className="empty compact-empty">차트로 표시할 숫자 열을 찾지 못했어. 표에서 원본을 확인해줘.</div>;
-
-  return <div className="result-chart">
-    <p className="muted result-chart-caption">가로축: {view.xColumn >= 0 ? dataset.columns[view.xColumn]?.label : '행'} · 숫자 열: {seriesColumns.map((column) => dataset.columns[column].label).join(', ')}</p>
-    {seriesColumns.map((column) => <div className="result-chart-series" key={dataset.columns[column].id}>
-      <b>{dataset.columns[column].label}</b>
-      {rows.map((row, rowIndex) => {
-        const value = numericValue(row[column]);
-        const label = view.xColumn >= 0 ? formatCell(row[view.xColumn] ?? null) : `행 ${rowIndex + 1}`;
-        const width = value === null ? 0 : Math.min(100, Math.abs(value) / maxAbs * 100);
-        return <div className="result-chart-row" key={`${rowIndex}-${label}`}><span>{label}</span><div className="result-track"><div style={{ width: `${width}%` }} /></div><strong>{value === null ? '—' : formatCell(value)}</strong></div>;
-      })}
-    </div>)}
-  </div>;
-}
-
 function ResultCard({ title, right, children }: { title: string; right?: string; children: ReactNode }) {
   return <div className="card section"><div className="head"><h3>{title}</h3><span>{right}</span></div>{children}</div>;
 }
 
 function Kpi({ label, value, sub }: { label: string; value: string; sub: string }) {
   return <div className="card kpi"><small>{label}</small><strong>{value}</strong><span>{sub}</span></div>;
-}
-
-function formatCell(value: ResultCell) {
-  if (value === null) return '—';
-  if (typeof value === 'number') return value.toLocaleString('ko-KR', { maximumFractionDigits: 6 });
-  return String(value);
-}
-
-function numericValue(value: ResultCell) {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string' && value.trim() !== '') {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return null;
 }
 
 function formatHours(value: number) {

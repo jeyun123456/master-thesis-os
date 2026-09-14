@@ -17,6 +17,10 @@ export type ResultDataset = {
   rows: ResultCell[][];
 };
 
+export type ResultDatasetLike = ResultDataset & {
+  kind?: ResultDatasetKind;
+};
+
 export type ResultDataSource = {
   id: string;
   name: string;
@@ -27,6 +31,8 @@ export type ResultDataSource = {
 export type MetricView = {
   type: 'metric';
   datasetId: string;
+  id?: string;
+  title?: string;
   row: number;
   label?: string;
   prefix?: string;
@@ -37,16 +43,24 @@ export type MetricView = {
 export type TableView = {
   type: 'table';
   datasetId: string;
+  id?: string;
+  title?: string;
   transpose: boolean;
 };
 
 export type ChartView = {
   type: 'chart';
   datasetId: string;
+  id?: string;
+  title?: string;
   transpose: boolean;
   chartType: 'line' | 'bar' | 'scatter';
   xColumn: number;
   seriesColumns: number[];
+  xMin?: number;
+  xMax?: number;
+  yMin?: number;
+  yMax?: number;
 };
 
 export type ResultViewItem = MetricView | TableView | ChartView;
@@ -55,6 +69,23 @@ export type ResultViewDocument = {
   version: 1;
   items: ResultViewItem[];
 };
+
+export function resultViewItemKey(item: ResultViewItem, index: number) {
+  return item.id?.trim() || `${item.type}-${index}`;
+}
+
+export function datasetKind(dataset: ResultDatasetLike): ResultDatasetKind {
+  return dataset.kind || dataset.suggestedKind;
+}
+
+export function compatibleDatasets(item: ResultViewItem, datasets: ResultDatasetLike[]) {
+  const expected = item.type === 'metric' ? 'metrics' : item.type;
+  return datasets.filter((dataset) => datasetKind(dataset) === expected);
+}
+
+export function isChartType(value: unknown): value is ChartView['chartType'] {
+  return value === 'line' || value === 'bar' || value === 'scatter';
+}
 
 type ImportedFile = Pick<File, 'name' | 'text' | 'arrayBuffer'>;
 
@@ -105,6 +136,21 @@ function numericRatio(rows: ResultCell[][], column: number) {
   if (!values.length) return 0;
   const numeric = values.filter((value) => typeof value === 'number' || (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))));
   return numeric.length / values.length;
+}
+
+export function numericValue(value: ResultCell) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+export function numericColumnIndices(dataset: ResultDataset) {
+  return dataset.columns
+    .map((_, index) => index)
+    .filter((index) => numericRatio(dataset.rows, index) >= 0.8);
 }
 
 function buildDataset(source: string, index: number, name: string, sheetName: string | null, rawMatrix: ResultCell[][]): ResultDataset {
@@ -250,9 +296,7 @@ export function datasetForView(dataset: ResultDataset, view: TableView | ChartVi
 
 export function defaultChartView(dataset: ResultDataset, transpose = false): ChartView {
   const visible = transpose ? transposeDataset(dataset) : dataset;
-  const numericColumns = visible.columns
-    .map((_, index) => index)
-    .filter((index) => numericRatio(visible.rows, index) >= 0.8);
+  const numericColumns = numericColumnIndices(visible);
   const xColumn = visible.columns.length > 0 ? 0 : -1;
   const seriesColumns = numericColumns.filter((index) => index !== xColumn);
   return {
@@ -262,6 +306,36 @@ export function defaultChartView(dataset: ResultDataset, transpose = false): Cha
     chartType: 'line',
     xColumn,
     seriesColumns,
+  };
+}
+
+export function normalizeChartView(dataset: ResultDataset, view: ChartView): ChartView {
+  const visible = view.transpose ? transposeDataset(dataset) : dataset;
+  const fallback = defaultChartView(dataset, view.transpose);
+  const xColumn = Number.isInteger(view.xColumn) && view.xColumn >= -1 && view.xColumn < visible.columns.length
+    ? view.xColumn
+    : fallback.xColumn;
+  const requestedSeries = Array.isArray(view.seriesColumns) ? view.seriesColumns : fallback.seriesColumns;
+  const validSeries = [...new Set(requestedSeries)].filter((index) =>
+    Number.isInteger(index)
+    && index >= 0
+    && index < visible.columns.length
+    && index !== xColumn
+    && numericColumnIndices(visible).includes(index),
+  );
+  const seriesColumns = requestedSeries.length === 0
+    ? []
+    : validSeries.length > 0
+      ? validSeries
+      : fallback.seriesColumns;
+
+  return {
+    ...view,
+    datasetId: dataset.id,
+    chartType: isChartType(view.chartType) ? view.chartType : fallback.chartType,
+    xColumn,
+    seriesColumns,
+    transpose: Boolean(view.transpose),
   };
 }
 

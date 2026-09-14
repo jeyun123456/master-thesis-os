@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  compatibleDatasets,
   datasetForView,
   defaultChartView,
   importCsvText,
   importXlsxBytes,
+  normalizeChartView,
   parseCsv,
+  resultViewItemKey,
   transposeDataset,
+  type ChartView,
   type ResultDataset,
 } from './results-data';
 
@@ -121,6 +125,39 @@ describe('results editor data import', () => {
     expect(dataset.suggestedKind).toBe('table');
     expect(dataset.columns.map((column) => column.label)).toEqual(['연도', 'GDP', '소비']);
     expect(defaultChartView(dataset)).toMatchObject({ xColumn: 0, seriesColumns: [1, 2], transpose: false });
+  });
+
+  it('filters dataset choices by result item kind and keeps stable item keys', () => {
+    const datasets = [
+      { ...importCsvText('metrics.csv', 'sales,10').datasets[0], kind: 'metrics' as const },
+      { ...importCsvText('table.csv', 'year,value\n2020,10').datasets[0], kind: 'table' as const },
+      { ...importCsvText('chart.csv', 'year,value\n2020,10').datasets[0], kind: 'chart' as const },
+    ];
+
+    expect(compatibleDatasets({ type: 'metric', datasetId: 'missing', row: 0 }, datasets).map((item) => item.kind)).toEqual(['metrics']);
+    expect(compatibleDatasets({ type: 'table', datasetId: 'missing', transpose: false }, datasets).map((item) => item.kind)).toEqual(['table']);
+    expect(compatibleDatasets({ type: 'chart', datasetId: 'missing', transpose: false, chartType: 'line', xColumn: 0, seriesColumns: [1] }, datasets).map((item) => item.kind)).toEqual(['chart']);
+    expect(resultViewItemKey({ type: 'table', datasetId: 'table', id: 'country-rates', transpose: false }, 3)).toBe('country-rates');
+    expect(resultViewItemKey({ type: 'table', datasetId: 'table', transpose: false }, 3)).toBe('table-3');
+  });
+
+  it('normalizes chart columns for the selected orientation without changing source data', () => {
+    const dataset: ResultDataset = {
+      id: 'dataset', sourceId: 'source', name: '시계열', sheetName: '시계열', suggestedKind: 'table',
+      columns: [{ id: 'c0', label: '연도' }, { id: 'c1', label: 'GDP' }, { id: 'c2', label: '소비' }],
+      rows: [[2020, 100, 60], [2021, 110, 65]],
+    };
+    const view: ChartView = { type: 'chart', datasetId: 'dataset', transpose: true, chartType: 'scatter', xColumn: 99, seriesColumns: [99, 1, 2, 2] };
+
+    expect(normalizeChartView(dataset, view)).toMatchObject({
+      datasetId: 'dataset',
+      transpose: true,
+      chartType: 'scatter',
+      xColumn: 0,
+      seriesColumns: [1, 2],
+    });
+    expect(dataset.columns.map((column) => column.label)).toEqual(['연도', 'GDP', '소비']);
+    expect(dataset.rows).toEqual([[2020, 100, 60], [2021, 110, 65]]);
   });
 
   it('transposes only the display dataset and keeps the original untouched', () => {

@@ -7,6 +7,7 @@ import {
   type ResultDataset,
   type ResultDatasetKind,
   type ResultViewDocument,
+  isChartType,
 } from './results-data';
 
 type ResultManifestSource = {
@@ -145,7 +146,53 @@ function validateView(value: unknown): ResultViewDocument {
   if (!value || typeof value !== 'object') throw new Error('view.json 형식이 올바르지 않아.');
   const candidate = value as Partial<ResultViewDocument>;
   if (candidate.version !== 1 || !Array.isArray(candidate.items)) throw new Error('view.json version/items 형식이 올바르지 않아.');
+  candidate.items.forEach(validateViewItem);
   return candidate as ResultViewDocument;
+}
+
+function validateViewItem(value: unknown, index: number) {
+  if (!value || typeof value !== 'object') throw new Error(`view.json item ${index + 1} 형식이 올바르지 않아.`);
+  const item = value as Record<string, unknown>;
+  if (item.type !== 'metric' && item.type !== 'table' && item.type !== 'chart') {
+    throw new Error(`view.json item ${index + 1} type이 올바르지 않아.`);
+  }
+  if (typeof item.datasetId !== 'string' || !item.datasetId.trim()) {
+    throw new Error(`view.json item ${index + 1} datasetId가 올바르지 않아.`);
+  }
+  if (item.id !== undefined && (typeof item.id !== 'string' || !item.id.trim())) {
+    throw new Error(`view.json item ${index + 1} id가 올바르지 않아.`);
+  }
+  if (item.title !== undefined && typeof item.title !== 'string') {
+    throw new Error(`view.json item ${index + 1} title이 올바르지 않아.`);
+  }
+
+  if (item.type === 'metric') {
+    if (!Number.isInteger(item.row) || (item.row as number) < 0) throw new Error(`view.json item ${index + 1} row가 올바르지 않아.`);
+    if (item.label !== undefined && typeof item.label !== 'string') throw new Error(`view.json item ${index + 1} label이 올바르지 않아.`);
+    if (item.prefix !== undefined && typeof item.prefix !== 'string') throw new Error(`view.json item ${index + 1} prefix가 올바르지 않아.`);
+    if (item.suffix !== undefined && typeof item.suffix !== 'string') throw new Error(`view.json item ${index + 1} suffix가 올바르지 않아.`);
+    if (item.decimals !== undefined && (!Number.isInteger(item.decimals) || (item.decimals as number) < 0 || (item.decimals as number) > 12)) {
+      throw new Error(`view.json item ${index + 1} decimals가 올바르지 않아.`);
+    }
+    return;
+  }
+
+  if (typeof item.transpose !== 'boolean') throw new Error(`view.json item ${index + 1} transpose가 올바르지 않아.`);
+  if (item.type === 'table') return;
+
+  if (!isChartType(item.chartType)) throw new Error(`view.json item ${index + 1} chartType이 올바르지 않아.`);
+  if (!Number.isInteger(item.xColumn) || (item.xColumn as number) < -1) throw new Error(`view.json item ${index + 1} xColumn이 올바르지 않아.`);
+  for (const key of ['xMin', 'xMax', 'yMin', 'yMax'] as const) {
+    if (item[key] !== undefined && (typeof item[key] !== 'number' || !Number.isFinite(item[key]))) {
+      throw new Error(`view.json item ${index + 1} ${key}가 올바르지 않아.`);
+    }
+  }
+  if (!Array.isArray(item.seriesColumns) || item.seriesColumns.some((column) => !Number.isInteger(column) || (column as number) < 0)) {
+    throw new Error(`view.json item ${index + 1} seriesColumns가 올바르지 않아.`);
+  }
+  if (new Set(item.seriesColumns as number[]).size !== (item.seriesColumns as number[]).length) {
+    throw new Error(`view.json item ${index + 1} seriesColumns가 중복됐어.`);
+  }
 }
 
 function projectIdFromRoot(root: string) {

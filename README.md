@@ -242,9 +242,28 @@ projects/<project-id>/
 
 선택한 프로젝트에 dashboard bundle이 없으면 다른 프로젝트의 수치를 섞어 표시하지 않고, 결과 파일 목록과 명확한 empty state만 표시한다. 프로젝트 선택 전의 `/api/results`와 `GITHUB_RESULTS_PATH`는 기존 사용자를 위한 전역 fallback으로 유지된다.
 
+표준 결과 bundle이 있으면 legacy dashboard보다 우선한다. 표준 Results 화면은 bundle 안의 각 metric·table·chart 항목마다 호환되는 dataset을 선택할 수 있고, 우측 `추가`로 표시 항목을 만들거나 각 카드의 `삭제`로 뺄 수 있다. 표는 행/열 전환, 차트는 선·막대·산점도 선택과 축 방향 전환·가로축·값 열·X/Y 축 범위 선택을 지원한다. 이 조정은 현재 화면에만 적용되며 원격 `view.json`을 자동으로 수정하지 않는다. 확정한 설정은 화면의 `view.json 복사` 또는 `view.json 다운로드`로 내보낸 뒤 검토하여 저장소에 반영한다.
+
 ## Results JSON 계약
 
-웹은 Excel을 파싱하지 않는다. 별도 Python exporter가 연구 Vault의 canonical workbook을 read-only로 열어 선택한 프로젝트의 dashboard 폴더에 다음 JSON을 생성한다. 현재 필요노동 dashboard의 canonical 경로는 `projects/interim-presentation/코드/결과/주요결과/dashboard/`다.
+### 프로젝트 표준 결과 계약
+
+표준 bundle은 다음 네 파일을 하나의 결과 경계로 사용한다.
+
+```text
+projects/<project-id>/results/
+├─ result.json
+├─ view.json
+└─ sources/
+   ├─ scalar.csv
+   └─ matrix.xlsx
+```
+
+`result.json`은 `scalar.csv`와 `matrix.xlsx`의 dataset ID, kind(`metrics`, `table`, `chart`), XLSX sheet 이름을 연결한다. `view.json`은 표시 순서와 항목별 dataset 참조를 정의한다. chart의 `chartType`은 `line`, `bar`, `scatter` 중 하나이고 `transpose`는 표에서는 행/열, 차트에서는 category/series 방향 전환으로 해석한다. chart의 선택적 `xMin`, `xMax`, `yMin`, `yMax`는 숫자 축 범위이며 생략하면 자동 범위를 사용한다. 원자료는 수정하지 않고 표시 설정만 `view.json`에 둔다. XLSX는 서버의 표준 결과 loader가 sheet별 dataset으로 읽어 화면에 전달한다.
+
+표준 bundle을 읽지 못하거나 해당 프로젝트에 bundle이 없으면 기존 dashboard JSON 또는 결과 파일 목록 fallback을 사용한다. 표준 계약의 예시는 별도 `Obsidian-Vault` repository의 `projects/<project-id>/results/` 아래에서 확인한다.
+
+legacy dashboard 경로에서는 별도 Python exporter가 연구 Vault의 canonical workbook을 read-only로 열어 선택한 프로젝트의 dashboard 폴더에 다음 JSON을 생성한다. 현재 필요노동 dashboard의 canonical 경로는 `projects/interim-presentation/코드/결과/주요결과/dashboard/`다.
 
 - `necessary_labour.json`: 연도별 필요노동 시간
 - `decomposition.json`: 기간별 총변화·바스켓 효과·투하노동량 효과
