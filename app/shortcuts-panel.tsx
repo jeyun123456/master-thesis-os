@@ -4,12 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   detectShortcutType,
   isRepositoryShortcut,
-  loadShortcutState,
   saveShortcutState,
   shortcutTitleFromTarget,
   type Shortcut,
   type ShortcutType,
 } from '@/lib/shortcuts';
+import type { ShortcutSource } from '@/lib/client-api';
 import { launchExternalShortcut, pickShortcutTarget } from '@/lib/native-shortcut';
 
 type OpenLocal = (path: string) => void;
@@ -21,8 +21,13 @@ type ContextState = {
   y: number;
 } | null;
 
-export function ShortcutsPanel({ shortcuts, onOpenFile, onOpenFolder }: {
+type SaveShortcuts = (items: Shortcut[]) => Promise<Shortcut[]>;
+
+export function ShortcutsPanel({ shortcuts, source, onSave, onItemsChange, onOpenFile, onOpenFolder }: {
   shortcuts: Shortcut[];
+  source: ShortcutSource;
+  onSave?: SaveShortcuts;
+  onItemsChange: (items: Shortcut[]) => void;
   onOpenFile: OpenLocal;
   onOpenFolder: OpenLocal;
 }) {
@@ -31,8 +36,9 @@ export function ShortcutsPanel({ shortcuts, onOpenFile, onOpenFolder }: {
   const [context, setContext] = useState<ContextState>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => setItems(loadShortcutState(shortcuts)), []);
+  useEffect(() => setItems(shortcuts), [shortcuts]);
   useEffect(() => {
     if (!context) return;
     const close = () => setContext(null);
@@ -49,10 +55,26 @@ export function ShortcutsPanel({ shortcuts, onOpenFile, onOpenFolder }: {
     window.setTimeout(() => setNotice(''), 1800);
   }
 
-  function commit(next: Shortcut[]) {
+  async function commit(next: Shortcut[], successMessage: string) {
+    if (saving) return false;
     const normalized = next.map((item, index) => ({ ...item, order: index }));
     setItems(normalized);
-    saveShortcutState(normalized);
+    setSaving(true);
+    try {
+      const saved = onSave ? await onSave(normalized) : normalized;
+      setItems(saved);
+      onItemsChange(saved);
+      saveShortcutState(saved);
+      pop(successMessage);
+      return true;
+    } catch (error) {
+      onItemsChange(normalized);
+      saveShortcutState(normalized);
+      pop(`${error instanceof Error ? error.message : '저장에 실패했어'} 로컬 백업만 남겼어.`);
+      return false;
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function open(shortcut: Shortcut) {
@@ -67,15 +89,13 @@ export function ShortcutsPanel({ shortcuts, onOpenFile, onOpenFolder }: {
       title: `${shortcut.title} 복사본`,
       order: items.length,
     };
-    commit([...items, duplicateItem]);
-    pop('바로가기를 복제했어.');
+    void commit([...items, duplicateItem], '바로가기를 복제했어.');
   }
 
   function remove(shortcut: Shortcut) {
     if (!window.confirm(`“${shortcut.title}” 바로가기를 삭제할까?`)) return;
-    commit(items.filter((item) => item.id !== shortcut.id));
+    void commit(items.filter((item) => item.id !== shortcut.id), '바로가기를 삭제했어.');
     setContext(null);
-    pop('바로가기를 삭제했어.');
   }
 
   function reorder(targetId: string) {
@@ -86,13 +106,13 @@ export function ShortcutsPanel({ shortcuts, onOpenFile, onOpenFolder }: {
     const next = [...items];
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
-    commit(next);
+    void commit(next, '바로가기 순서를 저장했어.');
   }
 
   return <div className="shortcuts-shell">
     <div className="card section shortcuts-intro">
       <div><h3>바로가기</h3><p>웹 · 프로그램 · 파일 · 폴더 · 명령어를 바탕화면 아이콘처럼 실행해.</p></div>
-      <span>{items.length}개 · 이 기기에 저장</span>
+      <span>{items.length}개 · {sourceLabel(source)}</span>
     </div>
 
     <section className="card section section-gap shortcut-desktop">
@@ -100,8 +120,9 @@ export function ShortcutsPanel({ shortcuts, onOpenFile, onOpenFolder }: {
         {items.map((shortcut) => <ShortcutTile
           key={shortcut.id}
           shortcut={shortcut}
+          disabled={saving}
           dragged={draggedId === shortcut.id}
-          onOpen={() => void open(shortcut)}
+          onOpen={() => { if (shortcut.enabled) void open(shortcut); else pop('비활성화된 바로가기야.'); }}
           onDragStart={() => setDraggedId(shortcut.id)}
           onDragEnd={() => setDraggedId(null)}
           onDrop={() => reorder(shortcut.id)}
@@ -110,7 +131,7 @@ export function ShortcutsPanel({ shortcuts, onOpenFile, onOpenFolder }: {
             setContext({ shortcut, x: event.clientX, y: event.clientY });
           }}
         />)}
-        <button className="shortcut-tile shortcut-add-tile" type="button" onClick={() => setEditing('new')} aria-label="바로가기 추가">
+        <button className="shortcut-tile shortcut-add-tile" type="button" disabled={saving} onClick={() => setEditing('new')} aria-label="바로가기 추가">
           <span className="shortcut-tile-icon shortcut-add-icon" aria-hidden="true">＋</span>
           <span className="shortcut-tile-title">추가</span>
         </button>
@@ -133,9 +154,8 @@ export function ShortcutsPanel({ shortcuts, onOpenFile, onOpenFolder }: {
       onClose={() => setEditing(null)}
       onSave={(shortcut) => {
         const exists = items.some((item) => item.id === shortcut.id);
-        commit(exists ? items.map((item) => item.id === shortcut.id ? shortcut : item) : [...items, shortcut]);
-        setEditing(null);
-        pop(exists ? '바로가기를 수정했어.' : '바로가기를 추가했어.');
+        void commit(exists ? items.map((item) => item.id === shortcut.id ? shortcut : item) : [...items, shortcut], exists ? '바로가기를 수정했어.' : '바로가기를 추가했어.')
+          .then((saved) => { if (saved) setEditing(null); });
       }}
     />}
   </div>;
@@ -155,8 +175,9 @@ export function ShortcutList({ shortcuts, onOpenFile, onOpenFolder }: {
   </div>)}</div>;
 }
 
-function ShortcutTile({ shortcut, dragged, onOpen, onContextMenu, onDragStart, onDragEnd, onDrop }: {
+function ShortcutTile({ shortcut, disabled, dragged, onOpen, onContextMenu, onDragStart, onDragEnd, onDrop }: {
   shortcut: Shortcut;
+  disabled: boolean;
   dragged: boolean;
   onOpen: () => void;
   onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
@@ -165,8 +186,9 @@ function ShortcutTile({ shortcut, dragged, onOpen, onContextMenu, onDragStart, o
   onDrop: () => void;
 }) {
   return <button
-    className={`shortcut-tile${dragged ? ' dragging' : ''}`}
+    className={`shortcut-tile${dragged ? ' dragging' : ''}${shortcut.enabled ? '' : ' shortcut-disabled'}`}
     type="button"
+    disabled={disabled}
     draggable
     title={`${shortcut.title}\n${shortcut.target}`}
     onClick={onOpen}
@@ -198,11 +220,13 @@ function ShortcutEditDialog({ source, nextOrder, onSave, onClose, onNotice }: {
   const [args, setArgs] = useState(source?.args || '');
   const [workingDirectory, setWorkingDirectory] = useState(source?.workingDirectory || '');
   const [runAsAdmin, setRunAsAdmin] = useState(source?.runAsAdmin === true);
+  const [enabled, setEnabled] = useState(source?.enabled !== false);
+  const [pinnedToHome, setPinnedToHome] = useState(source?.pinnedToHome === true);
   const type = useMemo(() => mode === 'auto' ? detectShortcutType(target) : mode, [mode, target]);
   const preview: Shortcut = {
     id: source?.id || 'preview', title: title || shortcutTitleFromTarget(target, type) || '새 바로가기', type, target,
     icon: icon || undefined, description: description || undefined, args: args || undefined, workingDirectory: workingDirectory || undefined,
-    runAsAdmin, pinnedToHome: source?.pinnedToHome || false, enabled: true, order: source?.order ?? nextOrder,
+    runAsAdmin, pinnedToHome, enabled, order: source?.order ?? nextOrder,
   };
 
   function updateTarget(value: string, forcedType?: ShortcutType) {
@@ -247,8 +271,8 @@ function ShortcutEditDialog({ source, nextOrder, onSave, onClose, onNotice }: {
       args: args.trim() || undefined,
       workingDirectory: workingDirectory.trim() || undefined,
       runAsAdmin: (type === 'app' || type === 'command') && runAsAdmin,
-      pinnedToHome: source?.pinnedToHome || false,
-      enabled: true,
+      pinnedToHome,
+      enabled,
       order: source?.order ?? nextOrder,
     });
   }
@@ -277,6 +301,8 @@ function ShortcutEditDialog({ source, nextOrder, onSave, onClose, onNotice }: {
           <div className="shortcut-form-row"><label>작업 폴더<input value={workingDirectory} onChange={(event) => setWorkingDirectory(event.target.value)} placeholder="예: D:\\master-thesis-os" /></label></div>
           <label className="shortcut-checkbox"><input type="checkbox" checked={runAsAdmin} onChange={(event) => setRunAsAdmin(event.target.checked)} />관리자 권한으로 실행</label>
         </>}
+        <label className="shortcut-checkbox"><input type="checkbox" checked={pinnedToHome} onChange={(event) => setPinnedToHome(event.target.checked)} />Home에 표시</label>
+        <label className="shortcut-checkbox"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />바로가기 활성화</label>
         <div className="shortcut-form-row"><label>설명<input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="선택 사항" /></label></div>
         <div className="shortcut-form-row"><label>아이콘<input value={icon} onChange={(event) => setIcon(event.target.value)} placeholder="이모지, 이미지 URL 또는 data URL" /></label></div>
       </details>
@@ -323,6 +349,10 @@ function targetPlaceholder(type: ShortcutType) {
   if (type === 'folder') return 'D:\\Research';
   if (type === 'command') return 'npm run dev';
   return 'D:\\Research\\paper.pdf';
+}
+
+function sourceLabel(source: ShortcutSource) {
+  return source === 'fallback' ? '기본값/로컬 백업' : source === 'local' ? 'Obsidian Vault 로컬' : source === 'github' ? 'Obsidian Vault GitHub' : '저장소 확인 필요';
 }
 
 function typeLabel(type: ShortcutType) {

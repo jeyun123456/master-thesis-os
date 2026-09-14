@@ -6,19 +6,19 @@ import { ResearchPanel } from '@/app/research-panel';
 import { ResultsPanel as ResultsDashboardPanel } from '@/app/results-panel';
 import { RewardSlotPanel } from '@/app/reward-slot';
 import { ShortcutList, ShortcutsPanel } from '@/app/shortcuts-panel';
-import { dashboardApi, type CalendarApiResponse } from '@/lib/client-api';
+import { dashboardApi, type CalendarApiResponse, type RepositorySource, type ShortcutSource } from '@/lib/client-api';
 import type { CalendarEvent } from '@/lib/calendar';
 import { daysUntil, groupCalendarEvents } from '@/lib/calendar-view';
 import type { GitHubCommitSummary } from '@/lib/github';
-import type { ResearchProject } from '@/lib/projects';
+import { stageLabel, type ResearchProject } from '@/lib/projects';
 import type { RepositoryItem } from '@/lib/repository';
 import type { ResearchStatus } from '@/lib/research-status';
 import type { DashboardBundle } from '@/lib/results';
 import { BRIDGE_OFFLINE_MESSAGE, BRIDGE_TIMEOUT_MESSAGE, bridgeResponseMessage } from '@/lib/bridge-status';
-import { getEnabledShortcuts, getHomeShortcuts, shortcuts } from '@/lib/shortcuts';
+import { getEnabledShortcuts, getHomeShortcuts, loadShortcutState, shortcuts, type Shortcut } from '@/lib/shortcuts';
 import appPackage from '../package.json';
 
-type Page = 'home' | 'research' | 'results' | 'library' | 'shortcuts' | 'settings';
+type Page = 'home' | 'research' | 'results' | 'library' | 'slot' | 'shortcuts' | 'settings';
 
 const APP_VERSION = appPackage.version;
 
@@ -44,6 +44,7 @@ const pageMeta: Record<Page, [string, string]> = {
   research: ['연구', '프로젝트별 질문 · 진행 단계 · 다음 작업 · 관련 자료'],
   results: ['분석 결과', '필요노동 추이 · 분해 · 검증 결과'],
   library: ['자료실', '주요 자료 · 대표 문헌 · 연구 Wiki'],
+  slot: ['슬롯', '다음 연구 작업을 작은 보상 단위로 관리'],
   shortcuts: ['바로가기', '반복해서 여는 연구 파일 · 폴더 · 웹 주소'],
   settings: ['설정', '연구 저장소 · Google Calendar · 로컬 브리지'],
 };
@@ -53,6 +54,7 @@ const navigation: Array<{ id: Page; label: string; icon: string }> = [
   { id: 'research', label: '연구', icon: '⌕' },
   { id: 'results', label: '분석 결과', icon: '▥' },
   { id: 'library', label: '자료실', icon: '▤' },
+  { id: 'slot', label: '슬롯', icon: '◉' },
   { id: 'shortcuts', label: '바로가기', icon: '↗' },
   { id: 'settings', label: '설정', icon: '⚙' },
 ];
@@ -111,11 +113,15 @@ export default function Page() {
   const [researchStatus, setResearchStatus] = useState<ResearchStatus | null>(null);
   const [projects, setProjects] = useState<ResearchProject[]>([]);
   const [commits, setCommits] = useState<GitHubCommitSummary[]>([]);
-  const [ghConfigured, setGhConfigured] = useState(false);
+  const [repositorySource, setRepositorySource] = useState<RepositorySource>('none');
+  const [shortcutItems, setShortcutItems] = useState<Shortcut[]>(shortcuts);
+  const [shortcutSha, setShortcutSha] = useState<string | undefined>();
+  const [shortcutSource, setShortcutSource] = useState<ShortcutSource>('fallback');
+  const [researchProjectId, setResearchProjectId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [toast, setToast] = useState('');
-  const enabledShortcuts = getEnabledShortcuts(shortcuts);
-  const homeShortcuts = getHomeShortcuts(enabledShortcuts);
+  const enabledShortcuts = useMemo(() => getEnabledShortcuts(shortcutItems), [shortcutItems]);
+  const homeShortcuts = useMemo(() => getHomeShortcuts(enabledShortcuts), [enabledShortcuts]);
   useEffect(() => {
     (async () => {
       const results = await Promise.allSettled([
@@ -125,12 +131,13 @@ export default function Page() {
         dashboardApi.commits(),
         dashboardApi.researchStatus(),
         dashboardApi.projects(),
+        dashboardApi.shortcuts(),
       ]);
       const nextErrors: string[] = [];
-      const [treeResult, calendarResult, dashboardResult, commitResult, statusResult, projectResult] = results;
+      const [treeResult, calendarResult, dashboardResult, commitResult, statusResult, projectResult, shortcutResult] = results;
 
       if (treeResult.status === 'fulfilled') {
-        setGhConfigured(treeResult.value.configured);
+        setRepositorySource(treeResult.value.source || (treeResult.value.configured ? 'github' : 'none'));
         setTree(treeResult.value.items || []);
         if (treeResult.value.error) nextErrors.push(treeResult.value.error);
       } else nextErrors.push(errorMessage(treeResult.reason, 'GitHub 연구 저장소 연결에 실패했습니다.'));
@@ -147,6 +154,14 @@ export default function Page() {
         setProjects(projectResult.value.items || []);
         if (projectResult.value.error) nextErrors.push(projectResult.value.error);
       } else nextErrors.push(errorMessage(projectResult.reason, '연구 프로젝트를 불러오지 못했습니다.'));
+
+      if (shortcutResult.status === 'fulfilled') {
+        const loaded = shortcutResult.value.source === 'fallback' ? loadShortcutState(shortcutResult.value.items) : shortcutResult.value.items;
+        setShortcutItems(loaded);
+        setShortcutSha(shortcutResult.value.sha);
+        setShortcutSource(shortcutResult.value.source);
+        if (shortcutResult.value.error) nextErrors.push(shortcutResult.value.error);
+      } else nextErrors.push(errorMessage(shortcutResult.reason, '저장소 바로가기를 불러오지 못했습니다.'));
 
       setErrors(nextErrors);
       setDashboardLoading(false);
@@ -186,31 +201,45 @@ export default function Page() {
     }
   }
 
+  async function saveShortcuts(next: Shortcut[]) {
+    const result = await dashboardApi.saveShortcuts(next, shortcutSha);
+    setShortcutItems(result.items);
+    setShortcutSha(result.sha);
+    setShortcutSource(result.source);
+    return result.items;
+  }
+
+  function openResearchProject(projectId: string) {
+    setResearchProjectId(projectId);
+    setPage('research');
+  }
+
   const schedule = useMemo(() => groupCalendarEvents(calendar.items), [calendar.items]);
   const activeProject = useMemo(() => projects.find((project) => project.id === 'thesis') || projects.find((project) => project.status === 'active') || projects[0] || null, [projects]);
+  const activeProjects = useMemo(() => projects.filter((project) => project.status === 'active' || project.status === 'writing'), [projects]);
   return (
     <div className="shell">
       <aside className="sidebar">
         <div className="brand"><div className="logo">M</div><div><h1>Master Thesis OS</h1><p>석사논문 연구 작업실 · v{APP_VERSION}</p></div></div>
         <nav className="nav">{navigation.map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}><span>{item.icon}</span>{item.label}</button>)}</nav>
-        <div className="sidebar-source"><span>연구 기준</span><b>Obsidian Vault</b><small>projects/ + shared/ · GitHub live</small></div>
+        <div className="sidebar-source"><span>연구 기준</span><b>Obsidian Vault</b><small>projects/ + shared/ · {repositorySource === 'local' ? 'local live' : repositorySource === 'github' ? 'GitHub live' : '연결 필요'}</small></div>
       </aside>
 
       <main className="main">
         <header className="top">
           <div><h2>{pageMeta[page][0]}</h2><p>{pageMeta[page][1]}</p></div>
-          <div className="badges"><div className="badge">GitHub {ghConfigured ? '● 연결됨' : '○ 설정 필요'}</div><div className="badge">Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '● 연결됨' : '○ 확인 필요'}</div><div className="badge">v{APP_VERSION}</div></div>
+          <div className="badges"><div className="badge">Vault {repositorySource === 'local' ? '● 로컬' : repositorySource === 'github' ? '● GitHub' : '○ 설정 필요'}</div><div className="badge">Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '● 연결됨' : '○ 확인 필요'}</div><div className="badge">v{APP_VERSION}</div></div>
         </header>
 
         {errors.length > 0 && <div className="error page-error">{errors[0]}</div>}
 
         {page === 'home' && <section className="page active">
+          <ActiveProjects projects={activeProjects} onOpen={openResearchProject} />
           <div className="grid3">
             <CalendarCard title="오늘 일정" events={schedule.today} calendar={calendar} />
-            <CalendarCard title="예정 일정" events={schedule.upcoming.slice(0, 6)} calendar={calendar} />
+            <CalendarCard title="예정 일정" events={schedule.upcoming} calendar={calendar} />
             <Card title="다음 마감" right="마감 · 미팅">{schedule.nextDeadline ? <div className="event priority-event"><b>{schedule.nextDeadline.title}</b><small>{formatCalendarEvent(schedule.nextDeadline)} · {deadlineLabel(schedule.nextDeadline)}</small>{schedule.nextDeadline.location && <small>{schedule.nextDeadline.location}</small>}</div> : <CalendarState calendar={calendar} />}</Card>
           </div>
-          <RewardSlotPanel tasks={activeProject?.nextTasks || researchStatus?.nextActions || []} projectTitle={activeProject ? activeProject.title : 'Wiki live'} onNotice={pop} />
           <div className="grid2 section-gap">
             <Card title="막힌 부분" right={activeProject ? activeProject.title : '확인 필요'}><NumberedList items={activeProject?.blocked || researchStatus?.unresolved || []} empty="현재 등록된 막힌 부분이 없어." /></Card>
             <Card title="최근 변경" right="연구 저장소 GitHub"><CommitList commits={commits.slice(0, 6)} /></Card>
@@ -220,14 +249,30 @@ export default function Page() {
           </div>
         </section>}
 
-        {page === 'research' && <section className="page active"><ResearchPanel projects={projects} tree={tree} onOpen={openLocal} onOpenFolder={openLocalFolder} /></section>}
+        {page === 'research' && <section className="page active"><ResearchPanel
+          projects={projects}
+          tree={tree}
+          selectedProjectId={researchProjectId || undefined}
+          onProjectSelected={setResearchProjectId}
+          onProjectStatusChange={(updated) => setProjects((current) => current.map((project) => project.id === updated.id ? updated : project))}
+          onOpen={openLocal}
+          onOpenFolder={openLocalFolder}
+        /></section>}
         {page === 'results' && <section className="page active"><ResultsDashboardPanel dashboard={dashboard} loading={dashboardLoading} projects={projects} tree={tree} onOpen={openLocal} onOpenFolder={openLocalFolder} /></section>}
         {page === 'library' && <section className="page active"><LibraryPanel tree={tree} researchStatus={researchStatus} onOpen={openLocal} /></section>}
-        {page === 'shortcuts' && <section className="page active"><ShortcutsPanel shortcuts={enabledShortcuts} onOpenFile={openLocal} onOpenFolder={openLocalFolder} /></section>}
+        {page === 'slot' && <section className="page active"><RewardSlotPanel tasks={activeProject?.nextTasks || researchStatus?.nextActions || []} projectTitle={activeProject ? activeProject.title : 'Wiki live'} onNotice={pop} /></section>}
+        {page === 'shortcuts' && <section className="page active"><ShortcutsPanel
+          shortcuts={shortcutItems}
+          source={shortcutSource}
+          onSave={saveShortcuts}
+          onItemsChange={setShortcutItems}
+          onOpenFile={openLocal}
+          onOpenFolder={openLocalFolder}
+        /></section>}
 
         {page === 'settings' && <section className="page active">
           <div className="grid2">
-            <Card title="연구 저장소" right={ghConfigured ? '연결됨' : '설정 필요'}><div className="note">GitHub의 Obsidian Vault가 연구 데이터의 기준이야. 프로젝트는 <code>projects/*/project.md</code>에서 자동 발견하고, 기존 <code>wiki/ · Calc/ · 연구/</code> 경로는 manifest가 연결해.</div></Card>
+            <Card title="연구 저장소" right={repositorySource === 'none' ? '설정 필요' : repositorySource === 'local' ? '로컬' : 'GitHub'}><div className="note">Obsidian Vault가 연구 데이터의 기준이야. 프로젝트는 <code>projects/*/project.md</code>에서 자동 발견하고, 기존 <code>wiki/ · Calc/ · 연구/</code> 경로는 manifest가 연결해.</div></Card>
             <Card title="로컬 브리지" right="127.0.0.1 전용"><div className="note">로컬 파일·볼트 폴더 열기는 PC에서 bridge를 실행했을 때만 동작해. 토큰은 이 브라우저의 localStorage에 저장돼.</div><div className="toolbar bridge-toolbar"><button className="btn" type="button" onClick={() => openLocalFolder()}>볼트 폴더 열기</button></div><BridgeToken onSave={() => pop('브리지 토큰을 저장했어')} onNotice={pop} /></Card>
           </div>
           <div className="grid2 section-gap">
@@ -243,8 +288,25 @@ export default function Page() {
   );
 }
 
-function Card({ title, right, children }: { title: string; right?: string; children: React.ReactNode }) { return <div className="card section"><div className="head"><h3>{title}</h3><span>{right}</span></div>{children}</div>; }
-function CalendarCard({ title, events, calendar }: { title: string; events: CalendarEvent[]; calendar: CalendarApiResponse }) { return <Card title={title} right={calendar.state === 'ready' ? 'Google Calendar' : 'Calendar'}>{events.length ? events.map((event) => <div className="event" key={`${event.calendarId}:${event.id}:${event.start}`}><b>{event.title}</b><small>{formatCalendarEvent(event)} · {event.category}</small>{event.location && <small>{event.location}</small>}</div>) : <CalendarState calendar={calendar} />}</Card>; }
+function ActiveProjects({ projects, onOpen }: { projects: ResearchProject[]; onOpen: (projectId: string) => void }) {
+  return <section className="card section active-projects-card">
+    <div className="head"><h3>작동 중인 프로젝트</h3><span>{projects.length ? `${projects.length}개 · active / writing` : '없음'}</span></div>
+    {projects.length ? <div className="active-project-list">{projects.map((project) => <button className="active-project-item" key={project.id} type="button" onClick={() => onOpen(project.id)}>
+      <span className="active-project-icon" aria-hidden="true">{project.status === 'writing' ? '✎' : '●'}</span>
+      <span className="active-project-main"><b>{project.title}</b><small>{project.status === 'writing' ? '작성중' : '진행 중'} · {project.currentFocus || project.nextTasks[0] || '현재 작업 미등록'}</small></span>
+      <span className="active-project-stage">{stageLabel(project.stage)} ↗</span>
+    </button>)}</div> : <div className="empty compact-empty">상태가 active 또는 writing인 프로젝트가 없어.</div>}
+  </section>;
+}
+
+function Card({ title, right, children, className = '' }: { title: string; right?: string; children: React.ReactNode; className?: string }) { return <div className={`card section${className ? ` ${className}` : ''}`}><div className="head"><h3>{title}</h3><span>{right}</span></div>{children}</div>; }
+function CalendarCard({ title, events, calendar }: { title: string; events: CalendarEvent[]; calendar: CalendarApiResponse }) {
+  const visibleEvents = events.slice(0, 3);
+  const remaining = Math.max(0, events.length - visibleEvents.length);
+  return <Card title={title} right={calendar.state === 'ready' ? 'Google Calendar' : 'Calendar'} className="calendar-card">
+    {visibleEvents.length ? <div className="calendar-events">{visibleEvents.map((event) => <div className="event" key={`${event.calendarId}:${event.id}:${event.start}`}><b>{event.title}</b><small>{formatCalendarEvent(event)} · {event.category}</small>{event.location && <small>{event.location}</small>}</div>)}{remaining > 0 && <div className="calendar-more">+{remaining}개 일정 더 있음</div>}</div> : <CalendarState calendar={calendar} />}
+  </Card>;
+}
 function CalendarState({ calendar }: { calendar: CalendarApiResponse }) { return <div className={calendar.state === 'error' ? 'error' : 'empty compact-empty'}>{calendarStateText(calendar)}</div>; }
 function calendarStateText(calendar: CalendarApiResponse) { if (calendar.state === 'unconfigured') return 'Google Calendar 설정이 필요해.'; if (calendar.state === 'empty') return '오늘부터 14일 안에 일정이 없어.'; if (calendar.errorCode === 'auth_error') return 'Calendar 서비스 계정 권한을 확인해야 해.'; if (calendar.errorCode === 'invalid_calendar') return 'Calendar ID 또는 공유 권한을 확인해줘.'; if (calendar.errorCode === 'quota_error') return 'Google Calendar API quota를 확인해줘.'; if (calendar.errorCode === 'malformed_response') return 'Calendar 응답 형식을 확인할 수 없어.'; if (calendar.state === 'error') return 'Calendar 네트워크 연결을 확인해줘.'; return '해당 일정이 없어.'; }
 function Kpi({ label, value, sub }: { label: string; value: string; sub: string }) { return <div className="card kpi"><small>{label}</small><strong>{value}</strong><span>{sub}</span></div>; }

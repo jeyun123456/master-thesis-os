@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { detectShortcutType, getEnabledShortcuts, getHomeShortcuts, isAbsoluteLocalTarget, isSupportedExternalUri, isWindowsShellTarget, parseShortcuts } from './shortcuts';
+import { parseShortcutMarkdown, serializeShortcutMarkdown } from './shortcut-markdown';
 
 describe('shortcuts', () => {
   it('filters invalid entries and sorts enabled shortcuts predictably', () => {
@@ -62,5 +63,21 @@ describe('shortcuts', () => {
   it('defaults optional flags without inventing a target', () => {
     const [item] = parseShortcuts([{ id: 'x', title: 'X', type: 'file', target: 'wiki/x.md' }]);
     expect(item).toMatchObject({ enabled: true, pinnedToHome: false, description: undefined, icon: undefined });
+  });
+
+  it('round-trips repository shortcuts through the Markdown contract', () => {
+    const markdown = `# 설명\n\n<!-- master-thesis-os:shortcuts:start -->\n\n### steam\ntitle: "Steam 게임"\ntype: "uri"\ntarget: "steam://rungameid/3548580"\npinnedToHome: true\nenabled: true\norder: 0\n\n### recycle-bin\ntitle: "휴지통"\ntype: "shell"\ntarget: "shell:RecycleBinFolder"\nenabled: false\norder: 1\n\n<!-- master-thesis-os:shortcuts:end -->\n`;
+    const items = parseShortcutMarkdown(markdown);
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({ id: 'steam', type: 'uri', target: 'steam://rungameid/3548580', pinnedToHome: true });
+    expect(items[1]).toMatchObject({ id: 'recycle-bin', type: 'shell', target: 'shell:RecycleBinFolder', enabled: false });
+    const rewritten = serializeShortcutMarkdown(items, markdown);
+    expect(rewritten).toContain('# 설명');
+    expect(rewritten).toContain('### steam');
+    expect(parseShortcutMarkdown(rewritten)).toEqual(items);
+  });
+
+  it('does not rewrite a shortcut document with an incomplete marker block', () => {
+    expect(() => serializeShortcutMarkdown([], '<!-- master-thesis-os:shortcuts:start -->\n')).toThrow('end marker');
   });
 });

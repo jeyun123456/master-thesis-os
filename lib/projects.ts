@@ -2,6 +2,17 @@ import type { RepositoryItem } from './repository';
 
 export type ProjectStatus = 'writing' | 'active' | 'paused' | 'waiting' | 'blocked' | 'complete' | string;
 
+export const projectStatusOptions = [
+  { value: 'writing', label: '작성중' },
+  { value: 'active', label: '진행 중' },
+  { value: 'paused', label: '보류' },
+  { value: 'waiting', label: '대기' },
+  { value: 'blocked', label: '막힘' },
+  { value: 'complete', label: '완료' },
+] as const;
+
+export const projectStatusValues = projectStatusOptions.map((option) => option.value);
+
 export type ResearchProject = {
   id: string;
   title: string;
@@ -10,6 +21,7 @@ export type ResearchProject = {
   stage: string;
   updated: string;
   sourcePath: string;
+  sourceSha?: string;
   summary: string;
   currentFocus: string;
   questions: string[];
@@ -123,15 +135,27 @@ export function stageLabel(stage: string): string {
 }
 
 export function projectStatusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    writing: '작성중',
-    active: '진행 중',
-    paused: '보류',
-    waiting: '대기',
-    blocked: '막힘',
-    complete: '완료',
-  };
+  const labels = Object.fromEntries(projectStatusOptions.map((option) => [option.value, option.label]));
   return labels[status] || status || '미지정';
+}
+
+export function updateProjectStatusMarkdown(markdown: string, status: string): string {
+  const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) throw new Error('project.md frontmatter is missing');
+  const lineBreak = markdown.includes('\r\n') ? '\r\n' : '\n';
+  const lines = match[1].split(/\r?\n/);
+  let replaced = false;
+  const updatedLines = lines.map((line) => {
+    if (!/^\s*status\s*:/i.test(line)) return line;
+    replaced = true;
+    return `status: ${status}`;
+  });
+  if (!replaced) {
+    const idIndex = updatedLines.findIndex((line) => /^\s*id\s*:/i.test(line));
+    updatedLines.splice(idIndex >= 0 ? idIndex + 1 : 0, 0, `status: ${status}`);
+  }
+  const updatedFrontmatter = `---${lineBreak}${updatedLines.join(lineBreak)}${lineBreak}---`;
+  return `${updatedFrontmatter}${markdown.slice(match[0].length)}`;
 }
 
 function parseFrontmatter(markdown: string): Record<string, string> {

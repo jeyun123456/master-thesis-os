@@ -1,3 +1,5 @@
+import { isSafeRepositoryPath, type RepositoryItem } from './repository';
+
 export function normalizeGithubRepository(value: string | null | undefined): string | null {
   if (!value) return null;
   const input = value.trim();
@@ -40,8 +42,6 @@ const TREE_CACHE_TTL_MS = 60_000;
 
 let treeCache: { expiresAt: number; items: RepositoryItem[] } | null = null;
 
-import { isSafeRepositoryPath, type RepositoryItem } from './repository';
-
 export type GitHubCommitSummary = {
   sha: string;
   message: string;
@@ -50,19 +50,39 @@ export type GitHubCommitSummary = {
   url: string;
 };
 
-export function githubConfigured() { return Boolean(owner && repo); }
+export type GitHubTextFile = {
+  path: string;
+  sha: string;
+  decoded: string;
+};
 
-async function gh<T>(path: string, options: { noStore?: boolean } = {}): Promise<T> {
+export class GitHubApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'GitHubApiError';
+    this.status = status;
+  }
+}
+
+export function githubConfigured() { return Boolean(owner && repo); }
+export function githubWritable() { return githubConfigured() && Boolean(token); }
+
+async function gh<T>(path: string, options: { noStore?: boolean; method?: 'GET' | 'PUT'; body?: unknown } = {}): Promise<T> {
   if (!owner || !repo) throw new Error('GitHub is not configured');
   const res = await fetch(`https://api.github.com/repos/${owner}/${repo}${path}`, {
+    method: options.method || 'GET',
     headers: {
       Accept: 'application/vnd.github+json',
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       'X-GitHub-Api-Version': '2022-11-28',
     },
+    ...(options.body ? { body: JSON.stringify(options.body) } : {}),
     ...(options.noStore ? { cache: 'no-store' } : { next: { revalidate: 60 } }),
   });
-  if (!res.ok) throw new Error(`GitHub API request failed (${res.status})`);
+  if (!res.ok) throw new GitHubApiError(`GitHub API request failed (${res.status})`, res.status);
   return res.json() as Promise<T>;
 }
 
@@ -102,9 +122,9 @@ export async function getCommits(limit = 8): Promise<GitHubCommitSummary[]> {
   }));
 }
 
-export async function getFile(path: string) {
+export async function getFile(path: string, options: { noStore?: boolean } = {}) {
   if (!isSafeRepositoryPath(path)) throw new Error('Invalid repository-relative path');
-  const data = await gh<{ encoding?: string; content?: string } | unknown[]>(`/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`);
+  const data = await gh<{ encoding?: string; content?: string; sha?: string; path?: string } | unknown[]>(`/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`, options);
   if (Array.isArray(data)) return data;
   if (data.encoding === 'base64' && data.content) {
     return { ...data, decoded: Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString('utf8') };
@@ -118,6 +138,35 @@ export async function getTextFile(path: string): Promise<string> {
     throw new Error(`GitHub file is not decodable text: ${path}`);
   }
   return file.decoded;
+}
+
+export async function getTextFileWithSha(path: string): Promise<GitHubTextFile> {
+  const file = await getFile(path, { noStore: true });
+  if (Array.isArray(file) || !('decoded' in file) || typeof file.decoded !== 'string' || typeof file.sha !== 'string') {
+    throw new Error(`GitHub file is not decodable text: ${path}`);
+  }
+  return { path, sha: file.sha, decoded: file.decoded };
+}
+
+export async function putTextFile(path: string, content: string, message: string, sha?: string): Promise<{ path: string; sha: string }> {
+  if (!isSafeRepositoryPath(path)) throw new Error('Invalid repository-relative path');
+  if (!githubWritable()) throw new Error('GitHub write access is not configured');
+  const data = await gh<{
+    content?: { path?: string; sha?: string };
+  }>(`/contents/${path.split('/').map(encodeURIComponent).join('/')}`, {
+    method: 'PUT',
+    noStore: true,
+    body: {
+      message,
+      content: Buffer.from(content, 'utf8').toString('base64'),
+      branch,
+      ...(sha ? { sha } : {}),
+    },
+  });
+  const resultPath = data.content?.path || path;
+  const resultSha = data.content?.sha;
+  if (!resultSha) throw new Error(`GitHub did not return a file SHA: ${path}`);
+  return { path: resultPath, sha: resultSha };
 }
 
 export async function getJsonFile<T>(path: string): Promise<T> {

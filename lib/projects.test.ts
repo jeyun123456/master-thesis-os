@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupFilesByParentFolder, parseProjectManifest, projectManifestPaths, projectRelatedFiles, projectStatusLabel, stageLabel } from './projects';
+import { groupFilesByParentFolder, parseProjectManifest, projectManifestPaths, projectRelatedFiles, projectStatusLabel, stageLabel, updateProjectStatusMarkdown } from './projects';
 import type { RepositoryItem } from './repository';
 
 const manifest = `---
@@ -78,6 +78,14 @@ describe('project manifests', () => {
     expect(projectStatusLabel('active')).toBe('진행 중');
     expect(projectStatusLabel('writing')).toBe('작성중');
     expect(projectStatusLabel('paused')).toBe('보류');
+  });
+
+  it('updates only the project status frontmatter field', () => {
+    const updated = updateProjectStatusMarkdown(manifest, 'complete');
+    expect(updated).toContain('status: complete');
+    expect(updated).not.toContain('status: active');
+    expect(updated).toContain('2015→2020 결과 해석');
+    expect(updated).toContain('## 다음 작업');
   });
 
   it('groups related files by their actual parent directory in stable order', () => {

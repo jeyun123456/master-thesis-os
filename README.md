@@ -50,7 +50,7 @@ Vercel project는 앱 code repository `jeyun123456/master-thesis-os`를 연결�
 LOCAL_REPOSITORY_ROOT=D:\path\to\Obsidian-Vault
 ```
 
-이 값은 Results의 credentials-free local fallback과 exporter 입력/출력 위치에만 사용한다. Files, Literature, Wiki와 production Results는 GitHub API의 repository-relative path를 사용하므로 app checkout의 부모 경로에 의존하지 않는다.
+이 값은 로컬 project/shortcut 읽기·쓰기와 Results의 credentials-free fallback, exporter 입력/출력 위치에 사용한다. GitHub 환경변수가 설정되면 GitHub API가 우선하며, 어느 경우에도 Files·Literature·Wiki 경로는 repository-relative path를 사용한다.
 
 ## 환경변수
 
@@ -61,9 +61,10 @@ GitHub·Google 비밀값은 `.env.local` 또는 배포 플랫폼의 서버 환�
 | `GITHUB_OWNER` | GitHub 연결 시 | private repository 소유자 |
 | `GITHUB_REPO` | GitHub 연결 시 | repository 이름 |
 | `GITHUB_BRANCH` | 아니오 | 기본값 `master` |
-| `GITHUB_TOKEN` | private repo에서 필수 | Contents 읽기 권한의 fine-grained token |
+| `GITHUB_TOKEN` | private repo에서 필수 | 기본 읽기 전용 Contents 권한. GitHub 모드에서 앱 편집을 허용할 때만 Contents 읽기·쓰기 권한이 필요하며, 공개 배포에 쓰기 토큰을 넣지 않음 |
+| `GITHUB_WRITE_ENABLED` | 아니오 | 기본 `false`. 보호된 개인 배포에서만 `true`로 설정해 프로젝트 상태·바로가기 변경을 GitHub에 저장 |
 | `GITHUB_RESULTS_PATH` | 아니오 | 프로젝트별 경로가 없을 때 사용하는 전역 dashboard fallback. 기본값 `projects/interim-presentation/코드/결과/주요결과/dashboard` |
-| `LOCAL_REPOSITORY_ROOT` | 별도 checkout의 로컬 fallback/exporter 시 | 기존 `Obsidian-Vault` checkout의 절대 경로. Vercel에는 설정하지 않음 |
+| `LOCAL_REPOSITORY_ROOT` | 로컬 Vault 모드·fallback/exporter 시 | 기존 `Obsidian-Vault` checkout의 절대 경로. Vercel에는 설정하지 않음 |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Calendar 연결 시 | Google Service Account 이메일 |
 | `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | Calendar 연결 시 | Service Account RS256 private key. Vercel에서는 `\n` escape를 허용 |
 | `GOOGLE_CALENDAR_IDS` | Calendar 연결 시 | 쉼표로 구분한 하나 이상의 Calendar ID |
@@ -85,7 +86,17 @@ GitHub recursive tree가 API 한계로 잘리면 불완전한 목록을 사용�
 
 ## 바로가기와 Library 입력
 
-상단의 **바로가기** 탭과 Home의 **작성 중 프로젝트 바로가기**는 `config/shortcuts.json` 하나를 함께 읽는다. 앱 DB나 별도 CRUD는 두지 않으며, 설정 파일을 수정해 다음 schema로 항목을 관리한다.
+상단의 **바로가기** 탭과 Home의 **작성 중 프로젝트 바로가기**는 Obsidian Vault의 `shared/shortcuts.md`를 기준으로 함께 구성한다. 파일이 없거나 저장소가 연결되지 않으면 기존 `config/shortcuts.json`을 호환용 기본값으로 사용하고, 브라우저 `localStorage`는 이 fallback을 보완하는 로컬 백업으로만 사용한다. `shared/shortcuts.md`의 마커 안 항목은 앱에서 추가·편집·복제·삭제·순서 변경할 수 있고, 마커 바깥의 Markdown 설명은 보존된다.
+
+```text
+shared/shortcuts.md
+├─ <!-- master-thesis-os:shortcuts:start -->
+├─ ### shortcut-id
+├─ title / type / target / ...
+└─ <!-- master-thesis-os:shortcuts:end -->
+```
+
+로컬 개발에서 `LOCAL_REPOSITORY_ROOT`를 지정하고 GitHub 저장소 변수를 비워 두면 해당 Vault 작업트리에 원자적으로 저장한다. GitHub 모드에서는 Contents API로 파일을 갱신할 수 있지만, 이 앱의 기본 UI에는 사용자 인증이 없으므로 공개 배포에는 쓰기 토큰을 넣지 않는다. GitHub 모드 편집이 정말 필요한 경우 별도의 인증·접근제어가 있는 개인 배포에서만 Contents 읽기·쓰기 토큰을 설정한다. 파일이 동시에 바뀌면 SHA를 비교해 저장을 거부하므로 먼저 새로고침해야 한다.
 
 ```json
 {
@@ -103,7 +114,7 @@ GitHub recursive tree가 API 한계로 잘리면 불완전한 목록을 사용�
 
 `web`은 HTTP/HTTPS 링크, `uri`는 허용된 외부 앱 URI(`steam://`, `steamlink:`), `shell`은 제한된 Windows Shell 항목(`shell:RecycleBinFolder` 등)으로 열고, `file`은 기존 Local Bridge의 `/open`, `folder`는 `/open-folder`로 전달한다. `app`은 실행 파일과 인자를, `command`는 명령어를 사용한다. `enabled: false`는 모든 화면에서 숨기며, Home에는 `enabled: true`와 `pinnedToHome: true`인 항목만 표시한다. 파일·폴더 target은 연구 repository root 기준 안전한 상대경로여야 하고, 잘못된 항목은 무시된다. 외부 URI와 Windows Shell 항목은 명령어로 실행하지 않고 OS Shell에 직접 전달한다. 파일·폴더와 외부 대상 실행을 사용하려면 로컬 PC에서 bridge를 실행하고 Settings에 같은 token을 저장해야 한다.
 
-예를 들어 바로가기 추가 화면에서 다음처럼 등록할 수 있다.
+예를 들어 `shared/shortcuts.md`의 마커 안에 다음처럼 등록할 수 있다.
 
 ```json
 [
@@ -113,6 +124,10 @@ GitHub recursive tree가 API 한계로 잘리면 불완전한 목록을 사용�
 ```
 
 자료실 검색창은 한국어·일본어 IME 조합 중 Enter/Escape와 전역 단축키 처리를 중지하고 composition이 끝난 뒤에만 처리한다. 따라서 조합 중인 입력이 검색어를 지우거나 제출하는 문제를 피한다.
+
+## 프로젝트 작업공간
+
+연구 탭은 `projects/<project-id>/project.md`를 자동 발견한다. Home 상단에는 `writing` 또는 `active` 상태인 프로젝트를 표시하고, 연구 탭의 상태 선택기는 해당 manifest의 frontmatter `status`만 수정한다. 제목·질문·결과 경로 등 나머지 Markdown은 그대로 보존한다. 상태 저장에도 파일 SHA를 사용하므로 다른 편집이 먼저 반영된 경우 덮어쓰지 않는다. 프로젝트가 표준 결과를 가지면 분석 결과 탭에서 기존 dashboard fallback과 함께 선택할 수 있다.
 
 ## Google Calendar
 
@@ -232,7 +247,7 @@ Sucrose DevTools Network에서 `/open` 또는 `/open-folder` 요청을 확인한
 
 ## 프로젝트별 결과 구조
 
-분석 결과 탭은 연구 탭과 마찬가지로 `projects/*/project.md`를 기준으로 프로젝트 목록을 만들고, 선택한 프로젝트의 결과 파일을 GitHub tree에서 자동 발견한다. 계산 원자료나 결과 파일을 앱 repository에 복제하지 않는다.
+분석 결과 탭은 연구 탭과 마찬가지로 `projects/*/project.md`를 기준으로 프로젝트 목록을 만들고, 선택한 프로젝트의 결과 파일을 Vault tree에서 자동 발견한다. 계산 원자료나 결과 파일을 앱 repository에 복제하지 않는다.
 
 권장 구조는 다음과 같다.
 
@@ -308,11 +323,11 @@ Calc result workbook
 
 ## 인증정보 없는 동작
 
-- GitHub 미설정: 빈 repository 목록
+- GitHub와 `LOCAL_REPOSITORY_ROOT`가 모두 미설정: 빈 repository 목록
 - Calendar 미설정·인증 실패·quota/network 오류: 원인을 구분한 일정 empty/error state
 - Results JSON 미설정·누락·invalid: 오류 이유가 포함된 empty state
 
-로컬 개발에서 `LOCAL_REPOSITORY_ROOT`가 설정되면 서버는 지정한 Vault 작업트리의 검증된 JSON을 읽는다. GitHub 환경변수가 설정되면 같은 상대경로를 GitHub API에서 읽는다.
+로컬 개발에서 `LOCAL_REPOSITORY_ROOT`가 설정되고 GitHub 환경변수가 비어 있으면 서버는 지정한 Vault 작업트리에서 project manifest, shortcut Markdown, 표준 결과와 검증된 JSON을 읽고 필요한 변경을 원자적으로 저장한다. GitHub 환경변수가 설정되면 같은 상대경로를 GitHub API에서 읽으며, GitHub 쓰기는 `GITHUB_WRITE_ENABLED=true`인 보호된 배포에서만 허용한다.
 
 ## v1 release checklist
 

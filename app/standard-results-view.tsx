@@ -78,7 +78,7 @@ export function StandardResultsView({ resultPath }: { resultPath: string }) {
   }, [bundle?.view]);
 
   if (loading) return <div className="card empty result-empty"><h3>프로젝트 결과를 불러오는 중이야</h3><p><code>{resultPath}</code>의 표준 결과 파일을 읽고 있어.</p></div>;
-  if (error || !bundle || bundle.source !== 'github' || !bundle.view) {
+  if (error || !bundle || bundle.source === 'empty' || !bundle.view) {
     return <div className="card empty result-empty"><h3>표준 결과를 불러올 수 없어</h3><p>{error || bundle?.error || 'result.json 또는 view.json을 확인해줘.'}</p></div>;
   }
 
@@ -159,7 +159,7 @@ export function StandardResultsView({ resultPath }: { resultPath: string }) {
 
   return <>
     <div className="result-controls card section">
-      <div><b>프로젝트 표준 결과</b><span>GitHub live · scalar.csv + matrix.xlsx · view.json</span></div>
+      <div><b>프로젝트 표준 결과</b><span>{bundle.source === 'local' ? 'Vault local' : 'GitHub live'} · scalar.csv + matrix.xlsx · view.json</span></div>
       <code>{resultPath}</code>
     </div>
     <div className="card section result-view-toolbar">

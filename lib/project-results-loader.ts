@@ -1,5 +1,5 @@
-import { getFile, getJsonFile, getTextFile } from './github';
 import { isSafeRepositoryPath } from './repository';
+import { readVaultBytes, readVaultText, type VaultSource } from './vault-repository';
 import {
   importCsvText,
   importXlsxBytes,
@@ -35,7 +35,7 @@ export type LoadedProjectResultDataset = ResultDataset & {
 };
 
 export type ProjectResultsBundle = {
-  source: 'github' | 'empty';
+  source: VaultSource | 'empty';
   resultPath: string;
   projectId: string | null;
   datasets: LoadedProjectResultDataset[];
@@ -48,16 +48,27 @@ export async function getProjectResultsBundle(resultPath: string): Promise<Proje
   if (!root) return emptyBundle(resultPath, '유효한 프로젝트 결과 경로가 아니야.');
 
   try {
-    const manifest = validateManifest(await getJsonFile<unknown>(`${root}/result.json`));
-    const view = validateView(await getJsonFile<unknown>(`${root}/view.json`));
+    const manifestFile = await readVaultText(`${root}/result.json`);
+    const viewFile = await readVaultText(`${root}/view.json`);
+    const manifest = validateManifest(JSON.parse(manifestFile.text) as unknown);
+    const view = validateView(JSON.parse(viewFile.text) as unknown);
     const loadedSources = new Map<string, ResultDataSource>();
+    const resultSource = manifestFile.source;
+    if (viewFile.source !== resultSource) throw new Error('결과 파일 source가 서로 다른 저장소를 가리켜.');
 
-    for (const source of manifest.sources) {
-      const sourcePath = resolveResultPath(root, source.file);
-      const loaded = source.format === 'csv'
-        ? importCsvText(source.file, await getTextFile(sourcePath))
-        : await importXlsxBytes(source.file, await readBinaryFile(sourcePath));
-      loadedSources.set(source.id, loaded);
+    for (const sourceDefinition of manifest.sources) {
+      const sourcePath = resolveResultPath(root, sourceDefinition.file);
+      let loaded: ResultDataSource;
+      if (sourceDefinition.format === 'csv') {
+        const loadedFile = await readVaultText(sourcePath);
+        if (loadedFile.source !== manifestFile.source) throw new Error('결과 source가 서로 다른 저장소를 가리켜.');
+        loaded = importCsvText(sourceDefinition.file, loadedFile.text);
+      } else {
+        const loadedFile = await readVaultBytes(sourcePath);
+        if (loadedFile.source !== manifestFile.source) throw new Error('결과 source가 서로 다른 저장소를 가리켜.');
+        loaded = await importXlsxBytes(sourceDefinition.file, loadedFile.bytes);
+      }
+      loadedSources.set(sourceDefinition.id, loaded);
     }
 
     const datasets = materializeConfiguredDatasets(manifest, loadedSources);
@@ -66,7 +77,7 @@ export async function getProjectResultsBundle(resultPath: string): Promise<Proje
     if (missingViewDataset) throw new Error(`view.json이 없는 dataset을 참조해: ${missingViewDataset.datasetId}`);
 
     return {
-      source: 'github',
+      source: resultSource,
       resultPath: root,
       projectId: manifest.projectId || projectIdFromRoot(root),
       datasets,
@@ -113,14 +124,6 @@ function resolveResultPath(root: string, relative: string) {
     throw new Error(`잘못된 결과 source 경로야: ${relative}`);
   }
   return path;
-}
-
-async function readBinaryFile(path: string) {
-  const file = await getFile(path);
-  if (Array.isArray(file) || !('encoding' in file) || !('content' in file) || file.encoding !== 'base64' || typeof file.content !== 'string') {
-    throw new Error(`GitHub binary file을 읽을 수 없어: ${path}`);
-  }
-  return new Uint8Array(Buffer.from(file.content.replace(/\n/g, ''), 'base64'));
 }
 
 function validateManifest(value: unknown): ProjectResultManifest {

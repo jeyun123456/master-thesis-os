@@ -1,16 +1,18 @@
 import { NextResponse } from 'next/server';
-import { getTextFile, getTree, githubConfigured } from '@/lib/github';
-import { parseProjectManifest, projectManifestPaths } from '@/lib/projects';
+import { parseProjectManifest } from '@/lib/projects';
+import { readVaultText, vaultConfigured, vaultProjectManifestPaths } from '@/lib/vault-repository';
 
 export async function GET() {
-  if (!githubConfigured()) {
+  if (!vaultConfigured()) {
     return NextResponse.json({ configured: false, items: [] });
   }
 
   try {
-    const tree = await getTree();
-    const paths = projectManifestPaths(tree);
-    const items = await Promise.all(paths.map(async (path) => parseProjectManifest(await getTextFile(path), path)));
+    const paths = await vaultProjectManifestPaths();
+    const items = await Promise.all(paths.map(async (path) => {
+      const file = await readVaultText(path);
+      return { ...parseProjectManifest(file.text, path), sourceSha: file.sha };
+    }));
     items.sort((a, b) => {
       const statusRank = (value: string) => value === 'writing' ? 0 : value === 'active' ? 1 : value === 'blocked' ? 2 : value === 'waiting' ? 3 : value === 'paused' ? 4 : 5;
       const priorityRank = (value: string) => value === 'high' ? 0 : value === 'medium' ? 1 : 2;
