@@ -10,7 +10,7 @@ import {
   type ShortcutType,
 } from '@/lib/shortcuts';
 import type { ShortcutSource } from '@/lib/client-api';
-import { launchExternalShortcut, pickShortcutTarget } from '@/lib/native-shortcut';
+import { getNativeShortcutIcon, getSteamShortcutIcon, launchExternalShortcut, pickShortcutTarget } from '@/lib/native-shortcut';
 
 type OpenLocal = (path: string) => void;
 type EditSource = Shortcut | 'new' | null;
@@ -23,9 +23,11 @@ type ContextState = {
 
 type SaveShortcuts = (items: Shortcut[]) => Promise<Shortcut[]>;
 
-export function ShortcutsPanel({ shortcuts, source, onSave, onItemsChange, onOpenFile, onOpenFolder }: {
+export function ShortcutsPanel({ shortcuts, source, missing = false, writable = false, onSave, onItemsChange, onOpenFile, onOpenFolder }: {
   shortcuts: Shortcut[];
   source: ShortcutSource;
+  missing?: boolean;
+  writable?: boolean;
   onSave?: SaveShortcuts;
   onItemsChange: (items: Shortcut[]) => void;
   onOpenFile: OpenLocal;
@@ -109,11 +111,29 @@ export function ShortcutsPanel({ shortcuts, source, onSave, onItemsChange, onOpe
     void commit(next, '바로가기 순서를 저장했어.');
   }
 
+  const canCreateFile = missing && writable && Boolean(onSave);
+
   return <div className="shortcuts-shell">
     <div className="card section shortcuts-intro">
       <div><h3>바로가기</h3><p>웹 · 프로그램 · 파일 · 폴더 · 명령어를 바탕화면 아이콘처럼 실행해.</p></div>
       <span>{items.length}개 · {sourceLabel(source)}</span>
     </div>
+
+    {missing && <div className="card section section-gap shortcut-file-missing">
+      <div>
+        <b>Vault 바로가기 파일이 아직 없어.</b>
+        <p><code>shared/shortcuts.md</code>를 만들면 이 파일이 바로가기 목록의 기준이 돼.</p>
+        {!writable && <small>현재 Vault가 읽기 전용이어서 파일을 만들 수 없어.</small>}
+      </div>
+      <button
+        className="btn primary"
+        type="button"
+        disabled={!canCreateFile || saving}
+        onClick={() => void commit([], 'shared/shortcuts.md를 만들었어.')}
+      >
+        바로가기 파일 만들기
+      </button>
+    </div>}
 
     <section className="card section section-gap shortcut-desktop">
       <div className="shortcut-grid" role="list">
@@ -314,9 +334,31 @@ function ShortcutEditDialog({ source, nextOrder, onSave, onClose, onNotice }: {
 
 function ShortcutIcon({ shortcut, compact = false }: { shortcut: Shortcut; compact?: boolean }) {
   const custom = shortcut.icon?.trim();
-  const image = custom && (/^(?:https?:|data:image\/)/i.test(custom));
-  const favicon = !custom && shortcut.type === 'web' ? faviconUrl(shortcut.target) : null;
-  const source = image ? custom : favicon;
+  const image = Boolean(custom && /^(?:https?:|data:image\/)/i.test(custom));
+  const [nativeIcon, setNativeIcon] = useState<string | null>(null);
+  const [resolvedIcon, setResolvedIcon] = useState<string | null>(null);
+  useEffect(() => {
+    setNativeIcon(null);
+    setResolvedIcon(null);
+    if (custom) {
+      return;
+    }
+    let cancelled = false;
+    if (['app', 'file', 'folder'].includes(shortcut.type)) {
+      void getNativeShortcutIcon(shortcut).then((icon) => {
+        if (!cancelled) setNativeIcon(icon);
+      });
+    }
+    if (shortcut.type === 'uri') {
+      void getSteamShortcutIcon(shortcut.target).then((icon) => {
+        if (!cancelled) setResolvedIcon(icon);
+      });
+    }
+    return () => { cancelled = true; };
+  }, [custom, shortcut.type, shortcut.target]);
+
+  const automatic = !custom ? automaticShortcutIcon(shortcut) : null;
+  const source = image ? custom : nativeIcon || resolvedIcon || automatic;
   return <span className={compact ? 'shortcut-icon' : 'shortcut-tile-icon'} aria-hidden="true">
     {image ? typeIcon(shortcut.type) : custom || typeIcon(shortcut.type)}
     {source && <img src={source} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} />}
@@ -338,7 +380,17 @@ async function openShortcut(shortcut: Shortcut, onOpenFile: OpenLocal, onOpenFol
 }
 
 function faviconUrl(target: string) {
-  try { return `${new URL(target).origin}/favicon.ico`; } catch { return null; }
+  try {
+    const url = new URL(target);
+    const origin = url.origin.replace(/^http:/i, 'https:');
+    return `${origin}/favicon.ico`;
+  } catch { return null; }
+}
+
+function automaticShortcutIcon(shortcut: Shortcut) {
+  if (shortcut.type === 'web') return faviconUrl(shortcut.target);
+  if (shortcut.type === 'uri' && /^steam:\/\/rungameid\/\d+\/?$/i.test(shortcut.target)) return 'https://store.steampowered.com/favicon.ico';
+  return null;
 }
 
 function targetPlaceholder(type: ShortcutType) {

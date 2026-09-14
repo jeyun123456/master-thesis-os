@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { parseShortcutMarkdown, serializeShortcutMarkdown } from '@/lib/shortcut-markdown';
+import { parseShortcutMarkdown, serializeShortcutMarkdown, SHORTCUTS_MARKER_END, SHORTCUTS_MARKER_START } from '@/lib/shortcut-markdown';
 import { parseShortcuts, shortcuts } from '@/lib/shortcuts';
 import { VaultConflictError, readVaultTextIfPresent, vaultConfigured, vaultWritable, writeVaultText } from '@/lib/vault-repository';
 
@@ -17,7 +17,7 @@ export async function GET() {
     if (!file) {
       return NextResponse.json({ configured: true, source: 'fallback', path: SHORTCUTS_PATH, items: shortcuts, writable: canWriteVault(), missing: true });
     }
-    if (!file.text.includes('master-thesis-os:shortcuts:start') || !file.text.includes('master-thesis-os:shortcuts:end')) {
+    if (!file.text.includes(SHORTCUTS_MARKER_START) || !file.text.includes(SHORTCUTS_MARKER_END)) {
       throw new Error(`Shortcut Markdown markers are missing: ${SHORTCUTS_PATH}`);
     }
     const items = parseShortcutMarkdown(file.text);

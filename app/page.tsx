@@ -117,6 +117,8 @@ export default function Page() {
   const [shortcutItems, setShortcutItems] = useState<Shortcut[]>(shortcuts);
   const [shortcutSha, setShortcutSha] = useState<string | undefined>();
   const [shortcutSource, setShortcutSource] = useState<ShortcutSource>('fallback');
+  const [shortcutMissing, setShortcutMissing] = useState(false);
+  const [shortcutWritable, setShortcutWritable] = useState(false);
   const [researchProjectId, setResearchProjectId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [toast, setToast] = useState('');
@@ -160,6 +162,8 @@ export default function Page() {
         setShortcutItems(loaded);
         setShortcutSha(shortcutResult.value.sha);
         setShortcutSource(shortcutResult.value.source);
+        setShortcutMissing(shortcutResult.value.missing === true);
+        setShortcutWritable(shortcutResult.value.writable === true);
         if (shortcutResult.value.error) nextErrors.push(shortcutResult.value.error);
       } else nextErrors.push(errorMessage(shortcutResult.reason, '저장소 바로가기를 불러오지 못했습니다.'));
 
@@ -206,6 +210,8 @@ export default function Page() {
     setShortcutItems(result.items);
     setShortcutSha(result.sha);
     setShortcutSource(result.source);
+    setShortcutMissing(false);
+    setShortcutWritable(result.writable === true);
     return result.items;
   }
 
@@ -264,6 +270,8 @@ export default function Page() {
         {page === 'shortcuts' && <section className="page active"><ShortcutsPanel
           shortcuts={shortcutItems}
           source={shortcutSource}
+          missing={shortcutMissing}
+          writable={shortcutWritable}
           onSave={saveShortcuts}
           onItemsChange={setShortcutItems}
           onOpenFile={openLocal}

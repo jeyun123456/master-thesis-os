@@ -1,7 +1,9 @@
-import type { Shortcut } from './shortcuts';
+import { isAbsoluteLocalTarget, type Shortcut } from './shortcuts';
 
 const CHANNEL = 'master-thesis-os.shortcuts.v1';
 const REQUEST_TIMEOUT_MS = 8000;
+const nativeIconCache = new Map<string, Promise<string | null>>();
+const steamIconCache = new Map<string, Promise<string | null>>();
 
 type WebViewMessageEvent = { data: unknown };
 type WebViewBridge = {
@@ -80,13 +82,48 @@ export async function launchExternalShortcut(shortcut: Shortcut): Promise<{ ok: 
   }
 }
 
+export function getNativeShortcutIcon(shortcut: Shortcut): Promise<string | null> {
+  if (!['app', 'file', 'folder'].includes(shortcut.type) || !isAbsoluteLocalTarget(shortcut.target)) {
+    return Promise.resolve(null);
+  }
+
+  const cacheKey = `${shortcut.type}:${shortcut.target}`;
+  const cached = nativeIconCache.get(cacheKey);
+  if (cached) return cached;
+
+  const pending = requestHost('icon', { path: shortcut.target }).then((response) => (
+    response?.ok && typeof response.icon === 'string' ? response.icon : null
+  ));
+  nativeIconCache.set(cacheKey, pending);
+  return pending;
+}
+
+export function getSteamShortcutIcon(target: string): Promise<string | null> {
+  const match = target.match(/^steam:\/\/rungameid\/(\d+)\/?$/i);
+  if (!match) return Promise.resolve(null);
+
+  const appId = match[1];
+  const cached = steamIconCache.get(appId);
+  if (cached) return cached;
+
+  const pending = fetch(`/api/shortcut-icon?appId=${encodeURIComponent(appId)}`, { cache: 'force-cache' })
+    .then(async (response) => {
+      if (!response.ok) return null;
+      const data = await response.json() as { icon?: unknown };
+      return typeof data.icon === 'string' ? data.icon : null;
+    })
+    .catch(() => null);
+  steamIconCache.set(appId, pending);
+  return pending;
+}
+
 function getWebView(): WebViewBridge | null {
   if (typeof window === 'undefined') return null;
   const candidate = window as unknown as { chrome?: { webview?: WebViewBridge } };
   return candidate.chrome?.webview || null;
 }
 
-function requestHost(action: 'pick' | 'execute', payload: Record<string, unknown>): Promise<HostResponse | null> {
+function requestHost(action: 'pick' | 'execute' | 'icon', payload: Record<string, unknown>): Promise<HostResponse | null> {
   const webview = getWebView();
   if (!webview) return Promise.resolve(null);
   const requestId = typeof crypto !== 'undefined' && 'randomUUID' in crypto

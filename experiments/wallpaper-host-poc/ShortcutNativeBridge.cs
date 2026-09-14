@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Forms = System.Windows.Forms;
@@ -67,6 +68,14 @@ public partial class MainWindow
                 return;
             }
 
+            if (action == "icon")
+            {
+                var path = root.TryGetProperty("path", out var pathElement) ? pathElement.GetString() : null;
+                var icon = string.IsNullOrWhiteSpace(path) ? null : ShortcutNativeBridge.TryGetIconDataUrl(path);
+                PostShortcutBridgeResponse(requestId, true, null, null, icon);
+                return;
+            }
+
             if (action == "execute")
             {
                 if (!root.TryGetProperty("shortcut", out var shortcut))
@@ -110,6 +119,10 @@ internal sealed record ShortcutPickResult(string Path, string? Icon);
 
 internal static class ShortcutNativeBridge
 {
+    private const uint ShgfiIcon = 0x000000100;
+    private const uint ShgfiLargeIcon = 0x000000000;
+    private const uint FileAttributeDirectory = 0x000000010;
+
     internal static bool IsAllowedSource(string source)
     {
         if (!Uri.TryCreate(source, UriKind.Absolute, out var uri))
@@ -140,7 +153,7 @@ internal static class ShortcutNativeBridge
                 })
                 {
                     return dialog.ShowDialog() == Forms.DialogResult.OK
-                        ? new ShortcutPickResult(dialog.FileName, TryIconDataUrl(dialog.FileName))
+                        ? new ShortcutPickResult(dialog.FileName, TryGetIconDataUrl(dialog.FileName))
                         : null;
                 }
             case "file":
@@ -152,7 +165,7 @@ internal static class ShortcutNativeBridge
                 })
                 {
                     return dialog.ShowDialog() == Forms.DialogResult.OK
-                        ? new ShortcutPickResult(dialog.FileName, TryIconDataUrl(dialog.FileName))
+                        ? new ShortcutPickResult(dialog.FileName, TryGetIconDataUrl(dialog.FileName))
                         : null;
                 }
             case "folder":
@@ -319,12 +332,26 @@ internal static class ShortcutNativeBridge
         return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
-    private static string? TryIconDataUrl(string path)
+    internal static string? TryGetIconDataUrl(string path)
     {
+        nint iconHandle = 0;
         try
         {
-            using var icon = Icon.ExtractAssociatedIcon(path);
-            if (icon is null) return null;
+            if (!Path.IsPathFullyQualified(path) || (!File.Exists(path) && !Directory.Exists(path))) return null;
+            var attributes = Directory.Exists(path) ? FileAttributeDirectory : 0u;
+            var flags = ShgfiIcon | ShgfiLargeIcon;
+            if (SHGetFileInfo(
+                    path,
+                    attributes,
+                    out var fileInfo,
+                    (uint)Marshal.SizeOf<ShellFileInfo>(),
+                    flags) == 0 || fileInfo.IconHandle == 0)
+            {
+                return null;
+            }
+
+            iconHandle = fileInfo.IconHandle;
+            using var icon = Icon.FromHandle(iconHandle);
             using var bitmap = icon.ToBitmap();
             using var stream = new MemoryStream();
             bitmap.Save(stream, ImageFormat.Png);
@@ -334,5 +361,37 @@ internal static class ShortcutNativeBridge
         {
             return null;
         }
+        finally
+        {
+            // SHGetFileInfo transfers the icon handle to the caller.
+            // Release it even when bitmap conversion fails.
+            if (iconHandle != 0) DestroyIcon(iconHandle);
+        }
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern nuint SHGetFileInfo(
+        string path,
+        uint fileAttributes,
+        out ShellFileInfo fileInfo,
+        uint fileInfoSize,
+        uint flags);
+
+    [DllImport("user32.dll", ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DestroyIcon(nint iconHandle);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ShellFileInfo
+    {
+        public nint IconHandle;
+        public int IconIndex;
+        public uint Attributes;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+        public string? DisplayName;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)]
+        public string? TypeName;
     }
 }

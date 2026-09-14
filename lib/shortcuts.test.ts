@@ -77,6 +77,15 @@ describe('shortcuts', () => {
     expect(parseShortcutMarkdown(rewritten)).toEqual(items);
   });
 
+  it('creates an empty canonical document without copying fallback shortcuts', () => {
+    const created = serializeShortcutMarkdown([], '');
+    expect(created).toContain('# Master Thesis OS 바로가기');
+    expect(created).toContain('<!-- master-thesis-os:shortcuts:start -->');
+    expect(created).toContain('<!-- master-thesis-os:shortcuts:end -->');
+    expect(created).not.toContain('### ');
+    expect(parseShortcutMarkdown(created)).toEqual([]);
+  });
+
   it('does not rewrite a shortcut document with an incomplete marker block', () => {
     expect(() => serializeShortcutMarkdown([], '<!-- master-thesis-os:shortcuts:start -->\n')).toThrow('end marker');
   });
