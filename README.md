@@ -2,6 +2,12 @@
 
 필요노동 석사논문 저장소를 읽는 Next.js 대시보드다. 앱 코드는 이 독립 repository에 두고, 연구 자료의 source of truth는 별도 private repository [`jeyun123456/Obsidian-Vault`](https://github.com/jeyun123456/Obsidian-Vault)로 유지한다. 앱 DB로 연구 파일을 복제하지 않는다. dashboard JSON이 없거나 검증되지 않으면 수치 대신 명확한 empty state를 표시한다.
 
+## 제품 버전
+
+- Master Thesis OS 웹 앱: `1.3.0` — canonical source는 root `package.json`
+- Wallpaper Companion: `0.6.1` — canonical source는 `experiments/wallpaper-host-poc/WallpaperHostPoc.csproj`
+- 버전 규칙과 release 절차: [`VERSIONING.md`](./VERSIONING.md)
+
 ## 구성
 
 - `app/`: 9개 필수 페이지 UI와 서버 API routes
@@ -28,6 +34,7 @@ pnpm dev
 ```powershell
 pnpm lint
 pnpm build
+pnpm version:check
 pnpm test:bridge
 pnpm test:exporter
 pnpm test:web

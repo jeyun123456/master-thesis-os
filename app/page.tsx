@@ -16,8 +16,11 @@ import type { ResearchStatus } from '@/lib/research-status';
 import type { DashboardBundle } from '@/lib/results';
 import { BRIDGE_OFFLINE_MESSAGE, BRIDGE_TIMEOUT_MESSAGE, bridgeResponseMessage } from '@/lib/bridge-status';
 import { getEnabledShortcuts, getHomeShortcuts, shortcuts } from '@/lib/shortcuts';
+import appPackage from '../package.json';
 
 type Page = 'home' | 'research' | 'results' | 'library' | 'shortcuts' | 'settings';
+
+const APP_VERSION = appPackage.version;
 
 const initialCalendar: CalendarApiResponse = {
   configured: false,
@@ -188,7 +191,7 @@ export default function Page() {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="brand"><div className="logo">M</div><div><h1>Master Thesis OS</h1><p>석사논문 연구 작업실 · v1.2.0</p></div></div>
+        <div className="brand"><div className="logo">M</div><div><h1>Master Thesis OS</h1><p>석사논문 연구 작업실 · v{APP_VERSION}</p></div></div>
         <nav className="nav">{navigation.map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}><span>{item.icon}</span>{item.label}</button>)}</nav>
         <div className="sidebar-source"><span>연구 기준</span><b>Obsidian Vault</b><small>projects/ + shared/ · GitHub live</small></div>
       </aside>
@@ -196,7 +199,7 @@ export default function Page() {
       <main className="main">
         <header className="top">
           <div><h2>{pageMeta[page][0]}</h2><p>{pageMeta[page][1]}</p></div>
-          <div className="badges"><div className="badge">GitHub {ghConfigured ? '● 연결됨' : '○ 설정 필요'}</div><div className="badge">Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '● 연결됨' : '○ 확인 필요'}</div><div className="badge">v1.2.0</div></div>
+          <div className="badges"><div className="badge">GitHub {ghConfigured ? '● 연결됨' : '○ 설정 필요'}</div><div className="badge">Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '● 연결됨' : '○ 확인 필요'}</div><div className="badge">v{APP_VERSION}</div></div>
         </header>
 
         {errors.length > 0 && <div className="error page-error">{errors[0]}</div>}
@@ -229,7 +232,7 @@ export default function Page() {
           </div>
           <div className="grid2 section-gap">
             <Card title="Google Calendar" right={calendar.state === 'ready' || calendar.state === 'empty' ? '연결됨' : '확인 필요'}><div className="note">현재 상태: {calendarStateText(calendar)}</div></Card>
-            <Card title="버전" right="v1.2.0"><div className="note">프로젝트 기반 연구탭 · repo project manifest · 한국어 UI · 큐레이션 자료실 · 모바일 내비게이션.</div></Card>
+            <Card title="버전" right={`v${APP_VERSION}`}><div className="note">프로젝트 기반 연구탭 · repo project manifest · 한국어 UI · 큐레이션 자료실 · 모바일 내비게이션.</div></Card>
           </div>
         </section>}
       </main>

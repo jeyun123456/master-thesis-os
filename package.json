@@ -1,6 +1,6 @@
 {
   "name": "master-thesis-os",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "packageManager": "pnpm@10.28.0",
   "engines": {
@@ -13,7 +13,8 @@
     "lint": "tsc --noEmit",
     "test:bridge": "python -m unittest discover -s local-bridge -p test_*.py",
     "test:exporter": "python -m unittest exporter.test_export_results",
-    "test:web": "vitest run"
+    "test:web": "vitest run",
+    "version:check": "node scripts/check-versions.mjs"
   },
   "dependencies": {
     "next": "16.3.4",
