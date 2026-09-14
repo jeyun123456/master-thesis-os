@@ -13,6 +13,14 @@ internal static class InstallLayout
         RootDirectory,
         "app");
 
+    internal static string BridgeDirectory { get; } = Path.Combine(
+        RootDirectory,
+        "bridge");
+
+    internal static string BridgeConfigPath { get; } = Path.Combine(
+        BridgeDirectory,
+        "config.json");
+
     internal static string InstalledExecutablePath { get; } = Path.Combine(
         AppDirectory,
         BuildInfo.ExecutableName);

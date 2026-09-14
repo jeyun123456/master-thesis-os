@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -7,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from bridge_config import DEFAULT_PORT, ConfigError, load_bridge_config
+from bridge_config import DEFAULT_PORT, ConfigError, load_bridge_config, resolve_config_path
 from bridge_security import (
     PRODUCTION_ORIGIN,
     allows_private_network,
@@ -98,6 +99,63 @@ class BridgeConfigurationTests(unittest.TestCase):
         loaded = load_bridge_config(self.config_path)
         self.assertEqual(loaded.port, DEFAULT_PORT)
 
+    def test_config_path_prefers_explicit_override(self):
+        override = self.root / 'override.json'
+        with patch.dict(os.environ, {'MTO_BRIDGE_CONFIG': f'  {override}  '}, clear=False):
+            self.assertEqual(resolve_config_path(self.root / 'local-bridge'), override)
+
+    def test_config_path_prefers_shared_app_data_when_present(self):
+        shared = self.root / 'MasterThesisOSWallpaper' / 'bridge' / 'config.json'
+        shared.parent.mkdir(parents=True)
+        shared.write_text('{}', encoding='utf-8')
+        with patch.dict(
+            os.environ,
+            {'LOCALAPPDATA': str(self.root), 'MTO_BRIDGE_CONFIG': ''},
+            clear=False,
+        ):
+            self.assertEqual(resolve_config_path(self.root / 'local-bridge'), shared)
+
+    def test_invalid_shared_config_remains_authoritative(self):
+        shared = self.root / 'MasterThesisOSWallpaper' / 'bridge' / 'config.json'
+        shared.parent.mkdir(parents=True)
+        shared.write_text('{', encoding='utf-8')
+        local_directory = self.root / 'local-bridge'
+        local_directory.mkdir()
+        local_path = local_directory / 'config.json'
+        local_path.write_text(json.dumps({'token': 'l' * 40}), encoding='utf-8')
+
+        with patch.dict(
+            os.environ,
+            {'LOCALAPPDATA': str(self.root), 'MTO_BRIDGE_CONFIG': ''},
+            clear=False,
+        ):
+            self.assertEqual(resolve_config_path(local_directory), shared)
+            with self.assertRaises(ConfigError):
+                load_bridge_config(resolve_config_path(local_directory))
+
+    def test_loader_preserves_token_value_without_trimming(self):
+        token = f" {'t' * 40} "
+        self.write_config(token=token)
+        loaded = load_bridge_config(self.config_path)
+        self.assertEqual(loaded.token, token)
+
+    def test_loader_rejects_whitespace_only_token(self):
+        self.write_config(token=' ' * 40)
+        with self.assertRaises(ConfigError):
+            load_bridge_config(self.config_path)
+
+    def test_config_path_falls_back_to_local_bridge_directory(self):
+        local_directory = self.root / 'local-bridge'
+        local_directory.mkdir()
+        local_path = local_directory / 'config.json'
+        local_path.write_text('{}', encoding='utf-8')
+        with patch.dict(
+            os.environ,
+            {'LOCALAPPDATA': str(self.root / 'missing-app-data'), 'MTO_BRIDGE_CONFIG': ''},
+            clear=False,
+        ):
+            self.assertEqual(resolve_config_path(local_directory), local_path)
+
     def test_loader_rejects_invalid_ports(self):
         for invalid_port in (1023, 65536, 'not-a-port', True, 38472.5):
             with self.subTest(port=invalid_port):
@@ -122,19 +180,22 @@ class BridgeConfigurationTests(unittest.TestCase):
     def test_bridge_process_exits_with_config_error_code(self):
         for module_name in ('bridge.py', 'bridge_config.py', 'bridge_security.py'):
             shutil.copy(Path(__file__).with_name(module_name), self.root / module_name)
-        self.config_path.write_text('{', encoding='utf-8')
+        token_marker = 'token-marker-' + 's' * 40
+        self.config_path.write_text(f'{{"token":"{token_marker}', encoding='utf-8')
 
         completed = subprocess.run(
             [sys.executable, str(self.root / 'bridge.py')],
             cwd=self.root,
             capture_output=True,
             text=True,
+            env={**os.environ, 'MTO_BRIDGE_CONFIG': str(self.config_path)},
             check=False,
             timeout=5,
         )
 
         self.assertEqual(completed.returncode, 78)
         self.assertIn('Invalid config.json', completed.stderr)
+        self.assertNotIn(token_marker, completed.stderr)
 
     def test_tray_health_url_uses_configured_port(self):
         tray_script = Path(__file__).with_name('start_bridge_tray.ps1').read_text(encoding='utf-8-sig')
@@ -147,6 +208,34 @@ class BridgeConfigurationTests(unittest.TestCase):
         self.assertIn('$ConfigErrorExitCode = 78', runner_script)
         self.assertIn('if ($exitCode -eq $ConfigErrorExitCode)', runner_script)
         self.assertIn('exit $exitCode', runner_script)
+        self.assertIn("$sharedConfigPath", runner_script)
+        self.assertIn('$overrideConfigPath.Trim()', runner_script)
+
+    def test_batch_launcher_delegates_config_resolution_to_runner(self):
+        launcher = Path(__file__).with_name('start_bridge.bat').read_text(encoding='utf-8-sig')
+        self.assertNotIn('if not exist "config.json"', launcher.lower())
+        self.assertIn('start_bridge.ps1', launcher)
+
+    def test_tray_does_not_surface_config_parser_details(self):
+        tray_script = Path(__file__).with_name('start_bridge_tray.ps1').read_text(encoding='utf-8-sig')
+        self.assertNotIn('$($_.Exception.Message)', tray_script)
+        self.assertNotIn('Show-BridgeNotice $_.Exception.Message', tray_script)
+        self.assertIn('$config -isnot [pscustomobject]', tray_script)
+        self.assertIn("Where-Object { $_.Name -ceq $Name }", tray_script)
+        self.assertIn("Get-ExactConfigProperty -Config $config -Name 'token'", tray_script)
+        self.assertIn("$overrideConfigPath.Trim()", tray_script)
+
+    def test_companion_token_reader_matches_bridge_token_contract(self):
+        store = (
+            Path(__file__).parents[1]
+            / 'experiments'
+            / 'wallpaper-host-poc'
+            / 'BridgeConfigStore.cs'
+        ).read_text(encoding='utf-8')
+        self.assertIn('[JsonPropertyName("token")]', store)
+        self.assertNotIn('PropertyNameCaseInsensitive = true', store)
+        self.assertNotIn('config.Token.Trim()', store)
+        self.assertIn('config.Token.Length < 32', store)
 
     def test_accepts_exact_production_and_explicit_local_origins(self):
         self.assertTrue(valid_origins({PRODUCTION_ORIGIN, 'http://localhost:3000', 'http://127.0.0.1:3001'}))

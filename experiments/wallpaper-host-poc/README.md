@@ -45,7 +45,9 @@ The current-user Start Menu folder `Master Thesis OS` contains:
 - `Master Thesis OS Wallpaper`
 - `Uninstall Master Thesis OS Wallpaper`
 
-The tray menu provides status, Open/Wallpaper transitions, Refresh, Display, `Click wallpaper to open`, `Return to wallpaper when inactive`, `Start with Windows`, data/app/log folders, About, and Exit.
+The tray menu provides status, Open/Wallpaper transitions, Refresh, Display, `Click wallpaper to open`, `Return to wallpaper when inactive`, `Start with Windows`, data/app/log folders, Local Bridge token copy/view, About, and Exit.
+
+The `Local Bridge` submenu reads the token from `%LOCALAPPDATA%\MasterThesisOSWallpaper\bridge\config.json` and provides `Bridge token 복사`, `Bridge token 보기`, and `Open Bridge Folder`. During installation, an existing repository `local-bridge\config.json` is copied there only when the shared config does not already exist. When a shared or override config exists, it is authoritative; an invalid selected config does not silently fall back to another token. The old Local Bridge tray launcher remains available as a fallback, and the token is never written to Companion logs. Change the config before restarting the Bridge and Companion tray so both processes use the same token.
 
 `Click wallpaper to open` is enabled by default for new settings. It is a mouse-only convenience: an eligible empty desktop click on the selected display opens the companion and replays exactly that one left click into WebView2. Desktop icons, the taskbar, other application windows, and non-selected displays are not intercepted. If Explorer icon hit testing cannot be completed, the click is left untouched (fail-closed).
 

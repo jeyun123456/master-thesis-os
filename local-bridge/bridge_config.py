@@ -1,4 +1,5 @@
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,6 +13,20 @@ DEFAULT_ORIGINS = (
     'http://localhost:3000',
     'http://127.0.0.1:3000',
 )
+
+
+def resolve_config_path(script_directory: Path) -> Path:
+    override = os.environ.get('MTO_BRIDGE_CONFIG', '').strip()
+    if override:
+        return Path(os.path.expandvars(override)).expanduser()
+
+    local_app_data = os.environ.get('LOCALAPPDATA', '').strip()
+    if local_app_data:
+        shared_path = Path(local_app_data) / 'MasterThesisOSWallpaper' / 'bridge' / 'config.json'
+        if shared_path.exists():
+            return shared_path
+
+    return script_directory / 'config.json'
 
 
 class ConfigError(ValueError):
@@ -32,8 +47,8 @@ def load_bridge_config(config_path: Path) -> BridgeConfig:
 
     try:
         config = json.loads(config_path.read_text(encoding='utf-8'))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ConfigError(f'Invalid config.json: {exc}') from exc
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        raise ConfigError('Invalid config.json.')
     if not isinstance(config, dict):
         raise ConfigError('config.json must contain a JSON object.')
 
@@ -50,7 +65,7 @@ def load_bridge_config(config_path: Path) -> BridgeConfig:
     token = config.get('token', '')
     if not isinstance(token, str):
         raise ConfigError('Bridge token must be a string.')
-    if len(token) < 32 or token.startswith('CHANGE-THIS'):
+    if len(token) < 32 or not token.strip() or token.startswith('CHANGE-THIS'):
         raise ConfigError('Bridge token must be a non-placeholder value of at least 32 characters.')
 
     raw_port = config.get('port', DEFAULT_PORT)

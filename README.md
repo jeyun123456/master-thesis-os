@@ -182,17 +182,20 @@ Copy-Item config.example.json config.json
 python bridge.py
 ```
 
-`token`은 32자 이상의 임의 문자열이어야 한다.
+Wallpaper Companion과 Bridge tray는 다음 공용 설정을 우선 사용한다.
+`%LOCALAPPDATA%\MasterThesisOSWallpaper\bridge\config.json`이 없으면 기존 `local-bridge\config.json`을 fallback으로 사용한다. 공용 config가 존재하면 유효성 오류가 있어도 다른 config로 조용히 fallback하지 않는다. 다른 위치를 사용해야 하면 `MTO_BRIDGE_CONFIG` 환경변수로 config 경로를 지정할 수 있으며, override가 설정되면 해당 경로만 사용한다. Companion 설치 시 기존 local config가 공용 위치에 없을 때만 한 번 복사하며, 기존 공용 config는 덮어쓰지 않는다.
+
+`token`은 32자 이상의 임의 문자열이어야 한다. Companion과 Bridge는 선택된 동일 config를 사용하며, token은 공백을 임의로 제거하지 않는다. 설정 파일을 변경한 뒤에는 실행 중인 Bridge와 tray를 다시 시작한다.
 
 ```powershell
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. Settings의 token은 `보기/숨기기`와 `복사`로 관리할 수 있고, tray의 **Bridge token 보기**에서도 로컬 config 값을 확인·복사할 수 있다. token을 HTTP endpoint나 원격 페이지에 자동 노출하지는 않는다. 실제 `config.json`은 git에서 제외된다.
+브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. Settings의 token은 `보기/숨기기`와 `복사`로 관리할 수 있고, Local Bridge tray와 Wallpaper Companion tray의 **Bridge token 보기/복사**에서도 로컬 config 값을 확인·복사할 수 있다. token을 HTTP endpoint나 원격 페이지에 자동 노출하지는 않는다. 실제 `config.json`은 git에서 제외된다.
 
 ### 브리지 상시 실행
 
-Windows에서 `local-bridge/start_bridge.bat`을 실행하면 설정을 확인한 뒤 브리지를 계속 실행한다. 브리지가 일시적인 오류로 종료되면 3초 후 자동으로 재시작하지만, `config.json` 영구 설정 오류는 exit code 78로 식별해 재시작하지 않는다. 콘솔 없이 실행하려면 `start_bridge_hidden.vbs`를 사용한다. 시스템 트레이 아이콘과 상태 확인·종료 메뉴를 쓰려면 `start_bridge_tray.vbs`를 사용한다. 트레이의 **Bridge token 복사**를 누른 뒤 Production Settings의 **붙여넣기**와 **저장**을 누르면 토큰을 설정할 수 있다. 브라우저 보안상 트레이가 웹페이지에 token을 자동 주입하지는 않는다. 트레이에서 상태 확인을 누르면 `config.json`의 `port`를 사용하며, 생략 시 `38471`을 사용한다. 잘못된 port는 트레이에 설정 오류로 표시된다. 설정 오류 balloon이 표시되면 `config.json`을 수정한 뒤 트레이 실행기를 다시 시작한다. Windows 로그인 때마다 트레이 실행기를 자동 시작하려면 해당 VBS 파일의 바로가기를 `Win+R` → `shell:startup` 폴더에 넣는다. 일반 브라우저 개발 시에는 `start_bridge.bat`을 사용하고, 중지는 콘솔 창에서 `Ctrl+C` 또는 창 닫기로 수행한다.
+Windows에서 `local-bridge/start_bridge.bat`을 실행하면 설정을 확인한 뒤 브리지를 계속 실행한다. 브리지가 일시적인 오류로 종료되면 3초 후 자동으로 재시작하지만, `config.json` 영구 설정 오류는 exit code 78로 식별해 재시작하지 않는다. 콘솔 없이 실행하려면 `start_bridge_hidden.vbs`를 사용한다. 시스템 트레이 아이콘과 상태 확인·종료 메뉴를 쓰려면 `start_bridge_tray.vbs`를 사용한다. Local Bridge tray 또는 Wallpaper Companion tray의 **Bridge token 복사**를 누른 뒤 Production Settings의 **붙여넣기**와 **저장**을 누르면 토큰을 설정할 수 있다. 브라우저 보안상 트레이가 웹페이지에 token을 자동 주입하지는 않는다. 트레이에서 상태 확인을 누르면 공용 또는 override config의 `port`를 사용하며, 생략 시 `38471`을 사용한다. 잘못된 port는 트레이에 설정 오류로 표시된다. 설정 오류 balloon이 표시되면 `config.json`을 수정한 뒤 트레이 실행기를 다시 시작한다. Windows 로그인 때마다 트레이 실행기를 자동 시작하려면 해당 VBS 파일의 바로가기를 `Win+R` → `shell:startup` 폴더에 넣는다. 일반 브라우저 개발 시에는 `start_bridge.bat`을 사용하고, 중지는 콘솔 창에서 `Ctrl+C` 또는 창 닫기로 수행한다.
 
 ## Sucrose 설정
 

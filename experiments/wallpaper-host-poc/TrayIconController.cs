@@ -100,6 +100,20 @@ internal sealed class TrayIconController : IDisposable
         logsItem.Click += (_, _) => OpenFolder(AppLog.OpenLogFolder, "logs folder");
         foldersItem.DropDownItems.Add(logsItem);
 
+        var bridgeItem = new Forms.ToolStripMenuItem("Local Bridge");
+
+        var copyBridgeTokenItem = new Forms.ToolStripMenuItem("Bridge token 복사");
+        copyBridgeTokenItem.Click += (_, _) => CopyBridgeToken();
+        bridgeItem.DropDownItems.Add(copyBridgeTokenItem);
+
+        var viewBridgeTokenItem = new Forms.ToolStripMenuItem("Bridge token 보기");
+        viewBridgeTokenItem.Click += (_, _) => ShowBridgeToken();
+        bridgeItem.DropDownItems.Add(viewBridgeTokenItem);
+
+        var openBridgeFolderItem = new Forms.ToolStripMenuItem("Open Bridge Folder");
+        openBridgeFolderItem.Click += (_, _) => OpenFolder(BridgeConfigStore.OpenConfigDirectory, "Bridge config folder");
+        bridgeItem.DropDownItems.Add(openBridgeFolderItem);
+
         var exitItem = new Forms.ToolStripMenuItem("Exit");
         exitItem.Click += (_, _) => _exit();
 
@@ -115,6 +129,7 @@ internal sealed class TrayIconController : IDisposable
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(_startupItem);
         menu.Items.Add(foldersItem);
+        menu.Items.Add(bridgeItem);
         var aboutItem = new Forms.ToolStripMenuItem($"About...  v{BuildInfo.Version}");
         aboutItem.Click += (_, _) => ShowAbout();
         menu.Items.Add(aboutItem);
@@ -321,6 +336,107 @@ internal sealed class TrayIconController : IDisposable
         {
             AppLog.Error("Could not show About dialog.", ex);
             ShowInfo("About unavailable", ex.Message, 3000);
+        }
+    }
+
+    private void CopyBridgeToken()
+    {
+        if (!BridgeConfigStore.TryReadToken(out var token, out var failureReason))
+        {
+            AppLog.Warn("Could not read Bridge token from the local configuration.");
+            ShowInfo("Bridge token unavailable", failureReason, 3000);
+            return;
+        }
+
+        CopyBridgeTokenValue(token);
+    }
+
+    private void ShowBridgeToken()
+    {
+        if (!BridgeConfigStore.TryReadToken(out var token, out var failureReason))
+        {
+            AppLog.Warn("Could not read Bridge token for the tray dialog.");
+            ShowInfo("Bridge token unavailable", failureReason, 3000);
+            return;
+        }
+
+        using var dialog = new Forms.Form
+        {
+            Text = "Master Thesis OS Bridge token",
+            StartPosition = Forms.FormStartPosition.CenterScreen,
+            ClientSize = new Drawing.Size(560, 132),
+            FormBorderStyle = Forms.FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            ShowInTaskbar = false,
+            TopMost = true,
+        };
+
+        using var tokenBox = new Forms.TextBox
+        {
+            Location = new Drawing.Point(12, 14),
+            Size = new Drawing.Size(536, 23),
+            ReadOnly = true,
+            UseSystemPasswordChar = true,
+            Text = token,
+        };
+
+        var showValue = new Forms.CheckBox
+        {
+            Text = "토큰 표시",
+            AutoSize = true,
+            Location = new Drawing.Point(12, 48),
+        };
+        showValue.CheckedChanged += (_, _) => tokenBox.UseSystemPasswordChar = !showValue.Checked;
+
+        var copy = new Forms.Button
+        {
+            Text = "복사",
+            Size = new Drawing.Size(78, 27),
+            Location = new Drawing.Point(370, 88),
+        };
+        copy.Click += (_, _) =>
+        {
+            CopyBridgeTokenValue(token);
+            dialog.Close();
+        };
+
+        var close = new Forms.Button
+        {
+            Text = "닫기",
+            Size = new Drawing.Size(78, 27),
+            Location = new Drawing.Point(458, 88),
+            DialogResult = Forms.DialogResult.Cancel,
+        };
+
+        dialog.CancelButton = close;
+        dialog.Controls.Add(tokenBox);
+        dialog.Controls.Add(showValue);
+        dialog.Controls.Add(copy);
+        dialog.Controls.Add(close);
+        dialog.Shown += (_, _) =>
+        {
+            dialog.Activate();
+            close.Focus();
+        };
+
+        dialog.ShowDialog();
+    }
+
+    private void CopyBridgeTokenValue(string token)
+    {
+        try
+        {
+            Forms.Clipboard.SetText(token);
+            ShowInfo(
+                BuildInfo.ShortProductName,
+                "Bridge token을 클립보드에 복사했어.",
+                1800);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Could not copy the Bridge token to the clipboard.", ex);
+            ShowInfo("Bridge token copy failed", "클립보드에 복사하지 못했어.", 2500);
         }
     }
 

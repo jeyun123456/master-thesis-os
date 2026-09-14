@@ -10,6 +10,10 @@ $RootDirectory = Join-Path $env:LOCALAPPDATA 'MasterThesisOSWallpaper'
 $AppDirectory = Join-Path $RootDirectory 'app'
 $InstalledExe = Join-Path $AppDirectory 'MasterThesisOSWallpaper.exe'
 $InstalledUninstaller = Join-Path $RootDirectory 'Uninstall-MasterThesisOSWallpaper.ps1'
+$BridgeDirectory = Join-Path $RootDirectory 'bridge'
+$BridgeConfigPath = Join-Path $BridgeDirectory 'config.json'
+$RepositoryDirectory = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
+$SourceBridgeConfig = Join-Path $RepositoryDirectory 'local-bridge\config.json'
 $RunKeyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $RunValueName = 'MasterThesisOSWallpaperHost'
 $PublishScript = Join-Path $PSScriptRoot 'Publish-Release.ps1'
@@ -69,6 +73,13 @@ try {
     & $PublishScript -OutputPath $PublishDirectory
 
     New-Item -ItemType Directory -Path $RootDirectory -Force | Out-Null
+    New-Item -ItemType Directory -Path $BridgeDirectory -Force | Out-Null
+
+    if (-not (Test-Path -LiteralPath $BridgeConfigPath -PathType Leaf) -and
+        (Test-Path -LiteralPath $SourceBridgeConfig -PathType Leaf)) {
+        Copy-Item -LiteralPath $SourceBridgeConfig -Destination $BridgeConfigPath -Force
+        Write-Host 'Migrated the existing Local Bridge config to the shared data directory.'
+    }
 
     if (Test-Path $AppDirectory) {
         Remove-Item $AppDirectory -Recurse -Force

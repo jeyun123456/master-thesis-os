@@ -1,11 +1,11 @@
 import json, os, platform, subprocess, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from bridge_config import CONFIG_ERROR_EXIT_CODE, ConfigError, load_bridge_config
+from bridge_config import CONFIG_ERROR_EXIT_CODE, ConfigError, load_bridge_config, resolve_config_path
 from bridge_security import allows_private_network, target_for_endpoint, token_matches
 
 HERE = Path(__file__).resolve().parent
-CONFIG = HERE / 'config.json'
+CONFIG = resolve_config_path(HERE)
 MAX_BODY_BYTES = 16 * 1024
 
 try:

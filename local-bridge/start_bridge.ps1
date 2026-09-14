@@ -7,7 +7,19 @@ $ErrorActionPreference = 'Stop'
 $ConfigErrorExitCode = 78
 $bridgeDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $bridgeScript = Join-Path $bridgeDirectory 'bridge.py'
-$configPath = Join-Path $bridgeDirectory 'config.json'
+$overrideConfigPath = $env:MTO_BRIDGE_CONFIG
+if (-not [string]::IsNullOrWhiteSpace($overrideConfigPath)) {
+    $configPath = [Environment]::ExpandEnvironmentVariables($overrideConfigPath.Trim())
+} elseif (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    $sharedConfigPath = Join-Path $env:LOCALAPPDATA 'MasterThesisOSWallpaper\bridge\config.json'
+    $configPath = if (Test-Path -LiteralPath $sharedConfigPath) {
+        $sharedConfigPath
+    } else {
+        Join-Path $bridgeDirectory 'config.json'
+    }
+} else {
+    $configPath = Join-Path $bridgeDirectory 'config.json'
+}
 
 if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
     [Console]::Error.WriteLine("Missing config.json. Copy config.example.json to config.json and edit it.")

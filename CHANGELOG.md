@@ -2,6 +2,13 @@
 
 Product versions are tracked independently. See [`VERSIONING.md`](./VERSIONING.md) for the release policy.
 
+## [Unreleased]
+
+### Changed
+
+- Added Local Bridge token copy/view and config-folder access to the Wallpaper Companion tray, with shared config-path migration and legacy local-config fallback.
+- Unified shared/override config precedence across the Companion and Bridge launchers and removed raw config parser details from tray errors.
+
 ## [1.3.0] - 2026-09-14
 
 ### Added

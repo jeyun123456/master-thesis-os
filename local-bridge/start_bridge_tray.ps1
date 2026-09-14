@@ -9,7 +9,19 @@ Add-Type -AssemblyName System.Drawing
 
 $bridgeDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $bridgeRunner = Join-Path $bridgeDirectory 'start_bridge.ps1'
-$configPath = Join-Path $bridgeDirectory 'config.json'
+$overrideConfigPath = $env:MTO_BRIDGE_CONFIG
+if (-not [string]::IsNullOrWhiteSpace($overrideConfigPath)) {
+    $configPath = [Environment]::ExpandEnvironmentVariables($overrideConfigPath.Trim())
+} elseif (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    $sharedConfigPath = Join-Path $env:LOCALAPPDATA 'MasterThesisOSWallpaper\bridge\config.json'
+    $configPath = if (Test-Path -LiteralPath $sharedConfigPath) {
+        $sharedConfigPath
+    } else {
+        Join-Path $bridgeDirectory 'config.json'
+    }
+} else {
+    $configPath = Join-Path $bridgeDirectory 'config.json'
+}
 if (-not (Test-Path -LiteralPath $bridgeRunner -PathType Leaf)) {
     throw "Missing start_bridge.ps1 in $bridgeDirectory."
 }
@@ -34,16 +46,59 @@ function Stop-ProcessTree {
     Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
 }
 
-function Get-BridgePort {
+function Read-BridgeConfig {
     if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
         throw 'Missing config.json. Copy config.example.json to config.json and edit it.'
     }
+
     try {
         $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+        if ($null -eq $config -or $config -is [System.Array] -or $config -isnot [pscustomobject]) {
+            throw 'config.json must contain an object.'
+        }
+
+        return $config
     } catch {
-        throw "Invalid config.json: $($_.Exception.Message)"
+        throw 'Invalid config.json. Fix the JSON and restart the bridge.'
     }
-    $rawPort = $config.port
+}
+
+function Get-ExactConfigProperty {
+    param(
+        [object]$Config,
+        [string]$Name
+    )
+
+    $property = $Config.PSObject.Properties |
+        Where-Object { $_.Name -ceq $Name } |
+        Select-Object -First 1
+    if ($null -eq $property) {
+        return $null
+    }
+
+    return $property.Value
+}
+
+function Get-BridgeToken {
+    $config = Read-BridgeConfig
+    $tokenValue = Get-ExactConfigProperty -Config $config -Name 'token'
+    if ($tokenValue -isnot [string]) {
+        throw 'Bridge token is invalid.'
+    }
+
+    $token = [string]$tokenValue
+    if ([string]::IsNullOrWhiteSpace($token) -or
+        $token.Length -lt 32 -or
+        $token.StartsWith('CHANGE-THIS', [System.StringComparison]::Ordinal)) {
+        throw 'Bridge token is invalid.'
+    }
+
+    return $token
+}
+
+function Get-BridgePort {
+    $config = Read-BridgeConfig
+    $rawPort = Get-ExactConfigProperty -Config $config -Name 'port'
     if ($null -eq $rawPort) {
         return $DefaultPort
     }
@@ -87,11 +142,7 @@ $notifyIcon.ContextMenuStrip = $menu
 
 $copyToken.Add_Click({
     try {
-        $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
-        $token = [string]$config.token
-        if ([string]::IsNullOrWhiteSpace($token)) {
-            throw 'token is empty'
-        }
+        $token = Get-BridgeToken
         Set-Clipboard -Value $token
         $notifyIcon.BalloonTipTitle = 'Master Thesis OS Bridge'
         $notifyIcon.BalloonTipText = 'Bridge token을 클립보드에 복사했어.'
@@ -105,11 +156,7 @@ $copyToken.Add_Click({
 
 $viewToken.Add_Click({
     try {
-        $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
-        $token = [string]$config.token
-        if ([string]::IsNullOrWhiteSpace($token)) {
-            throw 'token is empty'
-        }
+        $token = Get-BridgeToken
 
         $dialog = New-Object System.Windows.Forms.Form
         $dialog.Text = 'Master Thesis OS Bridge token'
@@ -167,7 +214,7 @@ $openHealth.Add_Click({
         $port = Get-BridgePort
         Start-Process ("http://127.0.0.1:{0}/health" -f $port)
     } catch {
-        Show-BridgeNotice $_.Exception.Message
+        Show-BridgeNotice '브리지 상태를 확인하지 못했어. config.json을 확인하고 트레이 실행기를 다시 시작해줘.'
     }
 })
 
