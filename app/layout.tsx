@@ -2,6 +2,7 @@ import './globals.css';
 import './library-panel.css';
 import './research-panel.css';
 import './shortcuts-panel.css';
+import './research-os-theme.css';
 
 export const metadata = {
   title: 'Master Thesis OS',

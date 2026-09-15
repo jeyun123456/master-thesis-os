@@ -313,7 +313,7 @@ function ActiveProjects({ projects, onOpen }: { projects: ResearchProject[]; onO
     {projects.length ? <div className="active-project-list">{projects.map((project) => <button className="active-project-item" key={project.id} type="button" onClick={() => onOpen(project.id)}>
       <span className="active-project-icon" aria-hidden="true">{project.status === 'writing' ? '✎' : '●'}</span>
       <span className="active-project-main"><b>{project.title}</b><small>{project.status === 'writing' ? '작성중' : '진행 중'} · {project.currentFocus || project.nextTasks[0] || '현재 작업 미등록'}</small></span>
-      <span className="active-project-stage">{stageLabel(project.stage)} ↗</span>
+      <span className="active-project-stage">{stageLabel(project.stage)}<span className="active-project-chevron" aria-hidden="true">›</span></span>
     </button>)}</div> : <div className="empty compact-empty">상태가 active 또는 writing인 프로젝트가 없어.</div>}
   </section>;
 }
