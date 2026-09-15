@@ -224,7 +224,7 @@ GOOGLE_CALENDAR_ID                -> GOOGLE_CALENDAR_IDS (쉼표 구분)
 
 `account`와 `profile_path`가 비어 있으면 `%APPDATA%\\Thunderbird\\profiles.ini`의 우선 profile과 `prefs.js`를 자동 탐색한다. mbox는 확장자 없는 받은편지함 파일을, maildir은 `cur/new/tmp`를 읽으며 요청당 기본 5개·최대 20개의 제목·발신자·Date·read 상태만 반환한다. mbox가 변경되면 mtime/size 기반의 메타데이터 cache를 무효화한다. Thunderbird profile에는 어떤 write도 수행하지 않는다.
 
-Home의 **학교 메일** 카드는 `Thunderbird ● 로컬`을 primary source로 표시하고, Local Bridge가 꺼져 있거나 local sync가 부족하면 해당 상태만 보여준다. 받은 metadata 중 최근 최대 20개를 웹의 규칙 기반 classifier로 평가해 긴급·중요 메일을 최대 5개 우선 표시한다. 이 분류는 제목·발신자·수신 시각·read 상태만 사용하며 본문을 읽거나 외부 API로 전송하지 않는다. 메시지별 Outlook URL은 만들지 않으며, 가능한 경우 인증된 `/mail/open`을 통해 Thunderbird 프로그램만 연다.
+Home의 **학교 메일** 카드는 `Thunderbird ● 로컬`을 primary source로 표시하고, Local Bridge가 꺼져 있거나 local sync가 부족하면 해당 상태만 보여준다. 받은 metadata 중 최근 최대 20개를 웹의 규칙 기반 classifier로 평가해 긴급·중요 메일을 최대 5개 우선 표시한다. 이 분류는 제목·발신자·수신 시각·read 상태만 사용하며 본문을 읽거나 외부 API로 전송하지 않는다. 메시지별 Outlook URL은 만들지 않으며, 가능한 경우 인증된 `/mail/open`을 통해 Thunderbird 프로그램만 연다. 중요 메일은 별도 **메일에서 확인 필요** 카드에서 마감·면담·발표·연구·학사·행정 확인 후보로 표시할 수 있으며, 제목의 명시적 날짜만 마감 후보 날짜로 사용한다. 확인 완료 상태는 브라우저에 후보 id와 timestamp만 저장한다.
 
 ## localhost bridge
 

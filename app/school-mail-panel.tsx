@@ -68,7 +68,7 @@ export function SchoolMailPanel({ variant }: { variant: SchoolMailPanelVariant }
   return <section className="card section microsoft-mail-card school-mail-card">
     <div className="head"><h3>학교 메일</h3><span>{schoolMailStatusLabel(status, errorCode)}</span></div>
     <div className="muted"><small>Thunderbird · 로컬 읽기 전용{account ? ` · ${account}` : ''}</small></div>
-    {variant === 'settings' && <div className="note">Thunderbird가 이 컴퓨터에 동기화한 학교 메일의 헤더만 Local Bridge로 읽어와. Microsoft Graph OAuth token과 Thunderbird 인증정보는 읽지 않아.<br />중요 메일 자동 선별: 켜짐</div>}
+    {variant === 'settings' && <div className="note">Thunderbird가 이 컴퓨터에 동기화한 학교 메일의 헤더만 Local Bridge로 읽어와. Microsoft Graph OAuth token과 Thunderbird 인증정보는 읽지 않아.<br />중요 메일 자동 선별: 켜짐<br />행동 후보 추출: 켜짐</div>}
     {status === 'loading' && <div className="microsoft-mail-state">Thunderbird 로컬 메일을 확인하는 중이야…</div>}
     {(status === 'ready' || status === 'empty') && (items.length ? <div className="microsoft-mail-list">{items.map((item, index) => <SchoolMailRow item={item} key={schoolMailRowKey(item, index)} />)}</div> : <div className="empty compact-empty">최근 학교 메일이 없어.</div>)}
     {status !== 'loading' && status !== 'ready' && status !== 'empty' && <SchoolMailErrorState errorCode={errorCode} onRetry={() => void loadMail()} />}

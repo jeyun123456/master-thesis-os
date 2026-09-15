@@ -121,7 +121,8 @@ export function classifyMailPriority(item: MailPriorityInput): MailPriorityResul
   const ageHours = hoursSince(item.receivedAt);
 
   if (urgentMatch || immediateDeadlineMatch || (deadlineMatch && (ageHours === null || ageHours <= 24))) {
-    return result('critical', 'deadline', urgentMatch && !deadlineMatch ? '긴급·필수 안내' : '최근 제출·마감 기한 관련');
+    const category = deadlineMatch || immediateDeadlineMatch ? 'deadline' : 'other';
+    return result('critical', category, category === 'deadline' ? '최근 제출·마감 기한 관련' : '긴급·필수 안내');
   }
 
   // A stale deadline remains actionable, but is shown one level below a fresh
@@ -156,9 +157,13 @@ function timestamp(value: string): number {
 export function prioritizeMails(items: ThunderbirdMail[], limit = MAX_DISPLAY_MAILS): PrioritizedMail[] {
   const safeLimit = Math.min(MAX_DISPLAY_MAILS, Math.max(1, Math.floor(limit)));
   return items
-    .map((item) => ({ ...item, ...classifyMailPriority(item) }))
+    .map(prioritizeMail)
     .sort((left, right) => priorityRank(right) - priorityRank(left) || timestamp(right.receivedAt) - timestamp(left.receivedAt))
     .slice(0, safeLimit);
+}
+
+export function prioritizeMail(item: ThunderbirdMail): PrioritizedMail {
+  return { ...item, ...classifyMailPriority(item) };
 }
 
 export function mailPriorityLabel(priority: MailPriority): string {
