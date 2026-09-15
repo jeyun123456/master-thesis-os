@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   getRecentThunderbirdMail,
+  getThunderbirdFolders,
   normalizeThunderbirdMail,
+  normalizeThunderbirdFolderResponse,
   normalizeThunderbirdMailResponse,
   openThunderbird,
   ThunderbirdMailError,
@@ -61,6 +63,48 @@ describe('Thunderbird mail normalization', () => {
     expect(calls[0].url).toContain('/mail/recent');
     expect(calls[0].init?.headers).toMatchObject({ 'Content-Type': 'application/json' });
     expect(String(calls[0].init?.body)).toContain('"limit":5');
+  });
+
+  it('sends only a logical folder id for folder-specific recent mail', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchMock = async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init });
+      return new Response(JSON.stringify({ ok: true, source: 'thunderbird', account: 'sc***@example.ac.jp', folder: 'school-work', items: [] }), { status: 200 });
+    };
+
+    await getRecentThunderbirdMail('bridge-secret-for-test', fetchMock, 20, 'school-work');
+    expect(calls[0].url).toContain('/mail/recent');
+    expect(String(calls[0].init?.body)).toContain('"folder":"school-work"');
+    expect(String(calls[0].init?.body)).not.toContain('school.example');
+  });
+
+  it('normalizes the logical folder list without accepting path data', () => {
+    expect(normalizeThunderbirdFolderResponse({
+      ok: true,
+      source: 'thunderbird',
+      account: 'sc***@example.ac.jp',
+      folders: [
+        { id: 'school-work', label: '학교 업무', available: true },
+        { id: 'international-office', label: '국제과', available: false },
+        { id: 'inbox', label: '받은 편지함', available: true },
+      ],
+    }).folders).toEqual([
+      { id: 'school-work', label: '학교 업무', available: true },
+      { id: 'international-office', label: '국제과', available: false },
+      { id: 'inbox', label: '받은 편지함', available: true },
+    ]);
+    expect(() => normalizeThunderbirdFolderResponse({
+      ok: true,
+      source: 'thunderbird',
+      folders: [{ id: 'C:\\profile\\Mail\\학교 업무', label: '학교 업무', available: true }],
+    })).toThrow('Local Bridge 메일 응답 형식을 확인할 수 없어.');
+  });
+
+  it('maps folder endpoint errors to safe folder codes', async () => {
+    const fetchMock = async () => new Response(JSON.stringify({ ok: false, source: 'thunderbird', error: 'folder_not_found' }), { status: 404 });
+    await expect(getThunderbirdFolders('bridge-secret-for-test', fetchMock)).rejects.toEqual(
+      new ThunderbirdMailError('folder_not_found', 'Thunderbird 메일 폴더를 찾지 못했어.'),
+    );
   });
 
   it('maps bridge source errors to safe UI codes', async () => {

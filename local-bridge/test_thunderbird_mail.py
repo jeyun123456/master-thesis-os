@@ -11,7 +11,11 @@ from thunderbird_mail import (
     ThunderbirdSettings,
     clamp_mail_limit,
     discover_accounts,
+    discover_folders,
+    FOLDER_IDS,
+    get_mail_folders,
     get_recent_mail,
+    normalize_folder_id,
     parse_profiles_ini,
     parse_profiles_ini_text,
 )
@@ -45,14 +49,18 @@ class ThunderbirdFixture:
         (self.profile / 'prefs.js').write_text(prefs + '\n', encoding='utf-8')
 
     def write_mbox(self, messages):
-        inbox = self.mail_root / 'Inbox'
-        with inbox.open('wb') as output:
+        return self.write_mbox_at('Inbox', messages)
+
+    def write_mbox_at(self, relative_path, messages):
+        mailbox = self.mail_root / relative_path
+        mailbox.parent.mkdir(parents=True, exist_ok=True)
+        with mailbox.open('wb') as output:
             for index, message in enumerate(messages):
                 output.write(f'From sender{index}@example.edu Tue Sep 15 01:10:00 2026\n'.encode())
                 for key, value in message.items():
                     output.write(f'{key}: {value}\n'.encode('utf-8'))
                 output.write(b'\nBody is intentionally not returned.\n')
-        return inbox
+        return mailbox
 
 
 class ThunderbirdMailTests(unittest.TestCase):
@@ -143,6 +151,64 @@ class ThunderbirdMailTests(unittest.TestCase):
         self.assertEqual(items[2].sender_name, '(발신자 알 수 없음)')
         self.assertEqual(items[2].sender_address, '')
         self.assertNotIn('Deleted', [item.subject for item in items])
+
+    def test_discovers_logical_folders_in_unicode_and_sbd_paths(self):
+        self.fixture.write_mbox_at('학교 업무', [{
+            'Subject': 'School work',
+            'From': 'teacher@example.edu',
+            'Date': 'Tue, 15 Sep 2026 01:10:00 +0000',
+        }])
+        self.fixture.write_mbox_at('분류.sbd/국제과', [{
+            'Subject': 'International office',
+            'From': 'office@example.edu',
+            'Date': 'Tue, 15 Sep 2026 01:11:00 +0000',
+        }])
+        self.fixture.write_mbox_at('받은 편지함', [{
+            'Subject': 'Inbox',
+            'From': 'sender@example.edu',
+            'Date': 'Tue, 15 Sep 2026 01:12:00 +0000',
+        }])
+
+        folders = discover_folders(discover_accounts(self.fixture.profile)[0], self.fixture.profile)
+        self.assertEqual([folder.id for folder in folders], list(FOLDER_IDS))
+        self.assertTrue(all(folder.available for folder in folders))
+        self.assertEqual(folders[0].path.relative_to(self.fixture.mail_root).as_posix(), '학교 업무')
+        self.assertEqual(folders[1].path.relative_to(self.fixture.mail_root).as_posix(), '분류.sbd/국제과')
+        self.assertEqual(folders[2].path.relative_to(self.fixture.mail_root).as_posix(), '받은 편지함')
+
+        account, items = get_recent_mail(self.settings(), 5, 'international-office')
+        self.assertEqual(account, 'sc***@example.edu')
+        self.assertEqual([item.subject for item in items], ['International office'])
+
+    def test_folder_list_exposes_logical_ids_without_filesystem_paths(self):
+        self.fixture.write_mbox_at('학교 업무', [])
+        self.fixture.write_mbox_at('국제과', [])
+        self.fixture.write_mbox_at('받은 편지함', [])
+        _, folders = get_mail_folders(self.settings())
+        self.assertEqual([folder.id for folder in folders], list(FOLDER_IDS))
+        self.assertEqual([folder.to_dict() for folder in folders], [
+            {'id': 'school-work', 'label': '학교 업무', 'available': True},
+            {'id': 'international-office', 'label': '국제과', 'available': True},
+            {'id': 'inbox', 'label': '받은 편지함', 'available': True},
+        ])
+        self.assertNotIn('path', folders[0].to_dict())
+
+    def test_empty_custom_folder_is_a_valid_empty_result(self):
+        self.fixture.write_mbox_at('국제과', [])
+        _, items = get_recent_mail(self.settings(), 5, 'international-office')
+        self.assertEqual(items, [])
+
+    def test_folder_id_rejects_filesystem_paths(self):
+        with self.assertRaisesRegex(ThunderbirdMailError, '폴더') as error:
+            normalize_folder_id('Mail/school.example/학교 업무')
+        self.assertEqual(error.exception.code, 'folder_not_found')
+        with self.assertRaisesRegex(ThunderbirdMailError, '폴더'):
+            get_recent_mail(self.settings(), 5, '../학교 업무')
+
+    def test_missing_custom_folder_is_a_safe_error(self):
+        with self.assertRaisesRegex(ThunderbirdMailError, '폴더') as error:
+            get_recent_mail(self.settings(), 5, 'school-work')
+        self.assertEqual(error.exception.code, 'folder_not_found')
 
     def test_malformed_message_is_skipped_without_crashing(self):
         self.fixture.write_mbox([

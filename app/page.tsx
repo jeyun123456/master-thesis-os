@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { LibraryPanel } from '@/app/library-panel';
 import { MailActionCandidates } from '@/app/mail-action-candidates';
+import { MailPanel } from '@/app/mail-panel';
 import { MicrosoftMailPanel } from '@/app/microsoft-mail-panel';
 import { ResearchPanel } from '@/app/research-panel';
 import { ResultsPanel as ResultsDashboardPanel } from '@/app/results-panel';
@@ -21,7 +22,7 @@ import { BRIDGE_OFFLINE_MESSAGE, BRIDGE_TIMEOUT_MESSAGE, bridgeResponseMessage }
 import { getEnabledShortcuts, getHomeShortcuts, loadShortcutState, shortcuts, type Shortcut } from '@/lib/shortcuts';
 import appPackage from '../package.json';
 
-type Page = 'home' | 'research' | 'results' | 'library' | 'slot' | 'shortcuts' | 'settings';
+type Page = 'home' | 'research' | 'results' | 'library' | 'slot' | 'shortcuts' | 'mail' | 'settings';
 
 const APP_VERSION = appPackage.version;
 
@@ -49,6 +50,7 @@ const pageMeta: Record<Page, [string, string]> = {
   library: ['자료실', '주요 자료 · 대표 문헌 · 연구 Wiki'],
   slot: ['슬롯', '다음 연구 작업을 작은 보상 단위로 관리'],
   shortcuts: ['바로가기', '반복해서 여는 연구 파일 · 폴더 · 웹 주소'],
+  mail: ['메일', '학교 업무 · 국제과 · 받은 편지함을 폴더별로 확인'],
   settings: ['설정', '연구 저장소 · Google Calendar · 학교 메일 · 로컬 브리지'],
 };
 
@@ -59,6 +61,7 @@ const navigation: Array<{ id: Page; label: string; icon: string }> = [
   { id: 'library', label: '자료실', icon: '▤' },
   { id: 'slot', label: '슬롯', icon: '◉' },
   { id: 'shortcuts', label: '바로가기', icon: '↗' },
+  { id: 'mail', label: '메일', icon: '✉' },
   { id: 'settings', label: '설정', icon: '⚙' },
 ];
 
@@ -249,7 +252,7 @@ export default function Page() {
             <CalendarCard title="예정 일정" events={schedule.upcoming} calendar={calendar} />
             <Card title="다음 마감" right="마감 · 미팅">{schedule.nextDeadline ? <div className="event priority-event"><b>{schedule.nextDeadline.title}</b><small>{formatCalendarEvent(schedule.nextDeadline)} · {deadlineLabel(schedule.nextDeadline)}</small>{schedule.nextDeadline.location && <small>{schedule.nextDeadline.location}</small>}</div> : <CalendarState calendar={calendar} />}</Card>
           </div>
-          <div className="section-gap"><SchoolMailPanel variant="home" /></div>
+          <div className="section-gap"><SchoolMailPanel variant="home" folder="school-work" /></div>
           <div className="section-gap"><MailActionCandidates /></div>
           <div className="grid2 section-gap">
             <Card title="막힌 부분" right={activeProject ? activeProject.title : '확인 필요'}><NumberedList items={activeProject?.blocked || researchStatus?.unresolved || []} empty="현재 등록된 막힌 부분이 없어." /></Card>
@@ -282,6 +285,7 @@ export default function Page() {
           onOpenFile={openLocal}
           onOpenFolder={openLocalFolder}
         /></section>}
+        {page === 'mail' && <section className="page active"><MailPanel /></section>}
 
         {page === 'settings' && <section className="page active">
           <div className="grid2">
@@ -290,7 +294,7 @@ export default function Page() {
           </div>
           <div className="grid2 section-gap">
             <Card title="Google Calendar" right={calendar.state === 'ready' || calendar.state === 'empty' ? '연결됨' : '확인 필요'}><div className="note">현재 상태: {calendarStateText(calendar)}</div></Card>
-            <SchoolMailPanel variant="settings" />
+            <SchoolMailPanel variant="settings" folder="school-work" />
           </div>
           <div className="section-gap"><MicrosoftMailPanel variant="settings" /></div>
           <div className="section-gap"><Card title="버전" right={`v${APP_VERSION}`}><div className="note">프로젝트 기반 연구탭 · repo project manifest · 한국어 UI · 큐레이션 자료실 · 모바일 내비게이션.</div></Card></div>

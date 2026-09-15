@@ -6,6 +6,7 @@ import {
   thunderbirdMailErrorMessage,
   ThunderbirdMailError,
   type ThunderbirdMailErrorCode,
+  type ThunderbirdFolderId,
 } from '../lib/thunderbird-mail';
 import { prioritizeMail } from '../lib/mail-priority';
 import {
@@ -16,6 +17,7 @@ import {
 } from '../lib/mail-action';
 
 type MailActionStatus = 'loading' | 'ready' | 'empty' | 'error';
+export const MAIL_ACTION_SOURCE_FOLDER: ThunderbirdFolderId = 'school-work';
 
 export function MailActionCandidates() {
   const [status, setStatus] = useState<MailActionStatus>('loading');
@@ -26,7 +28,7 @@ export function MailActionCandidates() {
     setStatus('loading');
     setErrorCode(null);
     try {
-      const result = await getRecentThunderbirdMail(readBridgeToken(), fetch, 20);
+      const result = await getRecentThunderbirdMail(readBridgeToken(), fetch, 20, MAIL_ACTION_SOURCE_FOLDER);
       const prioritized = result.items.map(prioritizeMail);
       const nextCandidates = createMailActionCandidates(prioritized, { dismissedIds: readDismissedIds() });
       setCandidates(nextCandidates);

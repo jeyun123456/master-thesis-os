@@ -3,7 +3,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from bridge_config import CONFIG_ERROR_EXIT_CODE, ConfigError, load_bridge_config, resolve_config_path
 from bridge_security import allows_private_network, target_for_endpoint, token_matches
-from thunderbird_mail import ThunderbirdMailError, clamp_mail_limit, get_recent_mail, launch_thunderbird
+from thunderbird_mail import (
+    ThunderbirdMailError,
+    clamp_mail_limit,
+    get_mail_folders,
+    get_recent_mail,
+    launch_thunderbird,
+    normalize_folder_id,
+)
 
 HERE = Path(__file__).resolve().parent
 CONFIG = resolve_config_path(HERE)
@@ -51,7 +58,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/health': return self.json_out(200, {'ok':True})
         return self.json_out(404, {'error':'not found'})
     def do_POST(self):
-        if self.path not in ('/open', '/open-folder', '/launch', '/mail/recent', '/mail/open'):
+        if self.path not in ('/open', '/open-folder', '/launch', '/mail/recent', '/mail/folders', '/mail/open'):
             return self.json_out(404, {'error':'not found'})
         try:
             origin = self.headers.get('Origin','')
@@ -66,14 +73,27 @@ class Handler(BaseHTTPRequestHandler):
             if not token_matches(body.get('token',''), TOKEN): return self.json_out(403, {'error':'invalid token'})
             if self.path == '/mail/recent':
                 try:
-                    account, items = get_recent_mail(bridge_config.thunderbird, clamp_mail_limit(body.get('limit', 5)))
+                    folder = normalize_folder_id(body.get('folder', 'inbox'))
+                    account, items = get_recent_mail(bridge_config.thunderbird, clamp_mail_limit(body.get('limit', 5)), folder)
                 except ThunderbirdMailError as exc:
                     return self.json_out(exc.http_status, {'ok':False, 'source':'thunderbird', 'error':exc.code})
                 return self.json_out(200, {
                     'ok': True,
                     'source': 'thunderbird',
                     'account': account,
+                    'folder': folder,
                     'items': [item.to_dict() for item in items],
+                })
+            if self.path == '/mail/folders':
+                try:
+                    account, folders = get_mail_folders(bridge_config.thunderbird)
+                except ThunderbirdMailError as exc:
+                    return self.json_out(exc.http_status, {'ok':False, 'source':'thunderbird', 'error':exc.code})
+                return self.json_out(200, {
+                    'ok': True,
+                    'source': 'thunderbird',
+                    'account': account,
+                    'folders': [folder.to_dict() for folder in folders],
                 })
             if self.path == '/mail/open':
                 try:

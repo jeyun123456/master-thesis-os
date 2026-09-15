@@ -1,5 +1,20 @@
 export type MailSource = 'thunderbird' | 'microsoft-graph' | 'none';
 
+export const THUNDERBIRD_FOLDER_IDS = ['school-work', 'international-office', 'inbox'] as const;
+export type ThunderbirdFolderId = (typeof THUNDERBIRD_FOLDER_IDS)[number];
+
+export const THUNDERBIRD_FOLDER_LABELS: Record<ThunderbirdFolderId, string> = {
+  'school-work': '학교 업무',
+  'international-office': '국제과',
+  inbox: '받은 편지함',
+};
+
+export type ThunderbirdFolder = {
+  id: ThunderbirdFolderId;
+  label: string;
+  available: boolean;
+};
+
 export type ThunderbirdMail = {
   id: string;
   subject: string;
@@ -17,6 +32,7 @@ export type ThunderbirdMailErrorCode =
   | 'profile_not_found'
   | 'account_not_found'
   | 'inbox_not_found'
+  | 'folder_not_found'
   | 'local_sync_required'
   | 'unsupported_store'
   | 'parse_error'
@@ -40,6 +56,7 @@ const ERROR_MESSAGES: Record<ThunderbirdMailErrorCode, string> = {
   profile_not_found: 'Thunderbird profile을 찾지 못했어.',
   account_not_found: 'Thunderbird 학교 계정을 찾지 못했어.',
   inbox_not_found: 'Thunderbird 받은편지함을 찾지 못했어.',
+  folder_not_found: 'Thunderbird 메일 폴더를 찾지 못했어.',
   local_sync_required: 'Thunderbird에서 이 계정의 메시지를 이 컴퓨터에 보관해줘.',
   unsupported_store: 'Thunderbird 로컬 메일 저장 방식을 아직 읽을 수 없어.',
   parse_error: 'Thunderbird 메일 헤더를 읽지 못했어.',
@@ -72,6 +89,7 @@ function readErrorCode(value: unknown, status: number): ThunderbirdMailErrorCode
   if (code === 'profile_not_found') return 'profile_not_found';
   if (code === 'account_not_found') return 'account_not_found';
   if (code === 'inbox_not_found') return 'inbox_not_found';
+  if (code === 'folder_not_found') return 'folder_not_found';
   if (code === 'local_sync_required') return 'local_sync_required';
   if (code === 'unsupported_store') return 'unsupported_store';
   if (code === 'parse_error') return 'parse_error';
@@ -104,8 +122,17 @@ export function normalizeThunderbirdMail(raw: unknown): ThunderbirdMail {
   };
 }
 
+export function isThunderbirdFolderId(value: unknown): value is ThunderbirdFolderId {
+  return typeof value === 'string' && (THUNDERBIRD_FOLDER_IDS as readonly string[]).includes(value);
+}
+
 export function normalizeThunderbirdMailResponse(raw: unknown): { account: string; items: ThunderbirdMail[] } {
   if (!isRecord(raw) || raw.ok !== true || raw.source !== 'thunderbird' || !Array.isArray(raw.items)) {
+    throw new ThunderbirdMailError('malformed_response', errorMessage('malformed_response'));
+  }
+  const folderValue = stringValue(raw.folder);
+  const folder = folderValue ? (isThunderbirdFolderId(folderValue) ? folderValue : null) : 'inbox';
+  if (!folder) {
     throw new ThunderbirdMailError('malformed_response', errorMessage('malformed_response'));
   }
   const items = raw.items
@@ -113,6 +140,25 @@ export function normalizeThunderbirdMailResponse(raw: unknown): { account: strin
     .sort((left, right) => Date.parse(right.receivedAt) - Date.parse(left.receivedAt))
     .slice(0, MAX_LIMIT);
   return { account: stringValue(raw.account), items };
+}
+
+export function normalizeThunderbirdFolderResponse(raw: unknown): { account: string; folders: ThunderbirdFolder[] } {
+  if (!isRecord(raw) || raw.ok !== true || raw.source !== 'thunderbird' || !Array.isArray(raw.folders)) {
+    throw new ThunderbirdMailError('malformed_response', errorMessage('malformed_response'));
+  }
+  const folders = raw.folders.map((value) => {
+    if (!isRecord(value) || !isThunderbirdFolderId(value.id)) {
+      throw new ThunderbirdMailError('malformed_response', errorMessage('malformed_response'));
+    }
+    const id = value.id;
+    const label = stringValue(value.label) || THUNDERBIRD_FOLDER_LABELS[id];
+    return { id, label, available: value.available === true };
+  });
+  const uniqueIds = new Set(folders.map((folder) => folder.id));
+  if (uniqueIds.size !== folders.length) {
+    throw new ThunderbirdMailError('malformed_response', errorMessage('malformed_response'));
+  }
+  return { account: stringValue(raw.account), folders };
 }
 
 function requestInit(body: Record<string, unknown>, signal: AbortSignal): BridgeRequestInit {
@@ -141,7 +187,7 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 async function requestBridge(
-  endpoint: '/mail/recent' | '/mail/open',
+  endpoint: '/mail/recent' | '/mail/folders' | '/mail/open',
   token: string,
   body: Record<string, unknown>,
   fetchImpl: typeof fetch,
@@ -171,9 +217,18 @@ export async function getRecentThunderbirdMail(
   token: string,
   fetchImpl: typeof fetch = fetch,
   limit = DEFAULT_LIMIT,
+  folder: ThunderbirdFolderId = 'inbox',
 ): Promise<{ account: string; items: ThunderbirdMail[] }> {
-  const raw = await requestBridge('/mail/recent', token, { limit: Math.max(1, Math.min(MAX_LIMIT, limit)) }, fetchImpl);
+  const raw = await requestBridge('/mail/recent', token, { folder, limit: Math.max(1, Math.min(MAX_LIMIT, limit)) }, fetchImpl);
   return normalizeThunderbirdMailResponse(raw);
+}
+
+export async function getThunderbirdFolders(
+  token: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ account: string; folders: ThunderbirdFolder[] }> {
+  const raw = await requestBridge('/mail/folders', token, {}, fetchImpl);
+  return normalizeThunderbirdFolderResponse(raw);
 }
 
 export async function openThunderbird(

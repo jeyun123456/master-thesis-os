@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import threading
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email import policy
@@ -52,6 +53,17 @@ INBOX_NAMES = (
     'caixa de entrada',
     'bandeja de entrada',
 )
+FOLDER_IDS = ('school-work', 'international-office', 'inbox')
+FOLDER_LABELS = {
+    'school-work': '학교 업무',
+    'international-office': '국제과',
+    'inbox': '받은 편지함',
+}
+FOLDER_NAME_CANDIDATES = {
+    'school-work': ('학교 업무', '학교업무', 'school work', 'school-work'),
+    'international-office': ('국제과', '국제부', 'international office', 'international-office'),
+    'inbox': INBOX_NAMES,
+}
 
 
 class ThunderbirdMailError(RuntimeError):
@@ -62,6 +74,7 @@ class ThunderbirdMailError(RuntimeError):
         'profile_not_found': 'Thunderbird profile을 찾지 못했어.',
         'account_not_found': 'Thunderbird 학교 계정을 찾지 못했어.',
         'inbox_not_found': 'Thunderbird 받은편지함을 찾지 못했어.',
+        'folder_not_found': 'Thunderbird 메일 폴더를 찾지 못했어.',
         'local_sync_required': 'Thunderbird에서 이 계정의 메시지를 이 컴퓨터에 보관해줘.',
         'unsupported_store': 'Thunderbird 로컬 메일 저장 방식을 아직 읽을 수 없어.',
         'parse_error': 'Thunderbird 메일 헤더를 읽지 못했어.',
@@ -148,6 +161,25 @@ class ThunderbirdMailItem:
         if self.message_id:
             result['messageId'] = self.message_id
         return result
+
+
+@dataclass(frozen=True)
+class ThunderbirdFolder:
+    id: str
+    label: str
+    path: Path | None = None
+    storage_type: str = ''
+
+    @property
+    def available(self) -> bool:
+        return self.path is not None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            'id': self.id,
+            'label': self.label,
+            'available': self.available,
+        }
 
 
 @dataclass(frozen=True)
@@ -353,19 +385,120 @@ def _candidate_folder_names(account: ThunderbirdAccount) -> list[str]:
     return names
 
 
-def find_inbox(account: ThunderbirdAccount, profile_path: Path) -> Path | None:
+def normalize_folder_id(value: object, default: str = 'inbox') -> str:
+    if value is None or value == '':
+        return default
+    if isinstance(value, str) and value in FOLDER_IDS:
+        return value
+    raise ThunderbirdMailError('folder_not_found')
+
+
+def _normalized_folder_name(value: str) -> str:
+    return unicodedata.normalize('NFC', value).strip().casefold()
+
+
+def _folder_entry_name(path: Path) -> str:
+    name = path.name
+    if _is_maildir(path) and name.startswith('.'):
+        return name[1:]
+    return name
+
+
+def _iter_folder_entries(storage: Path) -> Iterable[Path]:
+    if _is_maildir(storage):
+        yield storage
+        return
+    if not storage.is_dir():
+        return
+    try:
+        entries = sorted(storage.rglob('*'), key=lambda entry: entry.as_posix().casefold())
+    except OSError:
+        return
+    for entry in entries:
+        if entry.is_file():
+            if entry.suffix.casefold() == '.msf' or entry.name == 'msgFilterRules.dat':
+                continue
+            yield entry
+        elif entry.is_dir() and _is_maildir(entry):
+            yield entry
+
+
+def _folder_candidate_names(account: ThunderbirdAccount, folder_id: str) -> list[str]:
+    names: list[str] = []
+    if folder_id == 'inbox':
+        for value in (account.inbox_folder_path, account.inbox_folder_name):
+            if value.strip() and value.strip() not in names:
+                names.append(value.strip())
+    names.extend(value for value in FOLDER_NAME_CANDIDATES[folder_id] if value not in names)
+    return names
+
+
+def _folder_entry_rank(path: Path, storage: Path, folder_id: str, names: list[str]) -> tuple[int, int, int, str]:
+    relative = path.relative_to(storage)
+    entry_name = _normalized_folder_name(_folder_entry_name(path))
+    exact_path = _normalized_folder_name(relative.as_posix())
+    candidate_rank = len(names)
+    for index, name in enumerate(names):
+        normalized = _normalized_folder_name(name)
+        if normalized == entry_name or normalized == exact_path:
+            candidate_rank = index
+            break
+        if '/' in name or '\\' in name:
+            path_name = _normalized_folder_name(name.replace('\\', '/').strip('/'))
+            if path_name == exact_path:
+                candidate_rank = index
+                break
+            if _normalized_folder_name(Path(name).name) == entry_name:
+                candidate_rank = index
+    nested_rank = sum(1 for part in relative.parts if part.casefold().endswith('.sbd'))
+    return nested_rank, len(relative.parts), candidate_rank, relative.as_posix().casefold()
+
+
+def find_folder(account: ThunderbirdAccount, profile_path: Path, folder_id: str) -> ThunderbirdFolder | None:
+    folder_id = normalize_folder_id(folder_id)
     storage = account.storage_path(profile_path)
     if _is_maildir(storage):
-        return storage
+        if folder_id == 'inbox':
+            return ThunderbirdFolder(folder_id, FOLDER_LABELS[folder_id], storage, 'maildir')
+        return None
     if not storage.is_dir():
         return None
+    names = _folder_candidate_names(account, folder_id)
+    normalized_names = {_normalized_folder_name(name) for name in names}
+    matches: list[Path] = []
+    for entry in _iter_folder_entries(storage):
+        entry_name = _normalized_folder_name(_folder_entry_name(entry))
+        relative_name = _normalized_folder_name(entry.relative_to(storage).as_posix())
+        if entry_name in normalized_names or relative_name in normalized_names:
+            matches.append(entry)
+            continue
+        for name in names:
+            path_name = _normalized_folder_name(name.replace('\\', '/').strip('/'))
+            if path_name and path_name == relative_name:
+                matches.append(entry)
+                break
+    if not matches:
+        return None
+    selected = min(matches, key=lambda entry: _folder_entry_rank(entry, storage, folder_id, names))
+    return ThunderbirdFolder(
+        folder_id,
+        FOLDER_LABELS[folder_id],
+        selected,
+        'maildir' if _is_maildir(selected) else 'mbox',
+    )
 
-    entries = {entry.name.casefold(): entry for entry in storage.iterdir()}
-    for name in _candidate_folder_names(account):
-        candidate = entries.get(name.casefold())
-        if candidate is not None and (candidate.is_file() or _is_maildir(candidate)):
-            return candidate
-    return None
+
+def discover_folders(account: ThunderbirdAccount, profile_path: Path) -> list[ThunderbirdFolder]:
+    return [
+        find_folder(account, profile_path, folder_id)
+        or ThunderbirdFolder(folder_id, FOLDER_LABELS[folder_id])
+        for folder_id in FOLDER_IDS
+    ]
+
+
+def find_inbox(account: ThunderbirdAccount, profile_path: Path) -> Path | None:
+    folder = find_folder(account, profile_path, 'inbox')
+    return folder.path if folder else None
 
 
 def _parse_status(value: str) -> int:
@@ -557,21 +690,22 @@ def _select_account(accounts: list[ThunderbirdAccount], requested: str) -> Thund
     raise ThunderbirdMailError('account_not_found')
 
 
-def _items_for_account(account: ThunderbirdAccount, profile_path: Path, limit: int) -> list[ThunderbirdMailItem]:
-    inbox = find_inbox(account, profile_path)
-    if inbox is None:
-        raise ThunderbirdMailError('inbox_not_found')
-    if inbox.is_file() and inbox.stat().st_size == 0:
+def _items_for_account(account: ThunderbirdAccount, profile_path: Path, limit: int, folder_id: str = 'inbox') -> list[ThunderbirdMailItem]:
+    folder = find_folder(account, profile_path, folder_id)
+    if folder is None or folder.path is None:
+        raise ThunderbirdMailError('inbox_not_found' if folder_id == 'inbox' else 'folder_not_found')
+    mailbox = folder.path
+    if mailbox.is_file() and mailbox.stat().st_size == 0 and folder_id == 'inbox':
         raise ThunderbirdMailError('local_sync_required')
 
-    if _is_maildir(inbox):
+    if _is_maildir(mailbox):
         if account.store_contract_id and account.store_contract_id != MAILDIR_STORE_CONTRACT:
             raise ThunderbirdMailError('unsupported_store')
-        items = _parse_maildir(inbox)
-    elif inbox.is_file():
+        items = _parse_maildir(mailbox)
+    elif mailbox.is_file():
         if account.store_contract_id and account.store_contract_id not in ('', BERKELEY_STORE_CONTRACT):
             raise ThunderbirdMailError('unsupported_store')
-        items = _cached_mbox(inbox)
+        items = [] if mailbox.stat().st_size == 0 else _cached_mbox(mailbox)
     else:
         raise ThunderbirdMailError('unsupported_store')
 
@@ -579,8 +713,13 @@ def _items_for_account(account: ThunderbirdAccount, profile_path: Path, limit: i
     return items[:limit]
 
 
-def get_recent_mail(settings: ThunderbirdSettings, limit: object = DEFAULT_MAIL_LIMIT) -> tuple[str, list[ThunderbirdMailItem]]:
+def get_recent_mail(
+    settings: ThunderbirdSettings,
+    limit: object = DEFAULT_MAIL_LIMIT,
+    folder: object = 'inbox',
+) -> tuple[str, list[ThunderbirdMailItem]]:
     requested_limit = clamp_mail_limit(limit)
+    requested_folder = normalize_folder_id(folder)
     profiles = resolve_profile_candidates(settings)
     account_error: ThunderbirdMailError | None = None
     for profile_path in profiles:
@@ -592,9 +731,31 @@ def get_recent_mail(settings: ThunderbirdSettings, limit: object = DEFAULT_MAIL_
         except ThunderbirdMailError as exc:
             account_error = exc
             continue
-        items = _items_for_account(account, profile_path, requested_limit)
+        items = _items_for_account(account, profile_path, requested_limit, requested_folder)
         account_value = account.username or account.name
         return mask_account(account_value), items
+    if account_error is not None:
+        raise account_error
+    raise ThunderbirdMailError('account_not_found')
+
+
+def get_mail_folders(settings: ThunderbirdSettings) -> tuple[str, list[ThunderbirdFolder]]:
+    profiles = resolve_profile_candidates(settings)
+    account_error: ThunderbirdMailError | None = None
+    for profile_path in profiles:
+        accounts = discover_accounts(profile_path)
+        if not accounts:
+            continue
+        try:
+            account = _select_account(accounts, settings.account)
+        except ThunderbirdMailError as exc:
+            account_error = exc
+            continue
+        storage = account.storage_path(profile_path)
+        if not storage.exists():
+            raise ThunderbirdMailError('inbox_not_found')
+        account_value = account.username or account.name
+        return mask_account(account_value), discover_folders(account, profile_path)
     if account_error is not None:
         raise account_error
     raise ThunderbirdMailError('account_not_found')

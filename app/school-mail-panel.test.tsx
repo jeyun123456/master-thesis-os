@@ -5,9 +5,14 @@ import {
   schoolMailRowClass,
   schoolMailStateMessage,
   schoolMailStatusLabel,
+  SCHOOL_MAIL_HOME_FOLDER,
 } from './school-mail-panel';
 
 describe('School mail panel states', () => {
+  it('uses the school-work folder as the home mail source', () => {
+    expect(SCHOOL_MAIL_HOME_FOLDER).toBe('school-work');
+  });
+
   it('labels ready, empty, offline, and sync-required states', () => {
     expect(schoolMailStatusLabel('ready', null)).toBe('Thunderbird ● 로컬');
     expect(schoolMailStatusLabel('empty', null)).toBe('Thunderbird ● 로컬');
