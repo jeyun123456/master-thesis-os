@@ -98,6 +98,14 @@ class BridgeConfigurationTests(unittest.TestCase):
         self.write_config()
         loaded = load_bridge_config(self.config_path)
         self.assertEqual(loaded.port, DEFAULT_PORT)
+        self.assertEqual(loaded.thunderbird.account, '')
+        self.assertEqual(loaded.thunderbird.profile_path, '')
+
+    def test_loader_accepts_optional_thunderbird_settings(self):
+        self.write_config(thunderbird={'account': 'school@example.edu', 'profile_path': 'C:\\profile'})
+        loaded = load_bridge_config(self.config_path)
+        self.assertEqual(loaded.thunderbird.account, 'school@example.edu')
+        self.assertEqual(loaded.thunderbird.profile_path, 'C:\\profile')
 
     def test_config_path_prefers_explicit_override(self):
         override = self.root / 'override.json'
@@ -178,7 +186,7 @@ class BridgeConfigurationTests(unittest.TestCase):
         self.assertEqual(CONFIG_ERROR_EXIT_CODE, 78)
 
     def test_bridge_process_exits_with_config_error_code(self):
-        for module_name in ('bridge.py', 'bridge_config.py', 'bridge_security.py'):
+        for module_name in ('bridge.py', 'bridge_config.py', 'bridge_security.py', 'thunderbird_mail.py'):
             shutil.copy(Path(__file__).with_name(module_name), self.root / module_name)
         token_marker = 'token-marker-' + 's' * 40
         self.config_path.write_text(f'{{"token":"{token_marker}', encoding='utf-8')
@@ -238,6 +246,23 @@ class BridgeConfigurationTests(unittest.TestCase):
         self.assertIn('parsed.Token.Length < 32', store)
         self.assertIn('private const int DefaultPort = 38471', store)
         self.assertIn('var port = parsed.Port ?? DefaultPort', store)
+
+    def test_companion_runtime_packaging_includes_thunderbird_reader(self):
+        manager = (
+            Path(__file__).parents[1]
+            / 'experiments'
+            / 'wallpaper-host-poc'
+            / 'BridgeProcessManager.cs'
+        ).read_text(encoding='utf-8')
+        publisher = (
+            Path(__file__).parents[1]
+            / 'experiments'
+            / 'wallpaper-host-poc'
+            / 'scripts'
+            / 'Publish-Release.ps1'
+        ).read_text(encoding='utf-8-sig')
+        self.assertIn('"thunderbird_mail.py"', manager)
+        self.assertIn("'thunderbird_mail.py'", publisher)
 
     def test_accepts_exact_production_and_explicit_local_origins(self):
         self.assertTrue(valid_origins({PRODUCTION_ORIGIN, 'http://localhost:3000', 'http://127.0.0.1:3001'}))

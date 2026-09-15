@@ -3,6 +3,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from bridge_config import CONFIG_ERROR_EXIT_CODE, ConfigError, load_bridge_config, resolve_config_path
 from bridge_security import allows_private_network, target_for_endpoint, token_matches
+from thunderbird_mail import ThunderbirdMailError, clamp_mail_limit, get_recent_mail, launch_thunderbird
 
 HERE = Path(__file__).resolve().parent
 CONFIG = resolve_config_path(HERE)
@@ -50,7 +51,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/health': return self.json_out(200, {'ok':True})
         return self.json_out(404, {'error':'not found'})
     def do_POST(self):
-        if self.path not in ('/open', '/open-folder', '/launch'): return self.json_out(404, {'error':'not found'})
+        if self.path not in ('/open', '/open-folder', '/launch', '/mail/recent', '/mail/open'):
+            return self.json_out(404, {'error':'not found'})
         try:
             origin = self.headers.get('Origin','')
             if origin not in ORIGINS:
@@ -62,6 +64,23 @@ class Handler(BaseHTTPRequestHandler):
             if length <= 0 or length > MAX_BODY_BYTES: return self.json_out(413, {'error':'invalid request size'})
             body=json.loads(self.rfile.read(length))
             if not token_matches(body.get('token',''), TOKEN): return self.json_out(403, {'error':'invalid token'})
+            if self.path == '/mail/recent':
+                try:
+                    account, items = get_recent_mail(bridge_config.thunderbird, clamp_mail_limit(body.get('limit', 5)))
+                except ThunderbirdMailError as exc:
+                    return self.json_out(exc.http_status, {'ok':False, 'source':'thunderbird', 'error':exc.code})
+                return self.json_out(200, {
+                    'ok': True,
+                    'source': 'thunderbird',
+                    'account': account,
+                    'items': [item.to_dict() for item in items],
+                })
+            if self.path == '/mail/open':
+                try:
+                    launch_thunderbird()
+                except ThunderbirdMailError as exc:
+                    return self.json_out(exc.http_status, {'ok':False, 'source':'thunderbird', 'error':exc.code})
+                return self.json_out(200, {'ok':True, 'source':'thunderbird'})
             if self.path == '/launch':
                 request = normalize_shortcut_request(body)
                 launch_shortcut(request)
@@ -69,8 +88,15 @@ class Handler(BaseHTTPRequestHandler):
             target = target_for_endpoint(ROOT, self.path, str(body.get('path','')))
             launch(target)
             return self.json_out(200, {'ok':True,'path':str(target)})
-        except FileNotFoundError as e: return self.json_out(404, {'error':'local file not found','detail':str(e)})
-        except Exception as e: return self.json_out(400, {'error':str(e)})
+        except FileNotFoundError as e:
+            if self.path.startswith('/mail/'):
+                return self.json_out(503, {'ok':False, 'source':'thunderbird', 'error':'profile_not_found'})
+            return self.json_out(404, {'error':'local file not found','detail':str(e)})
+        except ThunderbirdMailError as e: return self.json_out(e.http_status, {'ok':False, 'source':'thunderbird', 'error':e.code})
+        except Exception as e:
+            if self.path.startswith('/mail/'):
+                return self.json_out(400, {'ok':False, 'source':'thunderbird', 'error':'parse_error'})
+            return self.json_out(400, {'error':str(e)})
     def log_message(self, fmt, *args):
         print('[bridge]', fmt % args, flush=True)
 

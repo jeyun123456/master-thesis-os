@@ -11,10 +11,10 @@
 ## 구성
 
 - `app/`: 9개 필수 페이지 UI와 서버 API routes
-- `lib/`: GitHub·Calendar 서버 클라이언트, project/result discovery, repository 분류, Results 데이터 계약
+- `lib/`: GitHub·Calendar 서버 클라이언트, Thunderbird Local Bridge·Microsoft Graph 브라우저 클라이언트, project/result discovery, repository 분류, Results 데이터 계약
 - `schemas/`: Excel과 UI 사이의 dashboard JSON Schema
 - `exporter/`: canonical 결과 workbook을 검증된 dashboard JSON으로 변환
-- `local-bridge/`: GitHub 상대경로로 로컬 파일을 여는 loopback 전용 브리지
+- `local-bridge/`: GitHub 상대경로와 Thunderbird 로컬 메일 메타데이터를 읽는 loopback 전용 브리지
 
 이 repository는 앱 코드만 담는다. 기존 `Obsidian-Vault`의 `Calc/`, `wiki/`, `연구/` 구조와 결과 파일은 이동하거나 복제하지 않는다. 기존 Vault 안의 `master-thesis-os/` checkout은 로컬 개발용으로 계속 둘 수 있다.
 
@@ -42,7 +42,7 @@ pnpm test:web
 
 ### 별도 app repository와 Vercel
 
-Vercel project는 앱 code repository `jeyun123456/master-thesis-os`를 연결하고 **Root Directory는 repository root**로 둔다. Vercel의 Production/Preview 환경변수에는 `GITHUB_OWNER`, `GITHUB_REPO`, `GITHUB_BRANCH`, `GITHUB_TOKEN` 및 필요한 Google Calendar 변수를 설정한다. `LOCAL_REPOSITORY_ROOT`, bridge token, `local-bridge/config.json`은 개인 PC 전용이므로 Vercel에 올리지 않는다.
+Vercel project는 앱 code repository `jeyun123456/master-thesis-os`를 연결하고 **Root Directory는 repository root**로 둔다. Vercel의 Production/Preview 환경변수에는 `GITHUB_OWNER`, `GITHUB_REPO`, `GITHUB_BRANCH`, `GITHUB_TOKEN`, Microsoft 365 public client ID 및 필요한 Google Calendar 변수를 설정한다. `LOCAL_REPOSITORY_ROOT`, bridge token, `local-bridge/config.json`은 개인 PC 전용이므로 Vercel에 올리지 않는다.
 
 로컬에서 별도 app repository를 clone한 경우에는 `.env.local`에 기존 연구 Vault의 절대 경로를 지정한다.
 
@@ -54,7 +54,7 @@ LOCAL_REPOSITORY_ROOT=D:\path\to\Obsidian-Vault
 
 ## 환경변수
 
-GitHub·Google 비밀값은 `.env.local` 또는 배포 플랫폼의 서버 환경변수로만 설정한다. `NEXT_PUBLIC_` 브리지 URL 외에는 브라우저 번들에 포함하지 않는다.
+GitHub·Google 비밀값은 `.env.local` 또는 배포 플랫폼의 서버 환경변수로만 설정한다. Microsoft 365의 `NEXT_PUBLIC_` client ID와 authority는 SPA 브라우저 설정이라 공개되어도 되지만, client secret은 만들지 않고 access token은 저장하지 않는다.
 
 | 변수 | 필수 | 설명 |
 | --- | --- | --- |
@@ -70,6 +70,8 @@ GitHub·Google 비밀값은 `.env.local` 또는 배포 플랫폼의 서버 환�
 | `GOOGLE_CALENDAR_IDS` | Calendar 연결 시 | 쉼표로 구분한 하나 이상의 Calendar ID |
 | `GOOGLE_CALENDAR_ID` | 임시 fallback | 기존 단일 Calendar ID. `GOOGLE_CALENDAR_IDS`가 우선 |
 | `NEXT_PUBLIC_LOCAL_BRIDGE_URL` | 아니오 | 기본값 `http://127.0.0.1:38471` |
+| `NEXT_PUBLIC_MICROSOFT_CLIENT_ID` | Microsoft 연결 시 | Entra SPA App Registration의 Application (client) ID. secret 아님 |
+| `NEXT_PUBLIC_MICROSOFT_AUTHORITY` | 아니오 | 기본값 `https://login.microsoftonline.com/organizations` |
 
 데이터 remote는 `Obsidian-Vault`이며 `https://github.com/jeyun123456/Obsidian-Vault.git`을 가리킨다. 따라서 앱의 데이터 설정은 계속 `GITHUB_OWNER=jeyun123456`, `GITHUB_REPO=Obsidian-Vault`, `GITHUB_BRANCH=master`다. 이것은 앱 code repository와 별개다. private repo token은 직접 설정해야 하며 서버는 토큰이나 Google 인증 오류 응답 본문을 브라우저에 노출하지 않는다.
 
@@ -188,6 +190,42 @@ GOOGLE_CALENDAR_ID                -> GOOGLE_CALENDAR_IDS (쉼표 구분)
 신규 GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY -> RS256 private key
 ```
 
+## Microsoft 365 학교 메일 Graph 연결(선택)
+
+학교 메일은 IMAP이나 서버 저장소를 사용하지 않고, 브라우저의 `@azure/msal-browser`가 Microsoft Entra ID Authorization Code Flow + PKCE로 delegated token을 받은 뒤 Microsoft Graph를 직접 호출한다. MSAL cache는 현재 브라우저 탭/session에 한정된 `sessionStorage`를 사용하며 앱 서버·DB·Vercel 환경변수에 token을 저장하지 않는다. 현재 요청하는 Graph delegated permission은 `User.Read`와 `Mail.ReadBasic`뿐이다. 메일 본문·preview·첨부파일·메일 변경 API는 요청하지 않는다.
+
+### Entra App Registration 설정
+
+1. Azure Portal 또는 Microsoft Entra admin center의 **App registrations**에서 새 앱을 만들고, Supported account types는 `Accounts in any organizational directory`로 둔다. 현재 코드의 `organizations` authority와 맞추기 위한 설정이다.
+2. **Authentication → Add a platform → Single-page application (SPA)**에 다음 redirect URI를 등록한다.
+   - `http://localhost:3000`
+   - `https://master-thesis-os.vercel.app`
+3. **API permissions → Microsoft Graph → Delegated permissions**에 `User.Read`와 `Mail.ReadBasic`을 추가한다. 이 PoC에는 Application permission을 추가하지 않는다.
+4. 앱의 **Application (client) ID**를 Vercel과 로컬 `.env.local`의 `NEXT_PUBLIC_MICROSOFT_CLIENT_ID`에 넣는다. `NEXT_PUBLIC_MICROSOFT_AUTHORITY`는 비워두거나 `https://login.microsoftonline.com/organizations`로 둔다.
+5. SPA이므로 **client secret은 필요하지 않으며** `NEXT_PUBLIC_*`에 secret을 넣지 않는다. public 환경변수는 `next build` 전에 설정해야 한다.
+6. 학교 계정으로 최초 로그인하고 MFA 및 consent 화면을 테스트한다.
+
+설정의 **Microsoft Graph 연결(선택)**은 위 경로를 보조하는 기존 PoC다. 학교 tenant 정책이 `AADSTS65001`, `AADSTS90094` 또는 Graph 403으로 consent/admin approval을 요구하면 앱은 raw provider 오류 대신 접근 승인 필요 메시지를 표시한다.
+
+## Thunderbird Local 학교 메일
+
+현재 기본 학교 메일 소스는 Thunderbird Local이다. Thunderbird가 OAuth 또는 IMAP/Graph로 이미 동기화한 로컬 profile의 받은편지함 mbox/maildir에서 메일 **헤더 메타데이터만** Local Bridge가 read-only로 읽는다. Microsoft Graph access token, Thunderbird OAuth token·password·cookie, `logins.json`, `key4.db`, 메일 본문과 첨부파일은 읽지 않는다. `global-messages-db.sqlite`와 `.msf` 파일도 canonical source로 사용하지 않는다.
+
+기존 `local-bridge/config.json`은 그대로 동작한다. 자동 탐지가 애매할 때만 다음 선택 설정을 추가한다. 실제 이메일 주소나 profile 절대 경로는 repository에 넣지 않는다.
+
+```json
+{
+  "thunderbird": {
+    "account": "school-account@example.edu",
+    "profile_path": "C:\\Users\\your-name\\AppData\\Roaming\\Thunderbird\\Profiles\\profile.default"
+  }
+}
+```
+
+`account`와 `profile_path`가 비어 있으면 `%APPDATA%\\Thunderbird\\profiles.ini`의 우선 profile과 `prefs.js`를 자동 탐색한다. mbox는 확장자 없는 받은편지함 파일을, maildir은 `cur/new/tmp`를 읽으며 요청당 기본 5개·최대 20개의 제목·발신자·Date·read 상태만 반환한다. mbox가 변경되면 mtime/size 기반의 메타데이터 cache를 무효화한다. Thunderbird profile에는 어떤 write도 수행하지 않는다.
+
+Home의 **학교 메일** 카드는 `Thunderbird ● 로컬`을 primary source로 표시하고, Local Bridge가 꺼져 있거나 local sync가 부족하면 해당 상태만 보여준다. 메시지별 Outlook URL은 만들지 않으며, 가능한 경우 인증된 `/mail/open`을 통해 Thunderbird 프로그램만 연다.
+
 ## localhost bridge
 
 ```powershell
@@ -206,7 +244,7 @@ Wallpaper Companion과 Bridge tray는 다음 공용 설정을 우선 사용한�
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. Settings의 token은 `보기/숨기기`와 `복사`로 관리할 수 있고, Local Bridge tray와 Wallpaper Companion tray의 **Bridge token 보기/복사**에서도 로컬 config 값을 확인·복사할 수 있다. token을 HTTP endpoint나 원격 페이지에 자동 노출하지는 않는다. 실제 `config.json`은 git에서 제외된다.
+브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. 학교 메일은 같은 인증 모델의 `POST /mail/recent`와 `POST /mail/open`을 사용하며, 메일 endpoint는 경로·본문·제목·발신자·token을 로그에 남기지 않는다. Settings의 token은 `보기/숨기기`와 `복사`로 관리할 수 있고, Local Bridge tray와 Wallpaper Companion tray의 **Bridge token 보기/복사**에서도 로컬 config 값을 확인·복사할 수 있다. token을 HTTP endpoint나 원격 페이지에 자동 노출하지는 않는다. 실제 `config.json`은 git에서 제외된다.
 
 ### 브리지 상시 실행
 

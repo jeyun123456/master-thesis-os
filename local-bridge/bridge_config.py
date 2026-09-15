@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from bridge_security import PRODUCTION_ORIGIN, valid_origins
+from thunderbird_mail import ThunderbirdSettings
 
 
 DEFAULT_PORT = 38471
@@ -39,6 +40,7 @@ class BridgeConfig:
     token: str
     port: int
     origins: set[str]
+    thunderbird: ThunderbirdSettings
 
 
 def load_bridge_config(config_path: Path) -> BridgeConfig:
@@ -89,4 +91,20 @@ def load_bridge_config(config_path: Path) -> BridgeConfig:
     if not origins_valid:
         raise ConfigError('allowed_origins must include the production origin and explicit localhost URLs only.')
 
-    return BridgeConfig(root=root, token=token, port=port, origins=origins)
+    raw_thunderbird = config.get('thunderbird', {})
+    if raw_thunderbird is None:
+        raw_thunderbird = {}
+    if not isinstance(raw_thunderbird, dict):
+        raise ConfigError("config.json 'thunderbird' must be an object when present.")
+    account = raw_thunderbird.get('account', '')
+    profile_path = raw_thunderbird.get('profile_path', '')
+    if not isinstance(account, str) or not isinstance(profile_path, str):
+        raise ConfigError("config.json 'thunderbird.account' and 'thunderbird.profile_path' must be strings.")
+
+    return BridgeConfig(
+        root=root,
+        token=token,
+        port=port,
+        origins=origins,
+        thunderbird=ThunderbirdSettings(account=account.strip(), profile_path=profile_path.strip()),
+    )

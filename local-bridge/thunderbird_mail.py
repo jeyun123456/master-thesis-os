@@ -1,0 +1,629 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import threading
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from email import policy
+from email.header import decode_header
+from email.parser import BytesFeedParser
+from email.utils import parsedate_to_datetime, parseaddr
+from pathlib import Path
+from typing import BinaryIO, Iterable
+
+
+DEFAULT_MAIL_LIMIT = 5
+MAX_MAIL_LIMIT = 20
+BERKELEY_STORE_CONTRACT = '@mozilla.org/msgstore/berkeleystore;1'
+MAILDIR_STORE_CONTRACT = '@mozilla.org/msgstore/maildirstore;1'
+
+SAFE_PROFILE_PREFS = {
+    'hostname',
+    'userName',
+    'name',
+    'directory',
+    'directory-rel',
+    'type',
+    'storeContractID',
+    'inbox_folder_name',
+    'inbox_folder_path',
+    'trash_folder_path',
+}
+PREF_RE = re.compile(
+    r'^user_pref\("(?P<key>[^"\\]+)",\s*"(?P<value>(?:\\.|[^"\\])*)"\);'
+)
+SERVER_KEY_RE = re.compile(r'^mail\.server\.(?P<server>server\d+)\.(?P<name>[^.]+)$')
+ACCOUNT_SERVER_KEY_RE = re.compile(r'^mail\.account\.(?P<account>account\d+)\.server$')
+PROFILE_SECTION_RE = re.compile(r'^Profile\d+$')
+INSTALL_SECTION_RE = re.compile(r'^Install')
+INBOX_NAMES = (
+    'inbox',
+    '받은 편지함',
+    '受信トレイ',
+    'boîte de réception',
+    'posteingang',
+    'posta in arrivo',
+    'bandeja de entrada',
+    'caixa de entrada',
+    'bandeja de entrada',
+)
+
+
+class ThunderbirdMailError(RuntimeError):
+    """A safe, user-facing local mail error without provider or path details."""
+
+    MESSAGES = {
+        'thunderbird_not_installed': 'Thunderbird 설치를 찾지 못했어.',
+        'profile_not_found': 'Thunderbird profile을 찾지 못했어.',
+        'account_not_found': 'Thunderbird 학교 계정을 찾지 못했어.',
+        'inbox_not_found': 'Thunderbird 받은편지함을 찾지 못했어.',
+        'local_sync_required': 'Thunderbird에서 이 계정의 메시지를 이 컴퓨터에 보관해줘.',
+        'unsupported_store': 'Thunderbird 로컬 메일 저장 방식을 아직 읽을 수 없어.',
+        'parse_error': 'Thunderbird 메일 헤더를 읽지 못했어.',
+        'bridge_auth': 'Local Bridge token을 확인해줘.',
+        'bridge_offline': 'Local Bridge가 실행 중인지 확인해줘.',
+    }
+
+    def __init__(self, code: str, message: str | None = None, http_status: int = 503):
+        self.code = code
+        self.http_status = http_status
+        super().__init__(message or self.MESSAGES.get(code, self.MESSAGES['parse_error']))
+
+
+@dataclass(frozen=True)
+class ThunderbirdSettings:
+    account: str = ''
+    profile_path: str = ''
+
+
+@dataclass(frozen=True)
+class ThunderbirdProfile:
+    name: str
+    path: Path
+    is_default: bool = False
+    section: str = ''
+
+
+@dataclass(frozen=True)
+class ThunderbirdAccount:
+    account_id: str
+    server_id: str
+    username: str
+    name: str
+    hostname: str
+    account_type: str
+    directory: str
+    directory_rel: str
+    store_contract_id: str
+    inbox_folder_name: str
+    inbox_folder_path: str
+
+    def storage_path(self, profile_path: Path) -> Path:
+        if self.directory:
+            candidate = Path(os.path.expandvars(self.directory)).expanduser()
+            if not candidate.is_absolute():
+                candidate = profile_path / candidate
+            return candidate
+
+        relative = self.directory_rel
+        if relative.startswith('[ProfD]'):
+            relative = relative[len('[ProfD]'):].lstrip('/\\')
+            return profile_path / Path(relative.replace('/', os.sep))
+        if relative:
+            return profile_path / Path(relative.replace('/', os.sep))
+        return profile_path
+
+    def matches(self, requested: str) -> bool:
+        target = requested.strip().casefold()
+        return bool(target) and target in {
+            self.username.strip().casefold(),
+            self.name.strip().casefold(),
+        }
+
+
+@dataclass(frozen=True)
+class ThunderbirdMailItem:
+    id: str
+    subject: str
+    sender_name: str
+    sender_address: str
+    received_at: str
+    is_read: bool
+    message_id: str | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        result: dict[str, object] = {
+            'id': self.id,
+            'subject': self.subject,
+            'senderName': self.sender_name,
+            'senderAddress': self.sender_address,
+            'receivedAt': self.received_at,
+            'isRead': self.is_read,
+        }
+        if self.message_id:
+            result['messageId'] = self.message_id
+        return result
+
+
+@dataclass(frozen=True)
+class _MboxCacheEntry:
+    modified_ns: int
+    size: int
+    items: tuple[ThunderbirdMailItem, ...]
+
+
+_MBOX_CACHE: dict[str, _MboxCacheEntry] = {}
+_MBOX_CACHE_LOCK = threading.Lock()
+
+
+def clamp_mail_limit(value: object, default: int = DEFAULT_MAIL_LIMIT) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return default
+    return max(1, min(MAX_MAIL_LIMIT, value))
+
+
+def mask_account(value: str) -> str:
+    text = value.strip()
+    if '@' not in text:
+        return '***' if text else ''
+    local, domain = text.split('@', 1)
+    return f'{local[:2]}***@{domain}' if local else f'***@{domain}'
+
+
+def _decode_prefs_string(value: str) -> str:
+    try:
+        return json.loads(f'"{value}"')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return value.replace('\\"', '"').replace('\\\\', '\\')
+
+
+def _profile_path(raw_path: str, is_relative: str, profile_root: Path) -> Path:
+    expanded = Path(os.path.expandvars(raw_path)).expanduser()
+    if is_relative == '1':
+        expanded = profile_root / expanded
+    return expanded.resolve(strict=False)
+
+
+def parse_profiles_ini_text(text: str, profile_root: Path) -> list[ThunderbirdProfile]:
+    sections: list[tuple[str, dict[str, str]]] = []
+    current_name = ''
+    current: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith(('#', ';')):
+            continue
+        section_match = re.fullmatch(r'\[(.+)\]', line)
+        if section_match:
+            if current_name:
+                sections.append((current_name, current))
+            current_name = section_match.group(1)
+            current = {}
+            continue
+        if '=' in line:
+            key, value = line.split('=', 1)
+            current[key.strip()] = value.strip()
+    if current_name:
+        sections.append((current_name, current))
+
+    profiles_by_path: dict[Path, ThunderbirdProfile] = {}
+    raw_profiles: list[tuple[str, dict[str, str], Path]] = []
+    for section_name, values in sections:
+        if not PROFILE_SECTION_RE.match(section_name) or not values.get('Path'):
+            continue
+        path = _profile_path(values['Path'], values.get('IsRelative', '0'), profile_root)
+        profile = ThunderbirdProfile(
+            name=values.get('Name', section_name),
+            path=path,
+            is_default=values.get('Default') == '1',
+            section=section_name,
+        )
+        profiles_by_path[path] = profile
+        raw_profiles.append((section_name, values, path))
+
+    ordered_paths: list[Path] = []
+
+    def add_path(path: Path) -> None:
+        if path in profiles_by_path and path not in ordered_paths:
+            ordered_paths.append(path)
+
+    for section_name, values in sections:
+        if INSTALL_SECTION_RE.match(section_name) and values.get('Default'):
+            add_path(_profile_path(values['Default'], '1', profile_root))
+    for _, values, path in raw_profiles:
+        if values.get('Default') == '1':
+            add_path(path)
+    for _, _, path in raw_profiles:
+        add_path(path)
+
+    return [profiles_by_path[path] for path in ordered_paths]
+
+
+def parse_profiles_ini(path: Path) -> list[ThunderbirdProfile]:
+    try:
+        text = path.read_text(encoding='utf-8-sig')
+    except (OSError, UnicodeError) as exc:
+        raise ThunderbirdMailError('profile_not_found') from exc
+    return parse_profiles_ini_text(text, path.parent)
+
+
+def default_profiles_ini() -> Path:
+    app_data = os.environ.get('APPDATA', '').strip()
+    if app_data:
+        return Path(app_data) / 'Thunderbird' / 'profiles.ini'
+    return Path.home() / 'AppData' / 'Roaming' / 'Thunderbird' / 'profiles.ini'
+
+
+def resolve_profile_candidates(settings: ThunderbirdSettings) -> list[Path]:
+    if settings.profile_path.strip():
+        path = Path(os.path.expandvars(settings.profile_path.strip())).expanduser().resolve(strict=False)
+        if not path.is_dir():
+            raise ThunderbirdMailError('profile_not_found')
+        return [path]
+
+    profiles_ini = default_profiles_ini()
+    if not profiles_ini.exists():
+        raise ThunderbirdMailError('profile_not_found')
+    candidates = [profile.path for profile in parse_profiles_ini(profiles_ini) if profile.path.is_dir()]
+    if not candidates:
+        raise ThunderbirdMailError('profile_not_found')
+    return candidates
+
+
+def _safe_pref_key(key: str) -> bool:
+    if ACCOUNT_SERVER_KEY_RE.match(key):
+        return True
+    match = SERVER_KEY_RE.match(key)
+    return bool(match and match.group('name') in SAFE_PROFILE_PREFS)
+
+
+def read_safe_prefs(profile_path: Path) -> dict[str, str]:
+    prefs_path = profile_path / 'prefs.js'
+    if not prefs_path.exists():
+        return {}
+    values: dict[str, str] = {}
+    try:
+        with prefs_path.open('r', encoding='utf-8-sig', errors='replace') as prefs_file:
+            for line in prefs_file:
+                match = PREF_RE.match(line.strip())
+                if not match or not _safe_pref_key(match.group('key')):
+                    continue
+                values[match.group('key')] = _decode_prefs_string(match.group('value'))
+    except OSError as exc:
+        raise ThunderbirdMailError('parse_error') from exc
+    return values
+
+
+def discover_accounts(profile_path: Path) -> list[ThunderbirdAccount]:
+    values = read_safe_prefs(profile_path)
+    server_values: dict[str, dict[str, str]] = {}
+    account_servers: dict[str, str] = {}
+    for key, value in values.items():
+        account_match = ACCOUNT_SERVER_KEY_RE.match(key)
+        if account_match:
+            account_servers[account_match.group('account')] = value
+            continue
+        server_match = SERVER_KEY_RE.match(key)
+        if server_match:
+            server_values.setdefault(server_match.group('server'), {})[server_match.group('name')] = value
+
+    pairs: list[tuple[str, str]] = list(account_servers.items())
+    known_servers = {server_id for _, server_id in pairs}
+    pairs.extend((f'implicit-{server_id}', server_id) for server_id in server_values if server_id not in known_servers)
+
+    accounts: list[ThunderbirdAccount] = []
+    for account_id, server_id in pairs:
+        server = server_values.get(server_id, {})
+        username = server.get('userName', '')
+        account_type = server.get('type', '')
+        if not username and not server.get('name'):
+            continue
+        if account_type.casefold() == 'none' and not username:
+            continue
+        accounts.append(ThunderbirdAccount(
+            account_id=account_id,
+            server_id=server_id,
+            username=username,
+            name=server.get('name', ''),
+            hostname=server.get('hostname', ''),
+            account_type=account_type,
+            directory=server.get('directory', ''),
+            directory_rel=server.get('directory-rel', ''),
+            store_contract_id=server.get('storeContractID', ''),
+            inbox_folder_name=server.get('inbox_folder_name', ''),
+            inbox_folder_path=server.get('inbox_folder_path', ''),
+        ))
+    return accounts
+
+
+def _is_maildir(path: Path) -> bool:
+    return path.is_dir() and all((path / name).is_dir() for name in ('cur', 'new', 'tmp'))
+
+
+def _candidate_folder_names(account: ThunderbirdAccount) -> list[str]:
+    names: list[str] = []
+    for value in (account.inbox_folder_path, account.inbox_folder_name):
+        if value.strip() and value.strip() not in names:
+            names.append(value.strip())
+    names.extend(name for name in INBOX_NAMES if name not in names)
+    return names
+
+
+def find_inbox(account: ThunderbirdAccount, profile_path: Path) -> Path | None:
+    storage = account.storage_path(profile_path)
+    if _is_maildir(storage):
+        return storage
+    if not storage.is_dir():
+        return None
+
+    entries = {entry.name.casefold(): entry for entry in storage.iterdir()}
+    for name in _candidate_folder_names(account):
+        candidate = entries.get(name.casefold())
+        if candidate is not None and (candidate.is_file() or _is_maildir(candidate)):
+            return candidate
+    return None
+
+
+def _parse_status(value: str) -> int:
+    try:
+        return int(value.strip(), 16)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _decode_header_value(value: object) -> str:
+    if not isinstance(value, str):
+        return ''
+    parts: list[str] = []
+    for chunk, charset in decode_header(value):
+        if isinstance(chunk, bytes):
+            try:
+                parts.append(chunk.decode(charset or 'utf-8', errors='replace'))
+            except (LookupError, UnicodeError):
+                parts.append(chunk.decode('utf-8', errors='replace'))
+        else:
+            parts.append(chunk)
+    return ''.join(parts).strip()
+
+
+def _normalize_date(value: str) -> str | None:
+    if not value.strip():
+        return None
+    try:
+        parsed = parsedate_to_datetime(value)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return None
+    if parsed is None:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+def _parse_mail_headers(
+    header_bytes: bytes,
+    source_name: str,
+    offset: int,
+    status_override: int | None = None,
+) -> ThunderbirdMailItem | None:
+    try:
+        parser = BytesFeedParser(policy=policy.default)
+        parser.feed(header_bytes)
+        parser.feed(b'\r\n\r\n')
+        message = parser.close()
+        received_at = _normalize_date(_decode_header_value(message.get('Date', '')))
+        if received_at is None:
+            return None
+        status = status_override if status_override is not None else _parse_status(_decode_header_value(message.get('X-Mozilla-Status', '')))
+        if status & 0x0008:
+            return None
+        subject = _decode_header_value(message.get('Subject', '')) or '(제목 없음)'
+        sender_header = _decode_header_value(message.get('From', ''))
+        sender_name, sender_address = parseaddr(sender_header)
+        sender_name = _decode_header_value(sender_name) or '(발신자 알 수 없음)'
+        sender_address = sender_address.strip()
+        message_id = _decode_header_value(message.get('Message-ID', '')) or None
+        # Message-ID is normally unique, but duplicate Message-ID headers can
+        # exist in a local store. Include the physical message location so the
+        # normalized id remains unique for each stored message.
+        seed = f'{message_id or ""}:{source_name}:{offset}:{received_at}'
+        item_id = hashlib.sha256(seed.encode('utf-8', errors='replace')).hexdigest()[:24]
+        return ThunderbirdMailItem(
+            id=item_id,
+            subject=subject,
+            sender_name=sender_name,
+            sender_address=sender_address,
+            received_at=received_at,
+            is_read=bool(status & 0x0001),
+            message_id=message_id,
+        )
+    except (LookupError, TypeError, ValueError, UnicodeError):
+        return None
+
+
+def _iter_mbox_headers(handle: BinaryIO) -> Iterable[tuple[int, bytes]]:
+    message_offset: int | None = None
+    header_lines: list[bytes] = []
+    reading_headers = False
+    while True:
+        line_offset = handle.tell()
+        line = handle.readline()
+        if not line:
+            if message_offset is not None:
+                yield message_offset, b''.join(header_lines)
+            return
+        if line.startswith(b'From '):
+            if message_offset is not None:
+                yield message_offset, b''.join(header_lines)
+            message_offset = line_offset
+            header_lines = []
+            reading_headers = True
+            continue
+        if message_offset is None:
+            message_offset = line_offset
+            reading_headers = True
+        if reading_headers:
+            if line in (b'\r\n', b'\n'):
+                reading_headers = False
+            else:
+                header_lines.append(line)
+
+
+def _parse_mbox(path: Path) -> list[ThunderbirdMailItem]:
+    items: list[ThunderbirdMailItem] = []
+    with path.open('rb') as mbox_file:
+        for offset, headers in _iter_mbox_headers(mbox_file):
+            item = _parse_mail_headers(headers, path.name, offset)
+            if item is not None:
+                items.append(item)
+    return items
+
+
+def _header_block(handle: BinaryIO) -> bytes:
+    lines: list[bytes] = []
+    for line in handle:
+        if line in (b'\r\n', b'\n'):
+            break
+        lines.append(line)
+    return b''.join(lines)
+
+
+def _parse_maildir(path: Path) -> list[ThunderbirdMailItem]:
+    items: list[ThunderbirdMailItem] = []
+    for folder_name in ('cur', 'new'):
+        folder = path / folder_name
+        if not folder.is_dir():
+            continue
+        for message_path in folder.iterdir():
+            if not message_path.is_file():
+                continue
+            try:
+                with message_path.open('rb') as message_file:
+                    headers = _header_block(message_file)
+            except OSError:
+                continue
+            flags = ''
+            if ':2,' in message_path.name:
+                flags = message_path.name.rsplit(':2,', 1)[1]
+            item = _parse_mail_headers(
+                headers,
+                f'{folder_name}/{message_path.name}',
+                0,
+                status_override=0x0001 if 'S' in flags else 0,
+            )
+            if item is not None:
+                items.append(item)
+    return items
+
+
+def _cached_mbox(path: Path) -> list[ThunderbirdMailItem]:
+    for attempt in range(2):
+        try:
+            before = path.stat()
+        except OSError as exc:
+            raise ThunderbirdMailError('parse_error') from exc
+        cache_key = str(path)
+        with _MBOX_CACHE_LOCK:
+            cached = _MBOX_CACHE.get(cache_key)
+        if cached and cached.modified_ns == before.st_mtime_ns and cached.size == before.st_size:
+            return list(cached.items)
+        try:
+            items = _parse_mbox(path)
+            after = path.stat()
+        except (OSError, ValueError) as exc:
+            raise ThunderbirdMailError('parse_error') from exc
+        if before.st_mtime_ns == after.st_mtime_ns and before.st_size == after.st_size:
+            with _MBOX_CACHE_LOCK:
+                _MBOX_CACHE[cache_key] = _MboxCacheEntry(after.st_mtime_ns, after.st_size, tuple(items))
+            return items
+        if attempt == 1:
+            raise ThunderbirdMailError('parse_error')
+    raise ThunderbirdMailError('parse_error')
+
+
+def _select_account(accounts: list[ThunderbirdAccount], requested: str) -> ThunderbirdAccount:
+    if requested.strip():
+        for account in accounts:
+            if account.matches(requested):
+                return account
+        raise ThunderbirdMailError('account_not_found')
+    for account in accounts:
+        if account.account_type.casefold() != 'none' and (account.username or account.name):
+            return account
+    raise ThunderbirdMailError('account_not_found')
+
+
+def _items_for_account(account: ThunderbirdAccount, profile_path: Path, limit: int) -> list[ThunderbirdMailItem]:
+    inbox = find_inbox(account, profile_path)
+    if inbox is None:
+        raise ThunderbirdMailError('inbox_not_found')
+    if inbox.is_file() and inbox.stat().st_size == 0:
+        raise ThunderbirdMailError('local_sync_required')
+
+    if _is_maildir(inbox):
+        if account.store_contract_id and account.store_contract_id != MAILDIR_STORE_CONTRACT:
+            raise ThunderbirdMailError('unsupported_store')
+        items = _parse_maildir(inbox)
+    elif inbox.is_file():
+        if account.store_contract_id and account.store_contract_id not in ('', BERKELEY_STORE_CONTRACT):
+            raise ThunderbirdMailError('unsupported_store')
+        items = _cached_mbox(inbox)
+    else:
+        raise ThunderbirdMailError('unsupported_store')
+
+    items.sort(key=lambda item: item.received_at, reverse=True)
+    return items[:limit]
+
+
+def get_recent_mail(settings: ThunderbirdSettings, limit: object = DEFAULT_MAIL_LIMIT) -> tuple[str, list[ThunderbirdMailItem]]:
+    requested_limit = clamp_mail_limit(limit)
+    profiles = resolve_profile_candidates(settings)
+    account_error: ThunderbirdMailError | None = None
+    for profile_path in profiles:
+        accounts = discover_accounts(profile_path)
+        if not accounts:
+            continue
+        try:
+            account = _select_account(accounts, settings.account)
+        except ThunderbirdMailError as exc:
+            account_error = exc
+            continue
+        items = _items_for_account(account, profile_path, requested_limit)
+        account_value = account.username or account.name
+        return mask_account(account_value), items
+    if account_error is not None:
+        raise account_error
+    raise ThunderbirdMailError('account_not_found')
+
+
+def find_thunderbird_executable() -> Path | None:
+    names = ('thunderbird.exe', 'thunderbird') if os.name == 'nt' else ('thunderbird',)
+    for name in names:
+        found = shutil.which(name)
+        if found:
+            return Path(found)
+    for env_name in ('ProgramFiles', 'ProgramFiles(x86)', 'LOCALAPPDATA'):
+        root = os.environ.get(env_name, '').strip()
+        if not root:
+            continue
+        candidate = Path(root) / 'Mozilla Thunderbird' / ('thunderbird.exe' if os.name == 'nt' else 'thunderbird')
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def launch_thunderbird() -> None:
+    executable = find_thunderbird_executable()
+    if executable is None:
+        raise ThunderbirdMailError('thunderbird_not_installed')
+    try:
+        if os.name == 'nt':
+            os.startfile(str(executable))  # type: ignore[attr-defined]
+        else:
+            subprocess.Popen([str(executable)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError as exc:
+        raise ThunderbirdMailError('thunderbird_not_installed') from exc
