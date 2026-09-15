@@ -325,7 +325,7 @@ code,
 
 .head h3 {
   color: #273241;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 760;
   letter-spacing: -.012em;
 }
@@ -402,6 +402,7 @@ code,
 }
 
 .active-project-main {
+  flex: 1;
   min-width: 0;
 }
 
@@ -415,13 +416,19 @@ code,
 
 .active-project-main b {
   color: #253244;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .active-project-main small {
   margin-top: 4px;
   color: #7d8b9d;
-  font-size: 8px;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.active-project-item {
+  min-height: 58px;
+  padding: 11px 12px;
 }
 
 .active-project-stage {
@@ -509,9 +516,24 @@ code,
   color: #2b3645;
 }
 
+.home-page .calendar-card .event b,
+.home-page .priority-event b,
+.home-page .commit b,
+.home-page .numbered-item p,
+.home-page .shortcut-main b,
+.home-page .quick-open b {
+  font-size: 12px;
+}
+
 .event small,
 .commit small {
   color: #8592a2;
+  font-size: 9px;
+}
+
+.home-page .shortcut-main small,
+.home-page .quick-open small {
+  font-size: 9px;
 }
 
 .numbered-item > span {
@@ -535,13 +557,23 @@ code,
   min-width: 0;
 }
 
+.mail-action-card {
+  padding: 14px 16px;
+  background: rgba(249, 251, 253, .92);
+}
+
+.mail-action-card .head {
+  margin-bottom: 8px;
+  padding-bottom: 7px;
+}
+
 .microsoft-mail-card > .muted,
 .mail-action-card > .muted {
   display: block;
-  margin: -4px 0 5px;
+  margin: -2px 0 3px;
   color: #8190a2;
   font-family: var(--mono);
-  font-size: 8px;
+  font-size: 7.5px;
 }
 
 .microsoft-mail-state {
@@ -592,6 +624,44 @@ code,
 
 .mail-action-row {
   border-color: rgba(71, 88, 108, .1);
+  gap: 8px;
+  padding: 7px 0;
+}
+
+.mail-action-main b {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.mail-action-main small {
+  margin-top: 2px;
+  font-size: 8px;
+  line-height: 1.3;
+}
+
+.mail-action-main small + small {
+  color: #96a1af;
+  font-size: 7.5px;
+}
+
+.mail-action-priority {
+  padding: 3px 5px;
+  font-size: 7.5px;
+}
+
+.mail-action-dismiss {
+  padding: 5px 7px;
+  font-size: 7.5px;
+}
+
+.mail-action-card .compact-empty {
+  padding: 10px 6px;
+  font-size: 9px;
+}
+
+.mail-action-card .microsoft-mail-state {
+  padding: 6px 0;
+  font-size: 9px;
 }
 
 .mail-action-row.critical {
@@ -1014,7 +1084,7 @@ code,
   }
 
   .main {
-    padding: 18px 14px 94px;
+    padding: 18px 14px calc(112px + env(safe-area-inset-bottom));
   }
 
   .main::before {
@@ -1089,28 +1159,37 @@ code,
   }
 
   .mobile-nav {
-    grid-template-columns: repeat(8, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: 3px 4px;
+    bottom: max(10px, env(safe-area-inset-bottom));
     border-color: rgba(200, 210, 221, .92);
     border-radius: 15px;
     background: rgba(250, 252, 254, .94);
     box-shadow: 0 13px 36px rgba(28, 40, 54, .14);
+    padding: 5px 6px;
   }
 
   .mobile-nav button {
     min-width: 0;
-    padding: 7px 1px;
+    min-height: 34px;
+    justify-content: center;
+    padding: 5px 3px;
     color: #7c8999;
   }
 
   .mobile-nav button span {
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .mobile-nav button small {
     max-width: 100%;
-    overflow: hidden;
-    font-size: 6.5px;
-    text-overflow: ellipsis;
+    overflow: visible;
+    font-size: 9px;
+    line-height: 1.15;
+    letter-spacing: -.03em;
+    text-overflow: clip;
+    white-space: nowrap;
   }
 
   .mobile-nav button.active {
@@ -1197,7 +1276,7 @@ code,
 
   .toast {
     right: 14px;
-    bottom: 82px;
+    bottom: calc(112px + env(safe-area-inset-bottom));
     left: 14px;
     text-align: center;
   }

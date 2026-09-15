@@ -245,19 +245,18 @@ export default function Page() {
 
         {errors.length > 0 && <div className="error page-error">{errors[0]}</div>}
 
-        {page === 'home' && <section className="page active">
+        {page === 'home' && <section className="page active home-page">
           <ActiveProjects projects={activeProjects} onOpen={openResearchProject} />
           <div className="grid3">
             <CalendarCard title="오늘 일정" events={schedule.today} calendar={calendar} />
             <CalendarCard title="예정 일정" events={schedule.upcoming} calendar={calendar} />
             <Card title="다음 마감" right="마감 · 미팅">{schedule.nextDeadline ? <div className="event priority-event"><b>{schedule.nextDeadline.title}</b><small>{formatCalendarEvent(schedule.nextDeadline)} · {deadlineLabel(schedule.nextDeadline)}</small>{schedule.nextDeadline.location && <small>{schedule.nextDeadline.location}</small>}</div> : <CalendarState calendar={calendar} />}</Card>
           </div>
-          <div className="section-gap"><SchoolMailPanel variant="home" folder="school-work" /></div>
-          <div className="section-gap"><MailActionCandidates /></div>
           <div className="grid2 section-gap">
             <Card title="막힌 부분" right={activeProject ? activeProject.title : '확인 필요'}><NumberedList items={activeProject?.blocked || researchStatus?.unresolved || []} empty="현재 등록된 막힌 부분이 없어." /></Card>
             <Card title="최근 변경" right="연구 저장소 GitHub"><CommitList commits={commits.slice(0, 6)} /></Card>
           </div>
+          <div className="section-gap"><MailActionCandidates /></div>
           <div className="section-gap">
             <Card title="작성 중 프로젝트 바로가기" right={homeShortcuts.length ? `${homeShortcuts.length}개` : '설정 필요'}><ShortcutList shortcuts={homeShortcuts} onOpenFile={openLocal} onOpenFolder={openLocalFolder} /></Card>
           </div>
