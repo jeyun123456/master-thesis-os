@@ -6,6 +6,7 @@ import {
   normalizeThunderbirdFolderResponse,
   normalizeThunderbirdMailResponse,
   openThunderbird,
+  openThunderbirdMessage,
   ThunderbirdMailError,
 } from './thunderbird-mail';
 
@@ -122,5 +123,19 @@ describe('Thunderbird mail normalization', () => {
     };
     await openThunderbird('bridge-secret-for-test', fetchMock);
     expect(calls[0].url).toContain('/mail/open');
+  });
+
+  it('opens a specific message through the authenticated bridge without a filesystem path', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchMock = async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init });
+      return new Response(JSON.stringify({ ok: true, source: 'thunderbird' }), { status: 200 });
+    };
+
+    await openThunderbirdMessage('bridge-secret-for-test', '<message@example.edu>', fetchMock);
+
+    expect(calls[0].url).toContain('/mail/open');
+    expect(String(calls[0].init?.body)).toContain('"messageId":"<message@example.edu>"');
+    expect(String(calls[0].init?.body)).not.toContain('profile');
   });
 });

@@ -5,6 +5,7 @@ import {
   getRecentThunderbirdMail,
   getThunderbirdFolders,
   openThunderbird,
+  openThunderbirdMessage,
   thunderbirdMailErrorMessage,
   ThunderbirdMailError,
   THUNDERBIRD_FOLDER_IDS,
@@ -56,6 +57,7 @@ export function MailPanel() {
   const [account, setAccount] = useState('');
   const [items, setItems] = useState<PrioritizedMail[]>([]);
   const [openState, setOpenState] = useState<'idle' | 'opening' | 'opened'>('idle');
+  const [openingMailId, setOpeningMailId] = useState<string | null>(null);
   const [openError, setOpenError] = useState<ThunderbirdMailErrorCode | null>(null);
   const requestSerial = useRef(0);
 
@@ -113,6 +115,23 @@ export function MailPanel() {
     }
   }
 
+  async function handleOpenMail(item: PrioritizedMail) {
+    setOpeningMailId(item.id);
+    setOpenError(null);
+    try {
+      if (item.messageId) {
+        await openThunderbirdMessage(readBridgeToken(), item.messageId);
+      } else {
+        await openThunderbird(readBridgeToken());
+      }
+      setOpenState('opened');
+    } catch (error) {
+      setOpenError(readErrorCode(error));
+    } finally {
+      setOpeningMailId(null);
+    }
+  }
+
   const selectedLabel = mailFolderTabLabel(selectedFolder);
   const openLabel = openState === 'opening' ? 'Thunderbird 여는 중…' : openState === 'opened' ? 'Thunderbird 열림' : 'Thunderbird 열기';
 
@@ -132,7 +151,7 @@ export function MailPanel() {
     </div>
     {folderErrorCode && status !== 'error' && <div className="note mail-folder-note">Thunderbird 폴더 목록을 확인하지 못했어. 선택한 폴더를 다시 시도할 수 있어.</div>}
     {status === 'loading' && <div className="microsoft-mail-state">{selectedLabel} 메일을 확인하는 중이야…</div>}
-    {(status === 'ready' || status === 'empty') && (items.length ? <div className="microsoft-mail-list">{items.map((item, index) => <SchoolMailRow item={item} key={schoolMailRowKey(item, index)} />)}</div> : <div className="empty compact-empty">{selectedLabel}에 최근 메일이 없어.</div>)}
+    {(status === 'ready' || status === 'empty') && (items.length ? <div className="microsoft-mail-list">{items.map((item, index) => <SchoolMailRow item={item} isOpening={openingMailId === item.id} key={schoolMailRowKey(item, index)} onOpen={handleOpenMail} />)}</div> : <div className="empty compact-empty">{selectedLabel}에 최근 메일이 없어.</div>)}
     {status !== 'loading' && status !== 'ready' && status !== 'empty' && <div className="microsoft-mail-error-wrap"><div className="error microsoft-mail-error">{mailPanelStateMessage(errorCode)}</div><button className="mini" onClick={() => void loadMail(selectedFolder)} type="button">다시 시도</button></div>}
     {openError && <div className="error school-mail-open-error">{thunderbirdMailErrorMessage(openError)}</div>}
     <div className="toolbar school-mail-actions">

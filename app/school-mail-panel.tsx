@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   getRecentThunderbirdMail,
   openThunderbird,
+  openThunderbirdMessage,
   thunderbirdMailErrorMessage,
   ThunderbirdMailError,
   type ThunderbirdMail,
@@ -27,6 +28,7 @@ export function SchoolMailPanel({ variant, folder = SCHOOL_MAIL_HOME_FOLDER }: {
   const [account, setAccount] = useState('');
   const [items, setItems] = useState<PrioritizedMail[]>([]);
   const [openState, setOpenState] = useState<'idle' | 'opening' | 'opened'>('idle');
+  const [openingMailId, setOpeningMailId] = useState<string | null>(null);
   const [openError, setOpenError] = useState<ThunderbirdMailErrorCode | null>(null);
 
   const loadMail = useCallback(async () => {
@@ -64,6 +66,23 @@ export function SchoolMailPanel({ variant, folder = SCHOOL_MAIL_HOME_FOLDER }: {
     }
   }
 
+  async function handleOpenMail(item: PrioritizedMail) {
+    setOpeningMailId(item.id);
+    setOpenError(null);
+    try {
+      if (item.messageId) {
+        await openThunderbirdMessage(readBridgeToken(), item.messageId);
+      } else {
+        await openThunderbird(readBridgeToken());
+      }
+      setOpenState('opened');
+    } catch (error) {
+      setOpenError(readErrorCode(error));
+    } finally {
+      setOpeningMailId(null);
+    }
+  }
+
   const hasOpenButton = status !== 'loading' && errorCode !== 'thunderbird_not_installed';
   const openLabel = openState === 'opening' ? 'Thunderbird 여는 중…' : openState === 'opened' ? 'Thunderbird 열림' : 'Thunderbird 열기';
 
@@ -72,7 +91,7 @@ export function SchoolMailPanel({ variant, folder = SCHOOL_MAIL_HOME_FOLDER }: {
     <div className="muted"><small>{folder === 'school-work' ? '학교 업무' : folder === 'international-office' ? '국제과' : '받은 편지함'} · Thunderbird · 로컬 읽기 전용{account ? ` · ${account}` : ''}</small></div>
     {variant === 'settings' && <div className="note">Thunderbird가 이 컴퓨터에 동기화한 학교 메일의 헤더만 Local Bridge로 읽어와. Microsoft Graph OAuth token과 Thunderbird 인증정보는 읽지 않아.<br />중요 메일 자동 선별: 켜짐<br />행동 후보 추출: 켜짐</div>}
     {status === 'loading' && <div className="microsoft-mail-state">Thunderbird 로컬 메일을 확인하는 중이야…</div>}
-    {(status === 'ready' || status === 'empty') && (items.length ? <div className="microsoft-mail-list">{items.map((item, index) => <SchoolMailRow item={item} key={schoolMailRowKey(item, index)} />)}</div> : <div className="empty compact-empty">최근 학교 메일이 없어.</div>)}
+    {(status === 'ready' || status === 'empty') && (items.length ? <div className="microsoft-mail-list">{items.map((item, index) => <SchoolMailRow item={item} isOpening={openingMailId === item.id} key={schoolMailRowKey(item, index)} onOpen={handleOpenMail} />)}</div> : <div className="empty compact-empty">최근 학교 메일이 없어.</div>)}
     {status !== 'loading' && status !== 'ready' && status !== 'empty' && <SchoolMailErrorState errorCode={errorCode} onRetry={() => void loadMail()} />}
     {openError && <div className="error school-mail-open-error">{thunderbirdMailErrorMessage(openError)}</div>}
     {(hasOpenButton || variant === 'settings') && <div className="toolbar school-mail-actions">
@@ -82,16 +101,25 @@ export function SchoolMailPanel({ variant, folder = SCHOOL_MAIL_HOME_FOLDER }: {
   </section>;
 }
 
-export function SchoolMailRow({ item }: { item: PrioritizedMail }) {
+export function SchoolMailRow({ item, isOpening = false, onOpen }: { item: PrioritizedMail; isOpening?: boolean; onOpen?: (item: PrioritizedMail) => void | Promise<void> }) {
   const priorityLabel = mailPriorityLabel(item.priority);
-  return <div className={schoolMailRowClass(item.isRead, item.priority)}>
+  const content = <>
     <span className={`microsoft-mail-dot${item.isRead ? '' : ' unread'}`} aria-label={item.isRead ? '읽음' : '미읽음'}>{schoolMailIndicator(item.isRead)}</span>
     <span className="microsoft-mail-main">
       <b>{priorityLabel && <span className={`school-mail-priority-label ${item.priority}`}>{priorityLabel}</span>}{!item.isRead && <span className="microsoft-mail-unread-label">미읽음</span>}{item.subject}</b>
       <small>{item.senderName}{item.senderAddress && ` · ${item.senderAddress}`} · <time dateTime={item.receivedAt} title={formatMailDate(item.receivedAt)}>{relativeMailDate(item.receivedAt)}</time></small>
       {item.priorityReason && <small className="school-mail-priority-reason">{item.priorityReason}</small>}
     </span>
-  </div>;
+    {onOpen && <span className="school-mail-open-hint" aria-hidden="true">{isOpening ? '여는 중…' : '열기'}</span>}
+  </>;
+  if (!onOpen) return <div className={schoolMailRowClass(item.isRead, item.priority)}>{content}</div>;
+  return <button
+    aria-label={isOpening ? 'Thunderbird에서 메일을 여는 중' : `${item.subject} 메일 열기`}
+    className={`${schoolMailRowClass(item.isRead, item.priority)} school-mail-row-button`}
+    disabled={isOpening}
+    onClick={() => { void onOpen(item); }}
+    type="button"
+  >{content}</button>;
 }
 
 function SchoolMailErrorState({ errorCode, onRetry }: { errorCode: ThunderbirdMailErrorCode | null; onRetry: () => void }) {

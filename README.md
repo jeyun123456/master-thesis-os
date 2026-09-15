@@ -224,7 +224,7 @@ GOOGLE_CALENDAR_ID                -> GOOGLE_CALENDAR_IDS (쉼표 구분)
 
 `account`와 `profile_path`가 비어 있으면 `%APPDATA%\\Thunderbird\\profiles.ini`의 우선 profile과 `prefs.js`를 자동 탐색한다. mbox는 확장자 없는 받은편지함 파일을, maildir은 `cur/new/tmp`를 읽으며 요청당 기본 5개·최대 20개의 제목·발신자·Date·read 상태만 반환한다. mbox가 변경되면 mtime/size 기반의 메타데이터 cache를 무효화한다. Thunderbird profile에는 어떤 write도 수행하지 않는다.
 
-Home의 **학교 메일** 카드는 `Thunderbird ● 로컬`을 primary source로 표시하고, Local Bridge가 꺼져 있거나 local sync가 부족하면 해당 상태만 보여준다. 받은 metadata 중 최근 최대 20개를 웹의 규칙 기반 classifier로 평가해 긴급·중요 메일을 최대 5개 우선 표시한다. 이 분류는 제목·발신자·수신 시각·read 상태만 사용하며 본문을 읽거나 외부 API로 전송하지 않는다. 메시지별 Outlook URL은 만들지 않으며, 가능한 경우 인증된 `/mail/open`을 통해 Thunderbird 프로그램만 연다. 중요 메일은 별도 **메일에서 확인 필요** 카드에서 마감·면담·발표·연구·학사·행정 확인 후보로 표시할 수 있으며, 제목의 명시적 날짜만 마감 후보 날짜로 사용한다. 확인 완료 상태는 브라우저에 후보 id와 timestamp만 저장한다.
+Home의 **학교 메일** 카드는 `Thunderbird ● 로컬`을 primary source로 표시하고, Local Bridge가 꺼져 있거나 local sync가 부족하면 해당 상태만 보여준다. 받은 metadata 중 최근 최대 20개를 웹의 규칙 기반 classifier로 평가해 긴급·중요 메일을 최대 5개 우선 표시한다. 이 분류는 제목·발신자·수신 시각·read 상태만 사용하며 본문을 읽거나 외부 API로 전송하지 않는다. 메일 행을 클릭하면 인증된 `/mail/open`을 통해 해당 헤더의 `Message-ID`를 `mid:` URI로 전달해 Thunderbird에서 메시지를 직접 연다. `Message-ID`가 없는 경우에는 Thunderbird 프로그램만 열며, 브리지는 파일 경로나 메일 본문을 브라우저에 노출하지 않는다. 중요 메일은 별도 **메일에서 확인 필요** 카드에서 마감·면담·발표·연구·학사·행정 확인 후보로 표시할 수 있으며, 제목의 명시적 날짜만 마감 후보 날짜로 사용한다. 확인 완료 상태는 브라우저에 후보 id와 timestamp만 저장한다.
 
 ## localhost bridge
 
@@ -244,7 +244,7 @@ Wallpaper Companion과 Bridge tray는 다음 공용 설정을 우선 사용한�
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. 학교 메일은 같은 인증 모델의 `POST /mail/recent`와 `POST /mail/open`을 사용하며, 메일 endpoint는 경로·본문·제목·발신자·token을 로그에 남기지 않는다. Settings의 token은 `보기/숨기기`와 `복사`로 관리할 수 있고, Local Bridge tray와 Wallpaper Companion tray의 **Bridge token 보기/복사**에서도 로컬 config 값을 확인·복사할 수 있다. token을 HTTP endpoint나 원격 페이지에 자동 노출하지는 않는다. 실제 `config.json`은 git에서 제외된다.
+브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. 학교 메일은 같은 인증 모델의 `POST /mail/recent`와 `POST /mail/open`을 사용하며, `/mail/open`은 선택적으로 헤더의 `Message-ID`만 받아 Thunderbird `mid:` URI로 전달한다. 메일 endpoint는 경로·본문·제목·발신자·token을 로그에 남기지 않는다. Settings의 token은 `보기/숨기기`와 `복사`로 관리할 수 있고, Local Bridge tray와 Wallpaper Companion tray의 **Bridge token 보기/복사**에서도 로컬 config 값을 확인·복사할 수 있다. token을 HTTP endpoint나 원격 페이지에 자동 노출하지는 않는다. 실제 `config.json`은 git에서 제외된다.
 
 ### 브리지 상시 실행
 

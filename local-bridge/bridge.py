@@ -97,7 +97,8 @@ class Handler(BaseHTTPRequestHandler):
                 })
             if self.path == '/mail/open':
                 try:
-                    launch_thunderbird()
+                    message_id = body.get('messageId') if 'messageId' in body else None
+                    launch_thunderbird(message_id)
                 except ThunderbirdMailError as exc:
                     return self.json_out(exc.http_status, {'ok':False, 'source':'thunderbird', 'error':exc.code})
                 return self.json_out(200, {'ok':True, 'source':'thunderbird'})

@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from email.header import Header
 from pathlib import Path
+from unittest.mock import patch
 
 from thunderbird_mail import (
     BERKELEY_STORE_CONTRACT,
@@ -15,6 +16,7 @@ from thunderbird_mail import (
     FOLDER_IDS,
     get_mail_folders,
     get_recent_mail,
+    launch_thunderbird,
     normalize_folder_id,
     parse_profiles_ini,
     parse_profiles_ini_text,
@@ -287,6 +289,26 @@ class ThunderbirdMailTests(unittest.TestCase):
         with self.assertRaisesRegex(ThunderbirdMailError, '저장 방식') as error:
             get_recent_mail(self.settings())
         self.assertEqual(error.exception.code, 'unsupported_store')
+
+    def test_specific_message_open_uses_mid_uri_without_shell_or_profile_path(self):
+        executable = Path('C:/Program Files/Mozilla Thunderbird/thunderbird.exe')
+        with patch('thunderbird_mail.find_thunderbird_executable', return_value=executable), patch('thunderbird_mail.subprocess.Popen') as popen:
+            launch_thunderbird('<message@example.edu>')
+
+        popen.assert_called_once()
+        args = popen.call_args.args[0]
+        self.assertEqual(args, [str(executable), 'mid:message@example.edu'])
+        self.assertFalse(popen.call_args.kwargs['shell'])
+        self.assertNotIn('profile', ' '.join(args).lower())
+
+    def test_specific_message_open_rejects_control_characters(self):
+        executable = Path('C:/Program Files/Mozilla Thunderbird/thunderbird.exe')
+        with patch('thunderbird_mail.find_thunderbird_executable', return_value=executable), patch('thunderbird_mail.subprocess.Popen') as popen:
+            with self.assertRaisesRegex(ThunderbirdMailError, '헤더') as error:
+                launch_thunderbird('bad\nmessage@example.edu')
+
+        self.assertEqual(error.exception.http_status, 400)
+        popen.assert_not_called()
 
     def test_maildir_is_normalized_to_the_same_shape(self):
         self.fixture.write_prefs(store_contract=MAILDIR_STORE_CONTRACT)

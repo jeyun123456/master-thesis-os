@@ -236,6 +236,23 @@ export async function openThunderbird(
   fetchImpl: typeof fetch = fetch,
 ): Promise<void> {
   const raw = await requestBridge('/mail/open', token, {}, fetchImpl);
+  assertThunderbirdOpenResponse(raw);
+}
+
+export async function openThunderbirdMessage(
+  token: string,
+  messageId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  const normalizedMessageId = messageId.trim();
+  if (!normalizedMessageId) {
+    throw new ThunderbirdMailError('malformed_response', errorMessage('malformed_response'));
+  }
+  const raw = await requestBridge('/mail/open', token, { messageId: normalizedMessageId }, fetchImpl);
+  assertThunderbirdOpenResponse(raw);
+}
+
+function assertThunderbirdOpenResponse(raw: unknown): void {
   if (!isRecord(raw) || raw.ok !== true || raw.source !== 'thunderbird') {
     throw new ThunderbirdMailError('malformed_response', errorMessage('malformed_response'));
   }

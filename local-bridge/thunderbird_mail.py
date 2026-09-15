@@ -777,14 +777,43 @@ def find_thunderbird_executable() -> Path | None:
     return None
 
 
-def launch_thunderbird() -> None:
+def _normalize_message_id(value: object) -> str:
+    if not isinstance(value, str):
+        raise ThunderbirdMailError('parse_error', http_status=400)
+    message_id = value.strip()
+    if (
+        not message_id
+        or len(message_id) > 998
+        or any(ord(character) < 32 or ord(character) == 127 for character in message_id)
+    ):
+        raise ThunderbirdMailError('parse_error', http_status=400)
+    if message_id.startswith('<') or message_id.endswith('>'):
+        if not (message_id.startswith('<') and message_id.endswith('>')):
+            raise ThunderbirdMailError('parse_error', http_status=400)
+        message_id = message_id[1:-1].strip()
+    if not message_id or any(character.isspace() or character in '<>' for character in message_id):
+        raise ThunderbirdMailError('parse_error', http_status=400)
+    return message_id
+
+
+def launch_thunderbird(message_id: str | None = None) -> None:
     executable = find_thunderbird_executable()
     if executable is None:
         raise ThunderbirdMailError('thunderbird_not_installed')
     try:
-        if os.name == 'nt':
+        if message_id is None and os.name == 'nt':
             os.startfile(str(executable))  # type: ignore[attr-defined]
-        else:
-            subprocess.Popen([str(executable)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            return
+        args = [str(executable)]
+        if message_id is not None:
+            args.append(f'mid:{_normalize_message_id(message_id)}')
+        subprocess.Popen(
+            args,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            shell=False,
+            start_new_session=os.name != 'nt',
+        )
     except OSError as exc:
         raise ThunderbirdMailError('thunderbird_not_installed') from exc
