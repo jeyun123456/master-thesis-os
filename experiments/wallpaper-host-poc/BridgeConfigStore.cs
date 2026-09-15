@@ -8,10 +8,30 @@ namespace WallpaperHostPoc;
 internal static class BridgeConfigStore
 {
     private const string ConfigOverrideEnvironmentVariable = "MTO_BRIDGE_CONFIG";
+    private const int DefaultPort = 38471;
+
+    internal readonly record struct BridgeRuntimeConfig(
+        string ConfigPath,
+        string Token,
+        int Port);
 
     internal static bool TryReadToken(out string token, out string failureReason)
     {
         token = string.Empty;
+        if (!TryReadConfig(out var config, out failureReason))
+        {
+            return false;
+        }
+
+        token = config.Token;
+        return true;
+    }
+
+    internal static bool TryReadConfig(
+        out BridgeRuntimeConfig config,
+        out string failureReason)
+    {
+        config = default;
         failureReason = "Bridge config.json was not found.";
 
         if (!TryGetActiveConfigPath(out var configPath, out var selectionError))
@@ -28,20 +48,28 @@ internal static class BridgeConfigStore
         try
         {
             var json = File.ReadAllText(configPath);
-            var config = JsonSerializer.Deserialize<BridgeConfig>(json);
-            if (string.IsNullOrWhiteSpace(config?.Token))
+            var parsed = JsonSerializer.Deserialize<BridgeConfig>(json);
+            if (string.IsNullOrWhiteSpace(parsed?.Token))
             {
                 failureReason = "Bridge config.json does not contain a token.";
                 return false;
             }
 
-            if (config.Token.Length < 32 || config.Token.StartsWith("CHANGE-THIS", StringComparison.Ordinal))
+            if (parsed.Token.Length < 32 ||
+                parsed.Token.StartsWith("CHANGE-THIS", StringComparison.Ordinal))
             {
                 failureReason = "Bridge config.json contains an invalid token.";
                 return false;
             }
 
-            token = config.Token;
+            var port = parsed.Port ?? DefaultPort;
+            if (port is < 1024 or > 65535)
+            {
+                failureReason = "Bridge config.json contains an invalid port.";
+                return false;
+            }
+
+            config = new BridgeRuntimeConfig(configPath, parsed.Token, port);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
@@ -73,7 +101,7 @@ internal static class BridgeConfigStore
         });
     }
 
-    private static bool TryGetActiveConfigPath(out string configPath, out string? failureReason)
+    internal static bool TryGetActiveConfigPath(out string configPath, out string? failureReason)
     {
         configPath = string.Empty;
         failureReason = null;
@@ -153,5 +181,8 @@ internal static class BridgeConfigStore
     {
         [JsonPropertyName("token")]
         public string? Token { get; set; }
+
+        [JsonPropertyName("port")]
+        public int? Port { get; set; }
     }
 }

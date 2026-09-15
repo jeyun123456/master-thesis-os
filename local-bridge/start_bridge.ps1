@@ -46,17 +46,6 @@ $pythonPrefixArguments = @()
 $pythonOverride = $env:MTO_PYTHON
 if ($pythonOverride -and (Test-Path -LiteralPath $pythonOverride -PathType Leaf) -and (Test-PythonCommand $pythonOverride @())) {
     $pythonExecutable = (Resolve-Path -LiteralPath $pythonOverride).Path
-} else {
-    $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
-    if ($null -ne $pythonCommand -and (Test-PythonCommand $pythonCommand.Source @())) {
-        $pythonExecutable = $pythonCommand.Source
-    } else {
-        $pythonCommand = Get-Command py.exe -ErrorAction SilentlyContinue
-        if ($null -ne $pythonCommand -and (Test-PythonCommand $pythonCommand.Source @('-3'))) {
-            $pythonExecutable = $pythonCommand.Source
-            $pythonPrefixArguments = @('-3')
-        }
-    }
 }
 
 if ($null -eq $pythonExecutable -and $env:LOCALAPPDATA) {
@@ -66,9 +55,25 @@ if ($null -eq $pythonExecutable -and $env:LOCALAPPDATA) {
         (Join-Path $env:LOCALAPPDATA 'Python\pythoncore-3.12-64\python.exe')
     )
     foreach ($candidatePath in $localPythonCandidates) {
-        if (Test-Path -LiteralPath $candidatePath -PathType Leaf -ErrorAction SilentlyContinue -and (Test-PythonCommand $candidatePath @())) {
+        if ((Test-Path -LiteralPath $candidatePath -PathType Leaf -ErrorAction SilentlyContinue) -and
+            (Test-PythonCommand $candidatePath @())) {
             $pythonExecutable = $candidatePath
             break
+        }
+    }
+}
+
+if ($null -eq $pythonExecutable) {
+    $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
+    $isWindowsAppAlias = $null -ne $pythonCommand -and
+        $pythonCommand.Source -match '\\WindowsApps\\python\.exe$'
+    if ($null -ne $pythonCommand -and -not $isWindowsAppAlias -and (Test-PythonCommand $pythonCommand.Source @())) {
+        $pythonExecutable = $pythonCommand.Source
+    } else {
+        $pythonCommand = Get-Command py.exe -ErrorAction SilentlyContinue
+        if ($null -ne $pythonCommand -and (Test-PythonCommand $pythonCommand.Source @('-3'))) {
+            $pythonExecutable = $pythonCommand.Source
+            $pythonPrefixArguments = @('-3')
         }
     }
 }

@@ -110,6 +110,8 @@ public partial class MainWindow : Window
 
         try
         {
+            await InitializeLocalBridgeAsync();
+
             await Browser.EnsureCoreWebView2Async();
 
             // Preserve the native Windows/WebView2 input path.
@@ -274,6 +276,8 @@ public partial class MainWindow : Window
 
     private void MainWindow_Closed(object? sender, EventArgs e)
     {
+        DisposeLocalBridge();
+
         if (_hotkeyRegistered && _hostHwnd != nint.Zero)
         {
             _ = NativeMethods.UnregisterHotKey(_hostHwnd, InteractiveHotkeyId);

@@ -9,6 +9,7 @@ $ErrorActionPreference = 'Stop'
 $RootDirectory = Join-Path $env:LOCALAPPDATA 'MasterThesisOSWallpaper'
 $AppDirectory = Join-Path $RootDirectory 'app'
 $InstalledExe = Join-Path $AppDirectory 'MasterThesisOSWallpaper.exe'
+$InstalledBridgeRuntimeDirectory = Join-Path $AppDirectory 'bridge-runtime'
 $InstalledUninstaller = Join-Path $RootDirectory 'Uninstall-MasterThesisOSWallpaper.ps1'
 $BridgeDirectory = Join-Path $RootDirectory 'bridge'
 $BridgeConfigPath = Join-Path $BridgeDirectory 'config.json'
@@ -52,6 +53,34 @@ function New-Shortcut {
     }
 }
 
+function Stop-InstalledBridgeRuntime {
+    param(
+        [Parameter(Mandatory=$true)][string]$RuntimeDirectory
+    )
+
+    $runtimePattern = [regex]::Escape([IO.Path]::GetFullPath($RuntimeDirectory))
+    for ($attempt = 0; $attempt -lt 4; $attempt++) {
+        $bridgeProcesses = @(
+            Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $_.ProcessId -ne $PID -and
+                    -not [string]::IsNullOrWhiteSpace($_.CommandLine) -and
+                    $_.CommandLine -match $runtimePattern
+                }
+        )
+
+        if ($bridgeProcesses.Count -eq 0) {
+            return
+        }
+
+        foreach ($bridgeProcess in $bridgeProcesses) {
+            Stop-Process -Id $bridgeProcess.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+
+        Start-Sleep -Milliseconds 250
+    }
+}
+
 $currentStartup = $null
 try {
     $currentStartup = (Get-ItemProperty -Path $RunKeyPath -Name $RunValueName -ErrorAction Stop).$RunValueName
@@ -64,11 +93,35 @@ $desktopShortcutAlreadyExists = Test-Path $DesktopShortcutPath
 
 try {
     Write-Host 'Stopping existing wallpaper host...'
-    @('WallpaperHostPoc', 'MasterThesisOSWallpaper') | ForEach-Object {
-        Get-Process -Name $_ -ErrorAction SilentlyContinue |
-            Stop-Process -Force -ErrorAction SilentlyContinue
+    $existingHosts = @(
+        Get-Process -Name WallpaperHostPoc,MasterThesisOSWallpaper -ErrorAction SilentlyContinue
+    )
+
+    foreach ($hostProcess in $existingHosts) {
+        try {
+            [void]$hostProcess.CloseMainWindow()
+        } catch {
+            # The process may exit between enumeration and the close request.
+        }
+    }
+
+    foreach ($hostProcess in $existingHosts) {
+        try {
+            [void]$hostProcess.WaitForExit(4000)
+        } catch {
+            # The process may already have exited.
+        }
+    }
+
+    $remainingHosts = @(
+        Get-Process -Name WallpaperHostPoc,MasterThesisOSWallpaper -ErrorAction SilentlyContinue
+    )
+    if ($remainingHosts.Count -gt 0) {
+        $remainingHosts | Stop-Process -Force -ErrorAction SilentlyContinue
     }
     Start-Sleep -Milliseconds 500
+
+    Stop-InstalledBridgeRuntime -RuntimeDirectory $InstalledBridgeRuntimeDirectory
 
     & $PublishScript -OutputPath $PublishDirectory
 

@@ -62,6 +62,10 @@ The retired focus experiment and its failure rationale are kept in [`docs/histor
 
 `SingleInstanceGuard` uses one per-user identity and signals the existing process on a second launch. This prevents duplicate WorkerW hosts and duplicate WebView2 instances.
 
+## Local Bridge lifecycle
+
+`BridgeProcessManager` starts the Local Bridge during companion startup after validating the shared bridge configuration. It first checks `127.0.0.1:<configured-port>/health` and reuses an already healthy bridge, so launching the companion again never creates a second bridge for the same port. Release output includes the launcher and its Python modules under `app\bridge-runtime\`; the token and vault root stay in the persistent shared configuration directory. A bridge process created by the companion is stopped with its child process tree on normal shutdown, while a manually running bridge is left untouched. Bridge startup failure is logged and does not prevent the wallpaper companion from opening.
+
 ## Installation and update layout
 
 The replaceable binaries live at:

@@ -235,7 +235,9 @@ class BridgeConfigurationTests(unittest.TestCase):
         self.assertIn('[JsonPropertyName("token")]', store)
         self.assertNotIn('PropertyNameCaseInsensitive = true', store)
         self.assertNotIn('config.Token.Trim()', store)
-        self.assertIn('config.Token.Length < 32', store)
+        self.assertIn('parsed.Token.Length < 32', store)
+        self.assertIn('private const int DefaultPort = 38471', store)
+        self.assertIn('var port = parsed.Port ?? DefaultPort', store)
 
     def test_accepts_exact_production_and_explicit_local_origins(self):
         self.assertTrue(valid_origins({PRODUCTION_ORIGIN, 'http://localhost:3000', 'http://127.0.0.1:3001'}))

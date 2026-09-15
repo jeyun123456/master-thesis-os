@@ -24,6 +24,8 @@ Installed executable:
 
 The installer publishes the Release build, replaces only the app directory, preserves `settings.json` and `logs\`, updates an existing startup entry, and creates the Start Menu shortcuts. Run the same command again to update.
 
+The companion automatically starts the Local Bridge when it starts. The installed copy carries the bridge launcher and Python modules under `app\bridge-runtime\`, while the shared configuration remains at `%LOCALAPPDATA%\MasterThesisOSWallpaper\bridge\config.json`. An already healthy bridge is reused, and only a bridge process started by the companion is stopped when the companion exits. If the configuration or Python runtime is unavailable, the companion still opens and the existing manual bridge launcher remains available as a fallback.
+
 Use `-NoLaunch` to install without starting the companion:
 
 ```powershell
