@@ -9,6 +9,12 @@ import {
   type ThunderbirdMail,
   type ThunderbirdMailErrorCode,
 } from '../lib/thunderbird-mail';
+import {
+  mailPriorityLabel,
+  prioritizeMails,
+  type MailPriority,
+  type PrioritizedMail,
+} from '../lib/mail-priority';
 
 type SchoolMailPanelVariant = 'home' | 'settings';
 type SchoolMailStatus = 'loading' | 'ready' | 'empty' | 'bridge_offline' | 'thunderbird_not_found' | 'sync_required' | 'error';
@@ -17,7 +23,7 @@ export function SchoolMailPanel({ variant }: { variant: SchoolMailPanelVariant }
   const [status, setStatus] = useState<SchoolMailStatus>('loading');
   const [errorCode, setErrorCode] = useState<ThunderbirdMailErrorCode | null>(null);
   const [account, setAccount] = useState('');
-  const [items, setItems] = useState<ThunderbirdMail[]>([]);
+  const [items, setItems] = useState<PrioritizedMail[]>([]);
   const [openState, setOpenState] = useState<'idle' | 'opening' | 'opened'>('idle');
   const [openError, setOpenError] = useState<ThunderbirdMailErrorCode | null>(null);
 
@@ -26,10 +32,11 @@ export function SchoolMailPanel({ variant }: { variant: SchoolMailPanelVariant }
     setErrorCode(null);
     setItems([]);
     try {
-      const result = await getRecentThunderbirdMail(readBridgeToken());
+      const result = await getRecentThunderbirdMail(readBridgeToken(), fetch, 20);
+      const prioritizedItems = prioritizeMails(result.items);
       setAccount(result.account);
-      setItems(result.items);
-      setStatus(result.items.length ? 'ready' : 'empty');
+      setItems(prioritizedItems);
+      setStatus(prioritizedItems.length ? 'ready' : 'empty');
     } catch (error) {
       const nextCode = readErrorCode(error);
       setAccount('');
@@ -61,7 +68,7 @@ export function SchoolMailPanel({ variant }: { variant: SchoolMailPanelVariant }
   return <section className="card section microsoft-mail-card school-mail-card">
     <div className="head"><h3>학교 메일</h3><span>{schoolMailStatusLabel(status, errorCode)}</span></div>
     <div className="muted"><small>Thunderbird · 로컬 읽기 전용{account ? ` · ${account}` : ''}</small></div>
-    {variant === 'settings' && <div className="note">Thunderbird가 이 컴퓨터에 동기화한 학교 메일의 헤더만 Local Bridge로 읽어와. Microsoft Graph OAuth token과 Thunderbird 인증정보는 읽지 않아.</div>}
+    {variant === 'settings' && <div className="note">Thunderbird가 이 컴퓨터에 동기화한 학교 메일의 헤더만 Local Bridge로 읽어와. Microsoft Graph OAuth token과 Thunderbird 인증정보는 읽지 않아.<br />중요 메일 자동 선별: 켜짐</div>}
     {status === 'loading' && <div className="microsoft-mail-state">Thunderbird 로컬 메일을 확인하는 중이야…</div>}
     {(status === 'ready' || status === 'empty') && (items.length ? <div className="microsoft-mail-list">{items.map((item, index) => <SchoolMailRow item={item} key={schoolMailRowKey(item, index)} />)}</div> : <div className="empty compact-empty">최근 학교 메일이 없어.</div>)}
     {status !== 'loading' && status !== 'ready' && status !== 'empty' && <SchoolMailErrorState errorCode={errorCode} onRetry={() => void loadMail()} />}
@@ -73,12 +80,14 @@ export function SchoolMailPanel({ variant }: { variant: SchoolMailPanelVariant }
   </section>;
 }
 
-function SchoolMailRow({ item }: { item: ThunderbirdMail }) {
-  return <div className={schoolMailRowClass(item.isRead)}>
+function SchoolMailRow({ item }: { item: PrioritizedMail }) {
+  const priorityLabel = mailPriorityLabel(item.priority);
+  return <div className={schoolMailRowClass(item.isRead, item.priority)}>
     <span className={`microsoft-mail-dot${item.isRead ? '' : ' unread'}`} aria-label={item.isRead ? '읽음' : '미읽음'}>{schoolMailIndicator(item.isRead)}</span>
     <span className="microsoft-mail-main">
-      <b>{!item.isRead && <span className="microsoft-mail-unread-label">미읽음</span>}{item.subject}</b>
+      <b>{priorityLabel && <span className={`school-mail-priority-label ${item.priority}`}>{priorityLabel}</span>}{!item.isRead && <span className="microsoft-mail-unread-label">미읽음</span>}{item.subject}</b>
       <small>{item.senderName}{item.senderAddress && ` · ${item.senderAddress}`} · <time dateTime={item.receivedAt} title={formatMailDate(item.receivedAt)}>{relativeMailDate(item.receivedAt)}</time></small>
+      {item.priorityReason && <small className="school-mail-priority-reason">{item.priorityReason}</small>}
     </span>
   </div>;
 }
@@ -109,8 +118,8 @@ export function schoolMailStateMessage(errorCode: ThunderbirdMailErrorCode | nul
   return errorCode ? thunderbirdMailErrorMessage(errorCode) : '학교 메일을 읽지 못했어.';
 }
 
-export function schoolMailRowClass(isRead: boolean): string {
-  return `microsoft-mail-row${isRead ? '' : ' unread'}`;
+export function schoolMailRowClass(isRead: boolean, priority: MailPriority = 'normal'): string {
+  return `microsoft-mail-row${isRead ? '' : ' unread'} school-mail-priority-${priority}`;
 }
 
 export function schoolMailIndicator(isRead: boolean): '○' | '●' {

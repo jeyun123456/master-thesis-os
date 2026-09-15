@@ -17,8 +17,8 @@ describe('School mail panel states', () => {
   });
 
   it('keeps unread and read rendering distinct', () => {
-    expect(schoolMailRowClass(false)).toBe('microsoft-mail-row unread');
-    expect(schoolMailRowClass(true)).toBe('microsoft-mail-row');
+    expect(schoolMailRowClass(false)).toBe('microsoft-mail-row unread school-mail-priority-normal');
+    expect(schoolMailRowClass(true)).toBe('microsoft-mail-row school-mail-priority-normal');
     expect(schoolMailIndicator(false)).toBe('●');
     expect(schoolMailIndicator(true)).toBe('○');
   });
