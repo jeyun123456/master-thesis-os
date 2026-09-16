@@ -20,7 +20,7 @@ SCHEMA_VERSION = "1.1.0"
 METHOD_VERSION = "2026-09-03"
 TOLERANCE = 1e-8
 APP_ROOT = Path(__file__).resolve().parents[1]
-RESULTS_RELATIVE_PATH = Path("projects") / "interim-presentation" / "코드" / "결과" / "주요결과"
+RESULTS_RELATIVE_PATH = Path("projects") / "thesis" / "코드" / "결과" / "주요결과"
 RESULTS_SOURCE_PATH = RESULTS_RELATIVE_PATH.as_posix()
 
 

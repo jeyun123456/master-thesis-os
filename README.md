@@ -63,7 +63,7 @@ GitHub·Google 비밀값은 `.env.local` 또는 배포 플랫폼의 서버 환�
 | `GITHUB_BRANCH` | 아니오 | 기본값 `master` |
 | `GITHUB_TOKEN` | private repo에서 필수 | 기본 읽기 전용 Contents 권한. GitHub 모드에서 앱 편집을 허용할 때만 Contents 읽기·쓰기 권한이 필요하며, 공개 배포에 쓰기 토큰을 넣지 않음 |
 | `GITHUB_WRITE_ENABLED` | 아니오 | 기본 `false`. 보호된 개인 배포에서만 `true`로 설정해 프로젝트 상태·바로가기 변경을 GitHub에 저장 |
-| `GITHUB_RESULTS_PATH` | 아니오 | 프로젝트별 경로가 없을 때 사용하는 전역 dashboard fallback. 기본값 `projects/interim-presentation/코드/결과/주요결과/dashboard` |
+| `GITHUB_RESULTS_PATH` | 아니오 | 프로젝트별 경로가 없을 때 사용하는 전역 dashboard fallback. 기본값 `projects/thesis/코드/결과/주요결과/dashboard` |
 | `LOCAL_REPOSITORY_ROOT` | 로컬 Vault 모드·fallback/exporter 시 | 기존 `Obsidian-Vault` checkout의 절대 경로. Vercel에는 설정하지 않음 |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Calendar 연결 시 | Google Service Account 이메일 |
 | `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | Calendar 연결 시 | Service Account RS256 private key. Vercel에서는 `\n` escape를 허용 |
@@ -326,7 +326,7 @@ projects/<project-id>/results/
 
 표준 bundle을 읽지 못하거나 해당 프로젝트에 bundle이 없으면 기존 dashboard JSON 또는 결과 파일 목록 fallback을 사용한다. 표준 계약의 예시는 별도 `Obsidian-Vault` repository의 `projects/<project-id>/results/` 아래에서 확인한다.
 
-legacy dashboard 경로에서는 별도 Python exporter가 연구 Vault의 canonical workbook을 read-only로 열어 선택한 프로젝트의 dashboard 폴더에 다음 JSON을 생성한다. 현재 필요노동 dashboard의 canonical 경로는 `projects/interim-presentation/코드/결과/주요결과/dashboard/`다.
+legacy dashboard 경로에서는 별도 Python exporter가 연구 Vault의 canonical workbook을 read-only로 열어 선택한 프로젝트의 dashboard 폴더에 다음 JSON을 생성한다. 현재 필요노동 dashboard의 canonical 경로는 `projects/thesis/코드/결과/주요결과/dashboard/`다.
 
 - `necessary_labour.json`: 연도별 필요노동 시간
 - `decomposition.json`: 기간별 총변화·바스켓 효과·투하노동량 효과
@@ -340,7 +340,7 @@ python exporter/export_results.py --repository-root "D:\path\to\Obsidian-Vault"
 
 # In the Obsidian-Vault checkout, commit the generated data there.
 Set-Location "D:\path\to\Obsidian-Vault"
-git add "projects/interim-presentation/코드/결과/주요결과/dashboard"
+git add "projects/thesis/코드/결과/주요결과/dashboard"
 git commit -m "data(results): refresh dashboard export"
 git push origin master
 ```

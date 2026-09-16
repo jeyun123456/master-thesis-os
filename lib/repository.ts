@@ -15,7 +15,7 @@ export type RepositoryCategory =
 const WIKI_ROOTS = ['wiki/'];
 const LITERATURE_ROOTS = ['연구/문헌/', '연구/선행연구/', 'wiki/literature/'];
 const RESULTS_ROOTS = [
-  'projects/interim-presentation/코드/결과/주요결과/',
+  'projects/thesis/코드/결과/주요결과/',
   'calc/data/results/',
   'wiki/findings/',
 ];

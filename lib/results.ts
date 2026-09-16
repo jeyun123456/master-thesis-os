@@ -45,7 +45,7 @@ export type DashboardBundle = {
   error?: string;
 };
 
-export const defaultResultsPath = 'projects/interim-presentation/코드/결과/주요결과/dashboard';
+export const defaultResultsPath = 'projects/thesis/코드/결과/주요결과/dashboard';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

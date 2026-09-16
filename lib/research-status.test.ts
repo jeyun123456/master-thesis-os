@@ -22,7 +22,7 @@ describe('parseResearchStatus', () => {
 
 ## 바로 다음 작업
 
-1. [06 결과](../Calc/data/results/06_decomposition.xlsx)의 부문 기여를 정리한다.
+1. [06 결과](../projects/thesis/코드/결과/주요결과/06_decomposition.xlsx)의 부문 기여를 정리한다.
 2. 발표자료의 반영 범위를 판단한다.
 
 [D003](decisions/D003_constant_price_main.md)
@@ -37,6 +37,6 @@ describe('parseResearchStatus', () => {
     expect(status.nextActions).toHaveLength(2);
     expect(status.currentStage).toBe('해석 · 집필 준비');
     expect(status.decisions[0].path).toBe('wiki/decisions/D003_constant_price_main.md');
-    expect(status.importantFiles[0].path).toBe('Calc/data/results/06_decomposition.xlsx');
+    expect(status.importantFiles[0].path).toBe('projects/thesis/코드/결과/주요결과/06_decomposition.xlsx');
   });
 });

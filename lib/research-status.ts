@@ -80,7 +80,11 @@ export function parseResearchStatus(markdown: string, sourcePath = DEFAULT_SOURC
   const auditedAt = markdown.match(/최종 감사:\s*(\d{4}-\d{2}-\d{2})/)?.[1];
   const scope = markdown.match(/범위:\s*([^\n.]+)/)?.[1]?.trim();
   const decisions = links(markdown, sourcePath, (path) => path.toLocaleLowerCase().includes('/decisions/'));
-  const importantFiles = links(markdown, sourcePath, (path) => /calc\/data\/results\//i.test(path));
+  const importantFiles = links(
+    markdown,
+    sourcePath,
+    (path) => /calc\/data\/results\//i.test(path) || /^projects\/[^/]+\/(?:코드\/)?결과\//.test(path),
+  );
 
   let currentStage = '연구 진행';
   if (currentInterpretation) currentStage = '결과 해석';

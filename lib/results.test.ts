@@ -24,7 +24,7 @@ function contributions() {
 async function createDashboardFixture() {
   const root = await mkdtemp(path.join(tmpdir(), 'master-thesis-os-results-'));
   temporaryRoots.push(root);
-  const directory = path.join(root, 'projects', 'interim-presentation', '코드', '결과', '주요결과', 'dashboard');
+  const directory = path.join(root, 'projects', 'thesis', '코드', '결과', '주요결과', 'dashboard');
   await mkdir(directory, { recursive: true });
 
   const necessaryLabour = {
@@ -74,7 +74,7 @@ describe('dashboard results loading', () => {
     const localRepositoryRoot = await createDashboardFixture();
     const bundle = await getDashboardBundle({ preferGithub: false, localRepositoryRoot });
     expect(bundle.source).toBe('local');
-    expect(bundle.resultPath).toBe('projects/interim-presentation/코드/결과/주요결과/dashboard');
+    expect(bundle.resultPath).toBe('projects/thesis/코드/결과/주요결과/dashboard');
     expect(bundle.necessaryLabour?.series.map((item) => item.year)).toEqual([2010, 2015, 2020]);
     expect(bundle.decomposition?.periods[1].totalChange).toBeCloseTo(-4.326876593298721, 10);
     expect(bundle.validation?.status).toBe('pass');

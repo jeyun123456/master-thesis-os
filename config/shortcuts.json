@@ -14,7 +14,7 @@
     "id": "dashboard-validation",
     "title": "결과 검증 JSON",
     "type": "file",
-    "target": "projects/interim-presentation/코드/결과/주요결과/dashboard/validation.json",
+    "target": "projects/thesis/코드/결과/주요결과/dashboard/validation.json",
     "description": "최신 exporter 검증 상태를 엽니다.",
     "icon": "▥",
     "pinnedToHome": true,
