@@ -45,8 +45,8 @@ export class ThunderbirdMailError extends Error {
   }
 }
 
-const DEFAULT_LIMIT = 5;
-const MAX_LIMIT = 20;
+export const DEFAULT_MAIL_LIMIT = 5;
+export const MAX_MAIL_LIMIT = 100;
 const REQUEST_TIMEOUT_MS = 5000;
 
 const ERROR_MESSAGES: Record<ThunderbirdMailErrorCode, string> = {
@@ -138,7 +138,7 @@ export function normalizeThunderbirdMailResponse(raw: unknown): { account: strin
   const items = raw.items
     .map(normalizeThunderbirdMail)
     .sort((left, right) => Date.parse(right.receivedAt) - Date.parse(left.receivedAt))
-    .slice(0, MAX_LIMIT);
+    .slice(0, MAX_MAIL_LIMIT);
   return { account: stringValue(raw.account), items };
 }
 
@@ -216,10 +216,10 @@ async function requestBridge(
 export async function getRecentThunderbirdMail(
   token: string,
   fetchImpl: typeof fetch = fetch,
-  limit = DEFAULT_LIMIT,
+  limit = DEFAULT_MAIL_LIMIT,
   folder: ThunderbirdFolderId = 'inbox',
 ): Promise<{ account: string; items: ThunderbirdMail[] }> {
-  const raw = await requestBridge('/mail/recent', token, { folder, limit: Math.max(1, Math.min(MAX_LIMIT, limit)) }, fetchImpl);
+  const raw = await requestBridge('/mail/recent', token, { folder, limit: Math.max(1, Math.min(MAX_MAIL_LIMIT, limit)) }, fetchImpl);
   return normalizeThunderbirdMailResponse(raw);
 }
 

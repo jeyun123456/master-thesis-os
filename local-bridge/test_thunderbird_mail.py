@@ -251,20 +251,21 @@ class ThunderbirdMailTests(unittest.TestCase):
         self.assertEqual(len(items), 2)
         self.assertEqual(len({item.id for item in items}), 2)
 
-    def test_limit_is_clamped_to_twenty(self):
+    def test_limit_is_clamped_to_one_hundred(self):
         messages = []
-        for index in range(25):
+        for index in range(105):
             messages.append({
                 'Subject': f'Message {index}',
                 'From': 'sender@example.edu',
-                'Date': f'Tue, 15 Sep 2026 01:{index:02d}:00 +0000',
+                'Date': f'Tue, 15 Sep 2026 {index // 60:02d}:{index % 60:02d}:00 +0000',
                 'Message-ID': f'<message-{index}@example.edu>',
                 'X-Mozilla-Status': '0000',
             })
         self.fixture.write_mbox(messages)
         _, items = get_recent_mail(self.settings(), 100)
-        self.assertEqual(len(items), 20)
+        self.assertEqual(len(items), 100)
         self.assertEqual(clamp_mail_limit(0), 1)
+        self.assertEqual(clamp_mail_limit(500), 100)
         self.assertEqual(clamp_mail_limit('5'), 5)
 
     def test_missing_profile_and_inbox_are_safe_errors(self):

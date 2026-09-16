@@ -40,14 +40,14 @@ describe('Thunderbird mail normalization', () => {
     expect(() => normalizeThunderbirdMail({ id: 'missing-date' })).toThrow('Local Bridge 메일 응답 형식을 확인할 수 없어.');
   });
 
-  it('sorts and limits normalized metadata to twenty items', () => {
-    const rawItems = Array.from({ length: 25 }, (_, index) => ({
+  it('sorts and limits normalized metadata to one hundred items', () => {
+    const rawItems = Array.from({ length: 105 }, (_, index) => ({
       ...newest,
       id: `item-${index}`,
       receivedAt: new Date(Date.parse(newest.receivedAt) - index * 60_000).toISOString(),
     }));
     const result = normalizeThunderbirdMailResponse({ ok: true, source: 'thunderbird', account: 'sc***@example.ac.jp', items: rawItems.reverse() });
-    expect(result.items).toHaveLength(20);
+    expect(result.items).toHaveLength(100);
     expect(result.items[0].id).toBe('item-0');
     expect(result.account).toBe('sc***@example.ac.jp');
   });
@@ -77,6 +77,17 @@ describe('Thunderbird mail normalization', () => {
     expect(calls[0].url).toContain('/mail/recent');
     expect(String(calls[0].init?.body)).toContain('"folder":"school-work"');
     expect(String(calls[0].init?.body)).not.toContain('school.example');
+  });
+
+  it('allows the list fetch to request at most one hundred messages', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchMock = async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init });
+      return new Response(JSON.stringify({ ok: true, source: 'thunderbird', account: 'sc***@example.ac.jp', items: [] }), { status: 200 });
+    };
+
+    await getRecentThunderbirdMail('bridge-secret-for-test', fetchMock, 500);
+    expect(String(calls[0].init?.body)).toContain('"limit":100');
   });
 
   it('normalizes the logical folder list without accepting path data', () => {

@@ -19,6 +19,7 @@ export type MailActionCandidate = {
   receivedAt: string;
   dueAt?: string;
   senderName?: string;
+  messageId?: string;
 };
 
 export type MailActionOptions = {
@@ -29,6 +30,16 @@ export type MailActionOptions = {
 
 export const MAIL_ACTION_DISMISSED_STORAGE_KEY = 'master-thesis-os:mail-action-dismissed';
 export const MAX_ACTION_CANDIDATES = 5;
+
+const ACTION_TYPE_LABELS: Record<MailActionType, string> = {
+  deadline: '마감',
+  meeting: '면담·미팅',
+  presentation: '발표',
+  research: '연구',
+  academic: '학사',
+  administrative: '행정',
+  review: '확인',
+};
 
 const ACTION_RULES: Record<MailCategory, { type: MailActionType; reason: string }> = {
   deadline: { type: 'deadline', reason: '제출·마감 관련 메일' },
@@ -140,6 +151,10 @@ export function mailActionCandidateId(mailId: string): string {
   return `mail-action:${mailId}`;
 }
 
+export function mailActionTypeLabel(type: MailActionType): string {
+  return ACTION_TYPE_LABELS[type];
+}
+
 export function createMailActionCandidate(mail: PrioritizedMail, now = new Date()): MailActionCandidate | null {
   if (!mail.id.trim() || mail.priority === 'normal') return null;
   const rule = ACTION_RULES[mail.category] || ACTION_RULES.other;
@@ -152,6 +167,7 @@ export function createMailActionCandidate(mail: PrioritizedMail, now = new Date(
     reason: rule.reason,
     receivedAt: mail.receivedAt,
     ...(mail.senderName.trim() ? { senderName: mail.senderName.trim() } : {}),
+    ...(mail.messageId?.trim() ? { messageId: mail.messageId.trim() } : {}),
   };
   if (rule.type === 'deadline') {
     const dueAt = extractSubjectDueDate(mail.subject, now);

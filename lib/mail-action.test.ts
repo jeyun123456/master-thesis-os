@@ -7,6 +7,7 @@ import {
   filterDismissedMailActions,
   isMailActionOverdue,
   mailActionCandidateId,
+  mailActionTypeLabel,
   type MailActionCandidate,
 } from './mail-action';
 
@@ -54,6 +55,12 @@ describe('mail action candidates', () => {
     expect(createMailActionCandidate(mail({ category: 'administrative', subject: '학무 안내' }), now)?.type).toBe('administrative');
     expect(createMailActionCandidate(mail({ category: 'other' }), now)?.type).toBe('review');
     expect(createMailActionCandidate(mail({ priority: 'normal' }), now)).toBeNull();
+    expect(createMailActionCandidate(mail({ category: 'research', subject: '논문 검토', messageId: '<research@example.edu>' }), now)).toMatchObject({
+      type: 'research',
+      messageId: '<research@example.edu>',
+    });
+    expect(mailActionTypeLabel('deadline')).toBe('마감');
+    expect(mailActionTypeLabel('meeting')).toBe('면담·미팅');
   });
 
   it('extracts supported explicit date formats', () => {

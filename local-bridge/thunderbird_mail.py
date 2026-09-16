@@ -19,7 +19,7 @@ from typing import BinaryIO, Iterable
 
 
 DEFAULT_MAIL_LIMIT = 5
-MAX_MAIL_LIMIT = 20
+MAX_MAIL_LIMIT = 100
 BERKELEY_STORE_CONTRACT = '@mozilla.org/msgstore/berkeleystore;1'
 MAILDIR_STORE_CONTRACT = '@mozilla.org/msgstore/maildirstore;1'
 

@@ -84,4 +84,31 @@ describe('mail priority rules', () => {
     const items = Array.from({ length: 10 }, (_, index) => mail({ id: `mail-${index}`, receivedAt: new Date(Date.now() - index * 60_000).toISOString() }));
     expect(prioritizeMails(items, 20)).toHaveLength(5);
   });
+
+  it('uses explicit action and timing signals for stronger priority', () => {
+    expect(classifyMailPriority(mail({ subject: '내일 면담 일정' }))).toMatchObject({
+      priority: 'critical',
+      category: 'meeting',
+      priorityReason: '일정 임박',
+    });
+    expect(classifyMailPriority(mail({ subject: 'tomorrow presentation schedule' })).priority).toBe('critical');
+    expect(classifyMailPriority(mail({ subject: '제출 요청', receivedAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString() })).priority).toBe('important');
+    expect(classifyMailPriority(mail({ subject: '일정 변경 안내' })).priority).toBe('important');
+    expect(classifyMailPriority(mail({ subject: '확인 요청', senderName: '教授' })).priority).toBe('important');
+  });
+
+  it('keeps low-signal newsletters, advertisements, and automated notices normal', () => {
+    expect(classifyMailPriority(mail({ subject: 'Seminar newsletter' })).priority).toBe('normal');
+    expect(classifyMailPriority(mail({ subject: 'キャンペーンのお知らせ' })).priority).toBe('normal');
+    expect(classifyMailPriority(mail({ subject: 'お知らせ' })).priority).toBe('normal');
+    expect(classifyMailPriority(mail({ subject: 'System notification', senderAddress: 'no-reply@example.edu' })).priority).toBe('normal');
+    expect(classifyMailPriority(mail({ subject: 'RAINBOW メンテナンス対応要' }))).toMatchObject({
+      priority: 'important',
+      category: 'administrative',
+    });
+    expect(classifyMailPriority(mail({ subject: '学務のお知らせ' }))).toMatchObject({
+      priority: 'important',
+      category: 'administrative',
+    });
+  });
 });
