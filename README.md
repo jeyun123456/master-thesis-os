@@ -10,7 +10,7 @@
 
 ## 구성
 
-- `app/`: 9개 필수 페이지 UI와 서버 API routes
+- `app/`: 연구 대시보드 페이지 UI와 서버 API routes
 - `lib/`: GitHub·Calendar 서버 클라이언트, Thunderbird Local Bridge·로컬 메일 분석 client, Microsoft Graph 브라우저 클라이언트, project/result discovery, repository 분류, Results 데이터 계약
 - `schemas/`: Excel과 UI 사이의 dashboard JSON Schema
 - `exporter/`: canonical 결과 workbook을 검증된 dashboard JSON으로 변환
@@ -230,7 +230,7 @@ GOOGLE_CALENDAR_ID                -> GOOGLE_CALENDAR_IDS (쉼표 구분)
 
 `account`와 `profile_path`가 비어 있으면 `%APPDATA%\\Thunderbird\\profiles.ini`의 우선 profile과 `prefs.js`를 자동 탐색한다. 기존 scanner는 mbox의 확장자 없는 mailbox와 maildir의 `cur/new/tmp`를 읽는다. 새 메일 분석 동기화는 **학교 업무**와 **국제과** 두 폴더만 각각 최대 100개까지 스캔하고, 본문 텍스트(최대 60,000자, 첨부파일 제외)를 SQLite에 저장한다. mbox가 변경되면 mtime/size 기반의 메타데이터 cache를 무효화한다. Thunderbird profile에는 어떤 write도 수행하지 않는다.
 
-Home의 **학교 메일** 카드와 메일 탭은 모두 SQLite 저장 결과만 읽는다. 저장된 metadata 중 최근 최대 20개를 기존 규칙 기반 classifier로 평가해 긴급·중요 메일을 최대 5개 우선 표시한다. 메일 탭은 제목·발신자 검색, 미읽음·중요·긴급 필터, 최신순·중요도순 정렬, 20개 단위 더 보기를 제공한다. 메일 탭 상단의 **메일 분석 동기화**를 눌렀을 때만 Local Bridge가 두 Thunderbird 폴더를 스캔하고, 미분석 메일을 로컬 CLI로 분석한다. 메일 탭을 여는 것과 새로고침은 SQLite 조회만 수행하며 AI catch-up을 시작하지 않는다. 각 행의 **AI 분석 보기**를 펼치면 저장된 2~3문장 요약, 해야 할 일, 일정 후보를 확인할 수 있고, 후보의 제목·날짜·시간을 수정한 뒤에만 Calendar에 추가할 수 있다. 일정 후보는 event/deadline별로 `pending`·`added`·`ignored` 상태를 SQLite에 저장한다. AI provider 미설정·호출 실패·JSON 파싱 실패는 해당 메일을 `failed`로 기록하며 임의 요약이나 Calendar 후보를 만들지 않는다. 메일 행을 클릭하면 인증된 `/mail/open`을 통해 해당 헤더의 `Message-ID`를 `mid:` URI로 전달해 Thunderbird에서 메시지를 직접 연다. `Message-ID`가 없는 경우에는 Thunderbird 프로그램만 열며, 브리지는 파일 경로나 token을 로그에 남기지 않는다.
+Home의 **학교 메일** 카드와 메일 탭은 모두 SQLite 저장 결과만 읽는다. 저장된 metadata 중 최근 최대 20개를 기존 규칙 기반 classifier로 평가해 긴급·중요 메일을 최대 5개 우선 표시한다. 메일 탭은 제목·발신자 검색, 미읽음·중요·긴급 필터, 최신순·중요도순 정렬, 20개 단위 더 보기를 제공한다. 메일 탭 상단의 **메일 분석 동기화**를 눌렀을 때만 Local Bridge가 두 Thunderbird 폴더를 스캔하고, 미분석 메일을 로컬 CLI로 분석한다. 메일 탭을 여는 것과 새로고침은 SQLite 조회만 수행하며 AI catch-up을 시작하지 않는다. 각 행의 **AI 분석 보기**를 펼치면 저장된 2~3문장 요약, 해야 할 일, 일정 후보를 확인할 수 있고, 후보의 제목·날짜·시간을 수정한 뒤에만 Calendar에 추가할 수 있다. 일정 후보는 event/deadline별로 `pending`·`added`·`ignored` 상태를 SQLite에 저장한다. 별도 **플래너** 탭은 AI action을 `mail_tasks`로 관리하며 완료·나중에·숨기기 상태를 SQLite에 저장하고, 같은 일정 후보를 메일별로 모아 확인할 수 있다. AI provider 미설정·호출 실패·JSON 파싱 실패는 해당 메일을 `failed`로 기록하며 임의 요약이나 Calendar 후보를 만들지 않는다. 메일 행을 클릭하면 인증된 `/mail/open`을 통해 해당 헤더의 `Message-ID`를 `mid:` URI로 전달해 Thunderbird에서 메시지를 직접 연다. `Message-ID`가 없는 경우에는 Thunderbird 프로그램만 열며, 브리지는 파일 경로나 token을 로그에 남기지 않는다.
 
 ## localhost bridge
 
@@ -250,7 +250,7 @@ Wallpaper Companion과 Bridge tray는 다음 공용 설정을 우선 사용한�
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. 새 메일 분석 UI는 `GET /mail/sync-status`, `GET /mail/analysis`, `GET /mail/analysis/<mail-id>`, `POST /mail/sync`, `POST /mail/analysis/<mail-id>/reanalyze`, `POST /mail/analysis/candidate`를 사용한다. `/mail/sync`는 background job으로 `mail_cli.py`를 실행하고, 상태는 `mail-analysis.db`에서 polling한다. 기존 `POST /mail/recent`, `/mail/message`, `/mail/open`은 Thunderbird 열기·호환용으로 남아 있지만 새 동기화 UI의 수집 경로가 아니다. 메일 endpoint는 경로·본문·제목·발신자·token을 로그에 남기지 않는다. Settings의 token은 `보기/숨기기`와 `복사`로 관리할 수 있고, Local Bridge tray와 Wallpaper Companion tray의 **Bridge token 보기/복사**에서도 로컬 config 값을 확인·복사할 수 있다. token을 HTTP endpoint나 원격 페이지에 자동 노출하지는 않는다. 실제 `config.json`은 git에서 제외된다.
+브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. 새 메일 분석 UI는 `GET /mail/sync-status`, `GET /mail/analysis`, `GET /mail/analysis/<mail-id>`, `GET /mail/planning`, `POST /mail/sync`, `POST /mail/analysis/<mail-id>/reanalyze`, `POST /mail/analysis/candidate`, `POST /mail/task`를 사용한다. `/mail/sync`는 background job으로 `mail_cli.py`를 실행하고, 상태는 `mail-analysis.db`에서 polling한다. 기존 `POST /mail/recent`, `/mail/message`, `/mail/open`은 Thunderbird 열기·호환용으로 남아 있지만 새 동기화 UI의 수집 경로가 아니다. 메일 endpoint는 경로·본문·제목·발신자·token을 로그에 남기지 않는다. Settings의 token은 `보기/숨기기`와 `복사`로 관리할 수 있고, Local Bridge tray와 Wallpaper Companion tray의 **Bridge token 보기/복사**에서도 로컬 config 값을 확인·복사할 수 있다. token을 HTTP endpoint나 원격 페이지에 자동 노출하지는 않는다. 실제 `config.json`은 git에서 제외된다.
 
 ## 학교 메일 AI 분석
 
@@ -282,7 +282,7 @@ lms server start --port 1234 --bind 127.0.0.1
 
 그 다음 `.env.local`에 `MAIL_AI_PROVIDER`를 비우고 `MAIL_AI_API_URL=http://127.0.0.1:1234/v1/chat/completions`, `MAIL_AI_API_KEY=lm-studio-local`, `MAIL_AI_MODEL=qwen/qwen3.5-9b`를 설정한다. 로컬 Qwen 요청은 JSON-only 프롬프트와 CLI의 엄격한 결과 검증을 사용하며, 원격 provider는 JSON schema 응답을 요청한다. 분석 provider가 없거나 응답을 검증하지 못하면 해당 메일만 `failed`로 남고 자동 Calendar 등록은 하지 않는다.
 
-메일 탭 상단에서 **메일 분석 동기화**를 눌러야 Thunderbird의 `학교 업무`·`국제과` 폴더를 읽는다. 흐름은 `Thunderbird → mail_cli.py sync → local-bridge/data/mail-analysis.db → Bridge API → 웹 UI`이며, PC가 꺼져 있던 동안의 미처리 메일도 다음 명시적 동기화에서 catch-up한다. DB에는 메일 metadata/body, AI 상태(`queued`·`processing`·`completed`·`failed`), 요약·action·모델·prompt version, Calendar 후보 상태를 저장한다. 기본 SQLite 경로는 `local-bridge/data/mail-analysis.db`이고 `MAIL_ANALYSIS_DB_PATH`로 바꿀 수 있다. `MAIL_AI_PROVIDER`, `MAIL_AI_API_URL`, `MAIL_AI_API_KEY`, `MAIL_AI_MODEL`, `MAIL_AI_CODEX_COMMAND`는 로컬 CLI 프로세스만 읽으며 API key는 DB나 브라우저에 저장하지 않는다. Codex CLI 모드에서는 메일 내용이 선택한 Luna 모델로 전송되므로, Codex 로그인 계정의 데이터 정책을 확인해야 한다.
+메일 탭 상단에서 **메일 분석 동기화**를 눌러야 Thunderbird의 `학교 업무`·`국제과` 폴더를 읽는다. 흐름은 `Thunderbird → mail_cli.py sync → local-bridge/data/mail-analysis.db → Bridge API → 웹 UI`이며, PC가 꺼져 있던 동안의 미처리 메일도 다음 명시적 동기화에서 catch-up한다. DB에는 메일 metadata/body, AI 상태(`queued`·`processing`·`completed`·`failed`), 요약·action·모델·prompt version, Calendar 후보 상태, action에서 만든 할 일(`mail_tasks`)과 `pending`·`done`·`snoozed`·`dismissed` 상태를 저장한다. 기본 SQLite 경로는 `local-bridge/data/mail-analysis.db`이고 `MAIL_ANALYSIS_DB_PATH`로 바꿀 수 있다. `MAIL_AI_PROVIDER`, `MAIL_AI_API_URL`, `MAIL_AI_API_KEY`, `MAIL_AI_MODEL`, `MAIL_AI_CODEX_COMMAND`는 로컬 CLI 프로세스만 읽으며 API key는 DB나 브라우저에 저장하지 않는다. Codex CLI 모드에서는 메일 내용이 선택한 Luna 모델로 전송되므로, Codex 로그인 계정의 데이터 정책을 확인해야 한다.
 
 로컬 CLI는 다음 명령을 제공한다.
 

@@ -119,6 +119,66 @@ class MailAnalysisPersistenceTests(unittest.TestCase):
         self.assertEqual(updated['status'], 'ignored')
         self.assertEqual(mail_db.get_analysis(self.db_path, item.id)['candidates'][0]['status'], 'ignored')
 
+    def test_action_analysis_creates_task_and_task_status_survives_reopen(self):
+        item = self.school_items[0]
+        mail_db.upsert_mail(item, 'school-work', '발표 자료를 준비해줘.', '2026-09-18T00:00:00Z', self.db_path)
+        mail_db.save_completed(
+            item.id,
+            {
+                'summary': '발표 준비 안내다.',
+                'action': '발표 자료를 준비한다.',
+                'calendarCandidates': [{
+                    'id': 'candidate-deadline',
+                    'title': '발표 자료 제출',
+                    'start': '2099-09-20',
+                    'end': None,
+                    'allDay': True,
+                    'type': 'deadline',
+                    'reason': '제출 마감',
+                }],
+            },
+            'mail-analysis-local-v2-ko',
+            'gpt-5.6-luna',
+            '2026-09-18T01:00:00Z',
+            self.db_path,
+        )
+
+        tasks = mail_db.list_tasks(self.db_path)
+        self.assertEqual(len(tasks), 1)
+        self.assertEqual(tasks[0]['id'], f'mail-task:{item.id}')
+        self.assertEqual(tasks[0]['title'], '발표 자료를 준비한다.')
+        self.assertEqual(tasks[0]['dueAt'], '2099-09-20')
+        self.assertEqual(tasks[0]['mail']['subject'], item.subject)
+
+        completed = mail_db.update_task(tasks[0]['id'], 'done', path=self.db_path)
+        self.assertEqual(completed['status'], 'done')
+        mail_db.initialize_database(self.db_path)
+        reopened = mail_db.get_task(self.db_path, tasks[0]['id'])
+        self.assertIsNotNone(reopened)
+        self.assertEqual(reopened['status'], 'done')
+
+    def test_reanalysis_without_action_dismisses_only_open_task(self):
+        item = self.school_items[0]
+        mail_db.upsert_mail(item, 'school-work', '본문', '2026-09-18T00:00:00Z', self.db_path)
+        mail_db.save_completed(
+            item.id,
+            {'summary': '요약', 'action': '확인한다.', 'calendarCandidates': []},
+            'prompt',
+            'model',
+            '2026-09-18T01:00:00Z',
+            self.db_path,
+        )
+        task_id = f'mail-task:{item.id}'
+        mail_db.save_completed(
+            item.id,
+            {'summary': '업데이트', 'action': None, 'calendarCandidates': []},
+            'prompt',
+            'model',
+            '2026-09-18T02:00:00Z',
+            self.db_path,
+        )
+        self.assertEqual(mail_db.get_task(self.db_path, task_id)['status'], 'dismissed')
+
     def test_database_survives_close_and_reopen(self):
         item = self.school_items[0]
         mail_db.upsert_mail(item, 'school-work', 'persisted body', '2026-09-18T00:00:00Z', self.db_path)

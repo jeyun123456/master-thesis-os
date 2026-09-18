@@ -44,7 +44,7 @@ export function MailAnalysisDetails({ record, candidates = [], onRetry, onAddCan
   </div>;
 }
 
-function CalendarCandidateCard({
+export function CalendarCandidateCard({
   candidate,
   onAdd,
   onIgnore,

@@ -11,6 +11,7 @@ import type {
   MailSyncStatus,
   StoredMailCalendarCandidate,
 } from './mail-analysis';
+import type { MailPlanning, MailTask, MailTaskStatus } from './mail-planning';
 
 type RecordValue = Record<string, unknown>;
 type BridgeRequestInit = RequestInit & { targetAddressSpace?: 'loopback' };
@@ -148,6 +149,35 @@ function normalizeAnalysisItem(raw: unknown): MailAnalysisItem {
   };
 }
 
+function taskStatus(value: unknown): MailTaskStatus {
+  return value === 'done' || value === 'snoozed' || value === 'dismissed' ? value : 'pending';
+}
+
+function normalizeTask(raw: unknown): MailTask {
+  if (!isRecord(raw) || !isRecord(raw.mail)) {
+    throw new MailAnalysisClientError('malformed_response', '메일 할 일 응답 형식을 확인해줘.');
+  }
+  const id = textValue(raw.id);
+  const mailId = textValue(raw.mailId);
+  const folder = folderValue(raw.folder);
+  if (!id || !mailId || !folder) {
+    throw new MailAnalysisClientError('malformed_response', '메일 할 일 응답 형식을 확인해줘.');
+  }
+  return {
+    id,
+    mailId,
+    folder,
+    title: textValue(raw.title) || '메일에서 확인할 일',
+    description: textValue(raw.description),
+    dueAt: textValue(raw.dueAt) || null,
+    status: taskStatus(raw.status),
+    createdAt: textValue(raw.createdAt),
+    updatedAt: textValue(raw.updatedAt),
+    completedAt: textValue(raw.completedAt) || null,
+    mail: normalizeThunderbirdMail(raw.mail),
+  };
+}
+
 function syncStatusValue(value: unknown): MailSyncStatus['status'] {
   return value === 'running' || value === 'completed' || value === 'failed' ? value : 'idle';
 }
@@ -218,6 +248,19 @@ export async function getMailAnalysis(
   return { items: raw.items.map(normalizeAnalysisItem), sync: normalizeSyncStatus(syncRaw) };
 }
 
+export async function getMailPlanning(token: string, fetchImpl: typeof fetch = fetch): Promise<MailPlanning> {
+  const raw = await requestBridge('/mail/planning', token, 'GET', undefined, fetchImpl);
+  if (!isRecord(raw) || raw.ok !== true || raw.source !== 'sqlite' || !Array.isArray(raw.items) || !Array.isArray(raw.tasks)) {
+    throw new MailAnalysisClientError('malformed_response', '메일 플래너 응답 형식을 확인해줘.');
+  }
+  const syncRaw = isRecord(raw.sync) ? raw.sync : raw;
+  return {
+    tasks: raw.tasks.map(normalizeTask),
+    items: raw.items.map(normalizeAnalysisItem),
+    sync: normalizeSyncStatus(syncRaw),
+  };
+}
+
 export async function getMailAnalysisItem(token: string, mailId: string, fetchImpl: typeof fetch = fetch): Promise<MailAnalysisItem> {
   const raw = await requestBridge(`/mail/analysis/${encodeURIComponent(mailId)}`, token, 'GET', undefined, fetchImpl);
   if (!isRecord(raw) || raw.ok !== true || raw.source !== 'sqlite') {
@@ -255,6 +298,24 @@ export async function updateMailCandidate(
   const candidate = normalizeCandidate(raw.candidate);
   if (!candidate) throw new MailAnalysisClientError('malformed_response', '일정 후보 응답 형식을 확인해줘.');
   return candidate;
+}
+
+export async function updateMailTask(
+  token: string,
+  input: {
+    taskId: string;
+    status: MailTaskStatus;
+    title?: string;
+    description?: string;
+    dueAt?: string | null;
+  },
+  fetchImpl: typeof fetch = fetch,
+): Promise<MailTask> {
+  const raw = await requestBridge('/mail/task', token, 'POST', input, fetchImpl);
+  if (!isRecord(raw) || raw.ok !== true || raw.source !== 'sqlite') {
+    throw new MailAnalysisClientError('malformed_response', '메일 할 일 상태 응답 형식을 확인해줘.');
+  }
+  return normalizeTask(raw.task);
 }
 
 export function readBridgeToken(): string {

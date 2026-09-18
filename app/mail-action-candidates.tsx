@@ -9,15 +9,15 @@ import {
   type ThunderbirdMailErrorCode,
   type ThunderbirdAnalysisFolderId,
 } from '../lib/thunderbird-mail';
-import { getMailAnalysis, MailAnalysisClientError, readBridgeToken } from '../lib/mail-analysis-client';
+import { getMailPlanning, MailAnalysisClientError, readBridgeToken, updateMailTask } from '../lib/mail-analysis-client';
 import { prioritizeMail } from '../lib/mail-priority';
 import {
-  createMailActionCandidates,
+  createMailActionCandidate,
   isMailActionOverdue,
-  MAIL_ACTION_DISMISSED_STORAGE_KEY,
   mailActionTypeLabel,
   type MailActionCandidate,
 } from '../lib/mail-action';
+import type { MailTask } from '../lib/mail-planning';
 
 type MailActionStatus = 'loading' | 'ready' | 'empty' | 'error';
 export const MAIL_ACTION_SOURCE_FOLDER: ThunderbirdAnalysisFolderId = 'school-work';
@@ -34,9 +34,10 @@ export function MailActionCandidates() {
     setErrorCode(null);
     setOpenError(null);
     try {
-      const result = await getMailAnalysis(readBridgeToken(), { folder: MAIL_ACTION_SOURCE_FOLDER, limit: 100 });
-      const prioritized = result.items.map((item) => prioritizeMail(item.mail));
-      const nextCandidates = createMailActionCandidates(prioritized, { dismissedIds: readDismissedIds() });
+      const result = await getMailPlanning(readBridgeToken());
+      const nextCandidates = result.tasks
+        .filter((task) => task.folder === MAIL_ACTION_SOURCE_FOLDER && (task.status === 'pending' || task.status === 'snoozed'))
+        .map(taskToActionCandidate);
       setCandidates(nextCandidates);
       setStatus(nextCandidates.length ? 'ready' : 'empty');
     } catch (error) {
@@ -50,17 +51,16 @@ export function MailActionCandidates() {
     void loadCandidates();
   }, [loadCandidates]);
 
-  function dismissCandidate(candidate: MailActionCandidate) {
-    const dismissed = readDismissedRecord();
-    dismissed[candidate.id] = Date.now();
-    try {
-      localStorage.setItem(MAIL_ACTION_DISMISSED_STORAGE_KEY, JSON.stringify(dismissed));
-    } catch {
-      // A denied localStorage should not make the dashboard fail.
-    }
+  async function dismissCandidate(candidate: MailActionCandidate) {
     const nextCandidates = candidates.filter((item) => item.id !== candidate.id);
     setCandidates(nextCandidates);
     setStatus(nextCandidates.length ? 'ready' : 'empty');
+    try {
+      await updateMailTask(readBridgeToken(), { taskId: candidate.id, status: 'dismissed' });
+    } catch (error) {
+      setErrorCode(readErrorCode(error));
+      void loadCandidates();
+    }
   }
 
   async function handleOpenCandidate(candidate: MailActionCandidate) {
@@ -120,24 +120,36 @@ export function mailActionErrorMessage(errorCode: ThunderbirdMailErrorCode | nul
   return errorCode ? thunderbirdMailErrorMessage(errorCode) : '메일 행동 후보를 읽지 못했어.';
 }
 
-function readDismissedRecord(): Record<string, number> {
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(MAIL_ACTION_DISMISSED_STORAGE_KEY) || '{}');
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-    return Object.fromEntries(Object.entries(value).filter(([, timestamp]) => typeof timestamp === 'number'));
-  } catch {
-    return {};
-  }
-}
-
-function readDismissedIds(): string[] {
-  return Object.keys(readDismissedRecord());
-}
-
 function readErrorCode(error: unknown): ThunderbirdMailErrorCode {
   if (error instanceof ThunderbirdMailError) return error.code;
   if (error instanceof MailAnalysisClientError) return error.code === 'bridge_auth' ? 'bridge_auth' : 'bridge_offline';
   return 'bridge_offline';
+}
+
+function taskToActionCandidate(task: MailTask): MailActionCandidate {
+  const derived = createMailActionCandidate(prioritizeMail(task.mail));
+  if (derived) {
+    return {
+      ...derived,
+      id: task.id,
+      mailId: task.mailId,
+      title: task.title,
+      reason: 'AI 분석에서 추출한 할 일',
+      ...(task.dueAt ? { dueAt: task.dueAt } : {}),
+    };
+  }
+  return {
+    id: task.id,
+    mailId: task.mailId,
+    title: task.title,
+    type: 'review',
+    priority: 'important',
+    reason: 'AI 분석에서 추출한 할 일',
+    receivedAt: task.mail.receivedAt,
+    ...(task.mail.senderName ? { senderName: task.mail.senderName } : {}),
+    ...(task.mail.messageId ? { messageId: task.mail.messageId } : {}),
+    ...(task.dueAt ? { dueAt: task.dueAt } : {}),
+  };
 }
 
 function formatDueDate(value: string): string {

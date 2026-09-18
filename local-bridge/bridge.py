@@ -263,6 +263,16 @@ class Handler(BaseHTTPRequestHandler):
             'sync': self._mail_status(),
         })
 
+    def _planning_response(self):
+        return self.json_out(200, {
+            'ok': True,
+            'source': 'sqlite',
+            'folders': list(mail_db.TARGET_FOLDERS),
+            'tasks': mail_db.list_tasks(DB_PATH, limit=200),
+            'items': mail_db.list_analysis(DB_PATH, limit=100),
+            'sync': self._mail_status(),
+        })
+
     def _single_analysis_response(self, mail_id: str):
         if not mail_id or len(mail_id) > 256:
             return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'mail not found'})
@@ -287,6 +297,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 return self._analysis_response()
+            except mail_db.MailDatabaseError:
+                return self.json_out(503, {'ok': False, 'source': 'sqlite', 'error': 'database_unavailable'})
+        if path == '/mail/planning':
+            if not self._header_authenticated():
+                return
+            try:
+                return self._planning_response()
             except mail_db.MailDatabaseError:
                 return self.json_out(503, {'ok': False, 'source': 'sqlite', 'error': 'database_unavailable'})
         if path.startswith('/mail/analysis/'):
@@ -375,6 +392,24 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_out(404 if 'not found' in str(exc) else 400, {'ok': False, 'source': 'sqlite', 'error': str(exc)})
             return self.json_out(200, {'ok': True, 'source': 'sqlite', 'candidate': candidate})
 
+        if path == '/mail/task':
+            task_id = body.get('taskId')
+            status = body.get('status')
+            if not isinstance(task_id, str) or not task_id.strip() or len(task_id) > 256 or not isinstance(status, str) or not status.strip():
+                return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'invalid mail task request'})
+            try:
+                task = mail_db.update_task(
+                    task_id.strip(),
+                    status.strip(),
+                    title=body.get('title') if isinstance(body.get('title'), str) else None,
+                    description=body.get('description') if isinstance(body.get('description'), str) else None,
+                    due_at=body.get('dueAt') if isinstance(body.get('dueAt'), str) else None,
+                    path=DB_PATH,
+                )
+            except mail_db.MailDatabaseError as exc:
+                return self.json_out(404 if 'not found' in str(exc) else 400, {'ok': False, 'source': 'sqlite', 'error': str(exc)})
+            return self.json_out(200, {'ok': True, 'source': 'sqlite', 'task': task})
+
         prefix = '/mail/analysis/'
         if path.startswith(prefix) and path.endswith('/reanalyze'):
             mail_id = unquote(path[len(prefix):-len('/reanalyze')]).strip()
@@ -396,7 +431,7 @@ class Handler(BaseHTTPRequestHandler):
         path = self._path()
         allowed = (
             '/open', '/open-folder', '/launch', '/mail/recent', '/mail/folders',
-            '/mail/message', '/mail/open', '/mail/sync', '/mail/analysis/candidate',
+            '/mail/message', '/mail/open', '/mail/sync', '/mail/analysis/candidate', '/mail/task',
         )
         if path not in allowed and not (path.startswith('/mail/analysis/') and path.endswith('/reanalyze')):
             return self.json_out(404, {'error': 'not found'})

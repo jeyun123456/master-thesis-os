@@ -12,6 +12,7 @@ from typing import Iterable
 TARGET_FOLDERS = ('school-work', 'international-office')
 ANALYSIS_STATUSES = ('queued', 'processing', 'completed', 'failed')
 CANDIDATE_STATUSES = ('pending', 'added', 'ignored')
+TASK_STATUSES = ('pending', 'done', 'snoozed', 'dismissed')
 SYNC_STATUSES = ('idle', 'running', 'completed', 'failed')
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / 'data' / 'mail-analysis.db'
 
@@ -63,6 +64,24 @@ CREATE TABLE IF NOT EXISTS mail_analysis (
 
 CREATE INDEX IF NOT EXISTS idx_mail_analysis_status
     ON mail_analysis(status);
+
+CREATE TABLE IF NOT EXISTS mail_tasks (
+    id TEXT PRIMARY KEY,
+    mail_id TEXT NOT NULL REFERENCES mails(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    due_at TEXT,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'done', 'snoozed', 'dismissed')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_mail_tasks_status_due
+    ON mail_tasks(status, due_at);
+
+CREATE INDEX IF NOT EXISTS idx_mail_tasks_mail
+    ON mail_tasks(mail_id);
 
 CREATE TABLE IF NOT EXISTS calendar_candidates (
     id TEXT PRIMARY KEY,
@@ -120,6 +139,38 @@ def _folder(folder: str) -> str:
     return value
 
 
+def _backfill_tasks(connection: sqlite3.Connection) -> None:
+    """Create the first task row for action-bearing analyses.
+
+    This is intentionally idempotent. It lets an existing SQLite database
+    adopt the task flow without re-running AI analysis or touching candidate
+    statuses.
+    """
+    fallback_time = now_iso()
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO mail_tasks(
+            id, mail_id, title, description, due_at, status,
+            created_at, updated_at, completed_at
+        )
+        SELECT
+            'mail-task:' || a.mail_id,
+            a.mail_id,
+            trim(a.action),
+            '',
+            NULL,
+            'pending',
+            COALESCE(a.analyzed_at, a.updated_at, ?),
+            COALESCE(a.updated_at, a.analyzed_at, ?),
+            NULL
+          FROM mail_analysis a
+         WHERE a.action IS NOT NULL
+           AND trim(a.action) <> ''
+        """,
+        (fallback_time, fallback_time),
+    )
+
+
 def _connect(path: str | Path | None = None) -> sqlite3.Connection:
     db_path = resolve_db_path(path)
     try:
@@ -134,6 +185,7 @@ def _connect(path: str | Path | None = None) -> sqlite3.Connection:
             "INSERT OR IGNORE INTO sync_state(folder) VALUES (?)",
             [(value,) for value in TARGET_FOLDERS],
         )
+        _backfill_tasks(connection)
         connection.commit()
         return connection
     except (OSError, sqlite3.Error) as exc:
@@ -199,6 +251,135 @@ def _candidate_payload(row: sqlite3.Row) -> dict[str, object]:
         'status': str(row['status']),
         **({'calendarEventId': str(row['calendar_event_id'])} if row['calendar_event_id'] else {}),
     }
+
+
+def _task_payload(row: sqlite3.Row) -> dict[str, object]:
+    mail = {
+        'id': str(row['mail_id']),
+        'subject': str(row['mail_subject'] or '') or '(제목 없음)',
+        'senderName': str(row['mail_sender_name'] or '') or '(발신자 알 수 없음)',
+        'senderAddress': str(row['mail_sender_email'] or ''),
+        'receivedAt': str(row['mail_received_at'] or ''),
+        'isRead': bool(row['mail_is_read']),
+    }
+    if row['mail_message_id']:
+        mail['messageId'] = str(row['mail_message_id'])
+    return {
+        'id': str(row['id']),
+        'mailId': str(row['mail_id']),
+        'folder': str(row['mail_folder']),
+        'title': str(row['title'] or ''),
+        'description': str(row['description'] or ''),
+        'dueAt': row['due_at'],
+        'status': str(row['status']),
+        'createdAt': row['created_at'],
+        'updatedAt': row['updated_at'],
+        'completedAt': row['completed_at'],
+        'mail': mail,
+    }
+
+
+def _task_query(
+    connection: sqlite3.Connection,
+    task_id: str | None = None,
+    status: str | None = None,
+) -> list[sqlite3.Row]:
+    clauses: list[str] = []
+    values: list[object] = []
+    if task_id is not None:
+        clauses.append('t.id = ?')
+        values.append(task_id)
+    if status is not None:
+        if status not in TASK_STATUSES:
+            raise MailDatabaseError('invalid mail task status')
+        clauses.append('t.status = ?')
+        values.append(status)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ''
+    return connection.execute(
+        f"""
+        SELECT t.id, t.mail_id, t.title, t.description, t.due_at, t.status,
+               t.created_at, t.updated_at, t.completed_at,
+               m.folder AS mail_folder, m.message_id AS mail_message_id,
+               m.subject AS mail_subject, m.sender_name AS mail_sender_name,
+               m.sender_email AS mail_sender_email, m.received_at AS mail_received_at,
+               m.is_read AS mail_is_read
+          FROM mail_tasks t
+          JOIN mails m ON m.id = t.mail_id
+          {where}
+         ORDER BY CASE t.status
+                    WHEN 'pending' THEN 0
+                    WHEN 'snoozed' THEN 1
+                    WHEN 'done' THEN 2
+                    ELSE 3
+                  END,
+                  CASE WHEN t.due_at IS NULL OR t.due_at = '' THEN 1 ELSE 0 END,
+                  t.due_at ASC,
+                  t.updated_at DESC,
+                  t.id ASC
+        """,
+        values,
+    ).fetchall()
+
+
+def list_tasks(path: str | Path | None = None, status: str | None = None, limit: int = 100) -> list[dict[str, object]]:
+    safe_limit = max(1, min(200, int(limit)))
+    connection = _connect(path)
+    try:
+        return [_task_payload(row) for row in _task_query(connection, status=status)[:safe_limit]]
+    finally:
+        connection.close()
+
+
+def get_task(path: str | Path | None, task_id: str) -> dict[str, object] | None:
+    connection = _connect(path)
+    try:
+        rows = _task_query(connection, task_id=task_id)
+        return _task_payload(rows[0]) if rows else None
+    finally:
+        connection.close()
+
+
+def update_task(
+    task_id: str,
+    status: str,
+    title: str | None = None,
+    description: str | None = None,
+    due_at: str | None = None,
+    path: str | Path | None = None,
+) -> dict[str, object]:
+    if status not in TASK_STATUSES:
+        raise MailDatabaseError('invalid mail task status')
+    connection = _connect(path)
+    try:
+        row = connection.execute('SELECT * FROM mail_tasks WHERE id = ?', (task_id,)).fetchone()
+        if row is None:
+            raise MailDatabaseError('mail task not found')
+        next_title = str(title).strip() if isinstance(title, str) and title.strip() else str(row['title'])
+        next_description = str(description).strip() if isinstance(description, str) else str(row['description'] or '')
+        next_due_at = str(due_at).strip() if isinstance(due_at, str) and due_at.strip() else row['due_at']
+        completed_at = now_iso() if status == 'done' else None
+        connection.execute(
+            """
+            UPDATE mail_tasks
+               SET title = ?, description = ?, due_at = ?, status = ?,
+                   updated_at = ?, completed_at = ?
+             WHERE id = ?
+            """,
+            (next_title, next_description, next_due_at, status, now_iso(), completed_at, task_id),
+        )
+        connection.commit()
+        updated = _task_query(connection, task_id=task_id)
+        if not updated:
+            raise MailDatabaseError('mail task could not be updated')
+        return _task_payload(updated[0])
+    except MailDatabaseError:
+        connection.rollback()
+        raise
+    except sqlite3.Error as exc:
+        connection.rollback()
+        raise MailDatabaseError('mail task could not be updated') from exc
+    finally:
+        connection.close()
 
 
 def _analysis_query(connection: sqlite3.Connection, folder: str | None = None, mail_id: str | None = None) -> list[sqlite3.Row]:
@@ -455,6 +636,42 @@ def claim_analysis(mail_id: str, path: str | Path | None = None) -> bool:
         connection.close()
 
 
+def _upsert_action_task(
+    connection: sqlite3.Connection,
+    mail_id: str,
+    action: str | None,
+    due_at: str | None,
+    updated_at: str,
+) -> None:
+    task_id = f'mail-task:{mail_id}'
+    if action:
+        connection.execute(
+            """
+            INSERT INTO mail_tasks(
+                id, mail_id, title, description, due_at, status,
+                created_at, updated_at, completed_at
+            ) VALUES (?, ?, ?, '', ?, 'pending', ?, ?, NULL)
+            ON CONFLICT(id) DO UPDATE SET
+                title = excluded.title,
+                due_at = excluded.due_at,
+                updated_at = excluded.updated_at
+             WHERE mail_tasks.status IN ('pending', 'snoozed')
+            """,
+            (task_id, mail_id, action, due_at, updated_at, updated_at),
+        )
+    else:
+        # Keep done/dismissed history, but remove a stale open task if a
+        # re-analysis no longer finds an action.
+        connection.execute(
+            """
+            UPDATE mail_tasks
+               SET status = 'dismissed', updated_at = ?, completed_at = NULL
+             WHERE mail_id = ? AND status IN ('pending', 'snoozed')
+            """,
+            (updated_at, mail_id),
+        )
+
+
 def save_completed(
     mail_id: str,
     result: dict[str, object],
@@ -526,6 +743,14 @@ def save_completed(
             )
         else:
             connection.execute("DELETE FROM calendar_candidates WHERE mail_id = ? AND status = 'pending'", (mail_id,))
+        deadline_starts = sorted(
+            str(candidate.get('start')).strip()
+            for candidate in candidates
+            if isinstance(candidate, dict)
+            and candidate.get('type') == 'deadline'
+            and str(candidate.get('start') or '').strip()
+        )
+        _upsert_action_task(connection, mail_id, action, deadline_starts[0] if deadline_starts else None, analyzed_at)
         connection.commit()
     except sqlite3.Error as exc:
         connection.rollback()

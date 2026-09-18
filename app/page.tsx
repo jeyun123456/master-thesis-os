@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { LibraryPanel } from '@/app/library-panel';
 import { MailActionCandidates } from '@/app/mail-action-candidates';
 import { MailPanel } from '@/app/mail-panel';
+import { PlannerPanel } from '@/app/planner-panel';
 import { MicrosoftMailPanel } from '@/app/microsoft-mail-panel';
 import { ResearchPanel } from '@/app/research-panel';
 import { ResultsPanel as ResultsDashboardPanel } from '@/app/results-panel';
@@ -22,7 +23,7 @@ import { BRIDGE_OFFLINE_MESSAGE, BRIDGE_TIMEOUT_MESSAGE, bridgeResponseMessage }
 import { getEnabledShortcuts, getHomeShortcuts, loadShortcutState, shortcuts, type Shortcut } from '@/lib/shortcuts';
 import appPackage from '../package.json';
 
-type Page = 'home' | 'research' | 'results' | 'library' | 'slot' | 'shortcuts' | 'mail' | 'settings';
+type Page = 'home' | 'research' | 'results' | 'library' | 'slot' | 'shortcuts' | 'mail' | 'planner' | 'settings';
 
 const APP_VERSION = appPackage.version;
 
@@ -51,6 +52,7 @@ const pageMeta: Record<Page, [string, string]> = {
   slot: ['슬롯', '다음 연구 작업을 작은 보상 단위로 관리'],
   shortcuts: ['바로가기', '반복해서 여는 연구 파일 · 폴더 · 웹 주소'],
   mail: ['메일', '학교 업무 · 국제과를 폴더별로 확인'],
+  planner: ['플래너', '메일에서 나온 할 일과 일정 후보를 정리'],
   settings: ['설정', '연구 저장소 · Google Calendar · 학교 메일 · 로컬 브리지'],
 };
 
@@ -62,6 +64,7 @@ const navigation: Array<{ id: Page; label: string; icon: string }> = [
   { id: 'slot', label: '슬롯', icon: '◉' },
   { id: 'shortcuts', label: '바로가기', icon: '↗' },
   { id: 'mail', label: '메일', icon: '✉' },
+  { id: 'planner', label: '플래너', icon: '✓' },
   { id: 'settings', label: '설정', icon: '⚙' },
 ];
 
@@ -285,6 +288,7 @@ export default function Page() {
           onOpenFolder={openLocalFolder}
         /></section>}
         {page === 'mail' && <section className="page active"><MailPanel /></section>}
+        {page === 'planner' && <section className="page active"><PlannerPanel /></section>}
 
         {page === 'settings' && <section className="page active">
           <div className="grid2">

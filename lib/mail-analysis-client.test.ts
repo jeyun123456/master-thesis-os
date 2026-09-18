@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   getMailAnalysis,
+  getMailPlanning,
   getMailSyncStatus,
   startMailSync,
   updateMailCandidate,
+  updateMailTask,
 } from './mail-analysis-client';
 
 const sync = {
@@ -74,6 +76,20 @@ const item = {
   }],
 };
 
+const task = {
+  id: 'mail-task:mail-1',
+  mailId: 'mail-1',
+  folder: 'school-work',
+  title: '자료를 준비한다.',
+  description: '',
+  dueAt: '2099-09-20',
+  status: 'pending',
+  createdAt: '2026-09-18T01:00:00Z',
+  updatedAt: '2026-09-18T01:00:00Z',
+  completedAt: null,
+  mail: item.mail,
+};
+
 describe('local mail analysis bridge client', () => {
   it('reads sync status and stored analysis with the bridge header token', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
@@ -122,5 +138,24 @@ describe('local mail analysis bridge client', () => {
     expect(calls[0].url).toBe('http://127.0.0.1:38471/mail/sync');
     expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({ token: 'token-value' });
     expect(calls[1].url).toBe('http://127.0.0.1:38471/mail/analysis/candidate');
+  });
+
+  it('reads the planner aggregate and persists task status through SQLite', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchMock = async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init });
+      if (String(input).endsWith('/mail/task')) {
+        return new Response(JSON.stringify({ ok: true, source: 'sqlite', task: { ...task, status: 'done' } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: true, source: 'sqlite', tasks: [task], items: [item], sync }), { status: 200 });
+    };
+    const planning = await getMailPlanning('token-value', fetchMock);
+    expect(planning.tasks[0].title).toBe('자료를 준비한다.');
+    expect(planning.items[0].mail.id).toBe('mail-1');
+    const updated = await updateMailTask('token-value', { taskId: task.id, status: 'done' }, fetchMock);
+    expect(updated.status).toBe('done');
+    expect(calls[0].url).toBe('http://127.0.0.1:38471/mail/planning');
+    expect(calls[1].url).toBe('http://127.0.0.1:38471/mail/task');
+    expect(JSON.parse(String(calls[1].init?.body))).toMatchObject({ token: 'token-value', taskId: task.id, status: 'done' });
   });
 });
