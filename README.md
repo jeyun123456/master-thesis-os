@@ -69,9 +69,11 @@ GitHub·Google·AI provider 비밀값은 `.env.local` 또는 배포 플랫폼의
 | `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | Calendar 연결 시 | Service Account RS256 private key. Vercel에서는 `\n` escape를 허용 |
 | `GOOGLE_CALENDAR_IDS` | Calendar 연결 시 | 쉼표로 구분한 하나 이상의 Calendar ID. 읽기와 메일 후보 등록에 사용 |
 | `GOOGLE_CALENDAR_ID` | 임시 fallback | 기존 단일 Calendar ID. `GOOGLE_CALENDAR_IDS`가 우선 |
-| `MAIL_AI_API_URL` | AI 사용 시 | 로컬 `local-bridge/mail_cli.py`가 호출하는 OpenAI-compatible chat JSON endpoint |
-| `MAIL_AI_API_KEY` | AI 사용 시 | 로컬 CLI 전용 AI provider key. SQLite·브라우저에 저장하지 않음 |
-| `MAIL_AI_MODEL` | AI 사용 시 | 로컬 CLI provider가 지원하는 모델 이름 |
+| `MAIL_AI_PROVIDER` | AI 사용 시 | `codex-cli`이면 설치된 Codex CLI를 사용하고, 비워두면 OpenAI-compatible HTTP provider를 사용 |
+| `MAIL_AI_API_URL` | HTTP provider 사용 시 | 로컬 `local-bridge/mail_cli.py`가 호출하는 OpenAI-compatible chat JSON endpoint |
+| `MAIL_AI_API_KEY` | HTTP provider 사용 시 | 로컬 CLI 전용 AI provider key. SQLite·브라우저에 저장하지 않음 |
+| `MAIL_AI_MODEL` | AI 사용 시 | provider가 지원하는 모델 이름. Codex CLI 모드 기본값은 `gpt-5.6-luna` |
+| `MAIL_AI_CODEX_COMMAND` | Codex CLI 사용 시 선택 | `codex.exe`가 PATH에 없을 때 실행 파일 절대경로 |
 | `MAIL_ANALYSIS_DB_PATH` | 아니오 | SQLite 절대경로 override. 기본값 `local-bridge/data/mail-analysis.db` |
 | `NEXT_PUBLIC_LOCAL_BRIDGE_URL` | 아니오 | 기본값 `http://127.0.0.1:38471` |
 | `NEXT_PUBLIC_MICROSOFT_CLIENT_ID` | Microsoft 연결 시 | Entra SPA App Registration의 Application (client) ID. secret 아님 |
@@ -252,6 +254,25 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 ## 학교 메일 AI 분석
 
+Codex CLI를 Luna Max로 사용할 때는 먼저 Codex CLI 인증을 완료한다.
+
+```powershell
+codex login
+```
+
+그 다음 `.env.local`에 다음을 설정한다. 메일 CLI가 각 분석마다 `codex exec --model gpt-5.6-luna`를 실행하며 Codex CLI의 기존 인증을 사용한다. API key를 SQLite나 브라우저에 저장하지 않는다.
+
+```dotenv
+MAIL_AI_PROVIDER=codex-cli
+MAIL_AI_MODEL=gpt-5.6-luna
+```
+
+Codex CLI가 PATH에 없으면 다음 선택 설정을 추가한다.
+
+```dotenv
+MAIL_AI_CODEX_COMMAND=C:/Users/<사용자>/AppData/Local/Programs/OpenAI/Codex/bin/codex.exe
+```
+
 LM Studio를 로컬 provider로 사용할 때는 모델을 먼저 로드하고 loopback API를 시작한다.
 
 ```powershell
@@ -259,9 +280,9 @@ lms load qwen/qwen3.5-9b --yes
 lms server start --port 1234 --bind 127.0.0.1
 ```
 
-그 다음 `.env.local`에 `MAIL_AI_API_URL=http://127.0.0.1:1234/v1/chat/completions`, `MAIL_AI_API_KEY=lm-studio-local`, `MAIL_AI_MODEL=qwen/qwen3.5-9b`를 설정한다. 로컬 Qwen 요청은 JSON-only 프롬프트와 CLI의 엄격한 결과 검증을 사용하며, 원격 provider는 JSON schema 응답을 요청한다. 분석 provider가 없거나 응답을 검증하지 못하면 해당 메일만 `failed`로 남고 자동 Calendar 등록은 하지 않는다.
+그 다음 `.env.local`에 `MAIL_AI_PROVIDER`를 비우고 `MAIL_AI_API_URL=http://127.0.0.1:1234/v1/chat/completions`, `MAIL_AI_API_KEY=lm-studio-local`, `MAIL_AI_MODEL=qwen/qwen3.5-9b`를 설정한다. 로컬 Qwen 요청은 JSON-only 프롬프트와 CLI의 엄격한 결과 검증을 사용하며, 원격 provider는 JSON schema 응답을 요청한다. 분석 provider가 없거나 응답을 검증하지 못하면 해당 메일만 `failed`로 남고 자동 Calendar 등록은 하지 않는다.
 
-메일 탭 상단에서 **메일 분석 동기화**를 눌러야 Thunderbird의 `학교 업무`·`국제과` 폴더를 읽는다. 흐름은 `Thunderbird → mail_cli.py sync → local-bridge/data/mail-analysis.db → Bridge API → 웹 UI`이며, PC가 꺼져 있던 동안의 미처리 메일도 다음 명시적 동기화에서 catch-up한다. DB에는 메일 metadata/body, AI 상태(`queued`·`processing`·`completed`·`failed`), 요약·action·모델·prompt version, Calendar 후보 상태를 저장한다. 기본 SQLite 경로는 `local-bridge/data/mail-analysis.db`이고 `MAIL_ANALYSIS_DB_PATH`로 바꿀 수 있다. `MAIL_AI_API_URL`, `MAIL_AI_API_KEY`, `MAIL_AI_MODEL`은 로컬 CLI 프로세스만 읽으며 API key는 DB나 브라우저에 저장하지 않는다.
+메일 탭 상단에서 **메일 분석 동기화**를 눌러야 Thunderbird의 `학교 업무`·`국제과` 폴더를 읽는다. 흐름은 `Thunderbird → mail_cli.py sync → local-bridge/data/mail-analysis.db → Bridge API → 웹 UI`이며, PC가 꺼져 있던 동안의 미처리 메일도 다음 명시적 동기화에서 catch-up한다. DB에는 메일 metadata/body, AI 상태(`queued`·`processing`·`completed`·`failed`), 요약·action·모델·prompt version, Calendar 후보 상태를 저장한다. 기본 SQLite 경로는 `local-bridge/data/mail-analysis.db`이고 `MAIL_ANALYSIS_DB_PATH`로 바꿀 수 있다. `MAIL_AI_PROVIDER`, `MAIL_AI_API_URL`, `MAIL_AI_API_KEY`, `MAIL_AI_MODEL`, `MAIL_AI_CODEX_COMMAND`는 로컬 CLI 프로세스만 읽으며 API key는 DB나 브라우저에 저장하지 않는다. Codex CLI 모드에서는 메일 내용이 선택한 Luna 모델로 전송되므로, Codex 로그인 계정의 데이터 정책을 확인해야 한다.
 
 로컬 CLI는 다음 명령을 제공한다.
 

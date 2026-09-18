@@ -127,6 +127,28 @@ class MailAnalysisPersistenceTests(unittest.TestCase):
         self.assertEqual(reopened['body'], 'persisted body')
         self.assertEqual(reopened['analysis_status'], 'queued')
 
+    def test_codex_cli_provider_uses_luna_model_and_reads_json_output(self):
+        provider = {
+            'summary': 'Codex Luna가 반환한 한국어 요약이다.',
+            'action': None,
+            'calendarCandidates': [],
+        }
+
+        def run_codex(command, **kwargs):
+            output_path = Path(command[command.index('--output-last-message') + 1])
+            output_path.write_text(mail_cli.json.dumps(provider, ensure_ascii=False), encoding='utf-8')
+            return mail_cli.subprocess.CompletedProcess(command, 0, '', '')
+
+        with patch.dict('os.environ', {'MAIL_AI_PROVIDER': 'codex-cli', 'MAIL_AI_MODEL': 'gpt-5.6-luna'}), \
+             patch('mail_cli._codex_executable', return_value='codex.exe'), \
+             patch('mail_cli.subprocess.run', side_effect=run_codex) as run:
+            result = mail_cli._request_provider({'subject': '테스트', 'body': '본문'})
+
+        self.assertEqual(result, provider)
+        command = run.call_args.args[0]
+        self.assertIn('gpt-5.6-luna', command)
+        self.assertIn('--ephemeral', command)
+
 
 if __name__ == '__main__':
     unittest.main()
