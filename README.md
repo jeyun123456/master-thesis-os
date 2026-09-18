@@ -252,6 +252,15 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 ## 학교 메일 AI 분석
 
+LM Studio를 로컬 provider로 사용할 때는 모델을 먼저 로드하고 loopback API를 시작한다.
+
+```powershell
+lms load qwen/qwen3.5-9b --yes
+lms server start --port 1234 --bind 127.0.0.1
+```
+
+그 다음 `.env.local`에 `MAIL_AI_API_URL=http://127.0.0.1:1234/v1/chat/completions`, `MAIL_AI_API_KEY=lm-studio-local`, `MAIL_AI_MODEL=qwen/qwen3.5-9b`를 설정한다. 로컬 Qwen 요청은 JSON-only 프롬프트와 CLI의 엄격한 결과 검증을 사용하며, 원격 provider는 JSON schema 응답을 요청한다. 분석 provider가 없거나 응답을 검증하지 못하면 해당 메일만 `failed`로 남고 자동 Calendar 등록은 하지 않는다.
+
 메일 탭 상단에서 **메일 분석 동기화**를 눌러야 Thunderbird의 `학교 업무`·`국제과` 폴더를 읽는다. 흐름은 `Thunderbird → mail_cli.py sync → local-bridge/data/mail-analysis.db → Bridge API → 웹 UI`이며, PC가 꺼져 있던 동안의 미처리 메일도 다음 명시적 동기화에서 catch-up한다. DB에는 메일 metadata/body, AI 상태(`queued`·`processing`·`completed`·`failed`), 요약·action·모델·prompt version, Calendar 후보 상태를 저장한다. 기본 SQLite 경로는 `local-bridge/data/mail-analysis.db`이고 `MAIL_ANALYSIS_DB_PATH`로 바꿀 수 있다. `MAIL_AI_API_URL`, `MAIL_AI_API_KEY`, `MAIL_AI_MODEL`은 로컬 CLI 프로세스만 읽으며 API key는 DB나 브라우저에 저장하지 않는다.
 
 로컬 CLI는 다음 명령을 제공한다.

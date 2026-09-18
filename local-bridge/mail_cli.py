@@ -15,7 +15,6 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import mail_db
 from bridge_config import load_bridge_config, resolve_config_path
 from thunderbird_mail import (
-    MAX_MAIL_BODY_CHARS,
     MAX_MAIL_LIMIT,
     ThunderbirdMailError,
     ThunderbirdSettings,
@@ -25,8 +24,9 @@ from thunderbird_mail import (
 
 
 PROMPT_VERSION = 'mail-analysis-local-v1'
-PROVIDER_TIMEOUT_SECONDS = 30
+PROVIDER_TIMEOUT_SECONDS = 60
 MAX_CANDIDATES = 8
+MAX_ANALYSIS_BODY_CHARS = 8_000
 try:
     SEOUL = ZoneInfo('Asia/Seoul')
 except ZoneInfoNotFoundError:
@@ -108,6 +108,40 @@ Return JSON only, with exactly this shape:
 Only include calendar candidates that a user would plausibly add: an actual attendance event, meeting, class, presentation, interview, appointment, or submission deadline. Do not turn every mentioned date into an event. Exclude the email date, dates used only as background/reference, dates in the past, and dates that are uncertain enough to require invention. Use Asia/Seoul when a time zone is needed. If the end is unknown, use null. Do not invent an action or calendar candidate when the email does not support it."""
 
 
+STRUCTURED_RESPONSE_FORMAT = {
+    'type': 'json_schema',
+    'json_schema': {
+        'name': 'mail_analysis',
+        'strict': True,
+        'schema': {
+            'type': 'object',
+            'additionalProperties': False,
+            'properties': {
+                'summary': {'type': 'string'},
+                'action': {'type': ['string', 'null']},
+                'calendarCandidates': {
+                    'type': 'array',
+                    'items': {
+                        'type': 'object',
+                        'additionalProperties': False,
+                        'properties': {
+                            'title': {'type': 'string'},
+                            'start': {'type': 'string'},
+                            'end': {'type': ['string', 'null']},
+                            'allDay': {'type': 'boolean'},
+                            'type': {'type': 'string', 'enum': ['event', 'deadline']},
+                            'reason': {'type': 'string'},
+                        },
+                        'required': ['title', 'start', 'end', 'allDay', 'type', 'reason'],
+                    },
+                },
+            },
+            'required': ['summary', 'action', 'calendarCandidates'],
+        },
+    },
+}
+
+
 def _parse_json_text(value: str) -> object | None:
     trimmed = value.strip()
     if not trimmed:
@@ -151,6 +185,24 @@ def _provider_url(value: str) -> str:
     return value
 
 
+def _response_format(api_url: str) -> dict[str, object]:
+    # LM Studio's Qwen runtime can spend excessive time in constrained
+    # decoding. The prompt still requires JSON and normalize_analysis applies
+    # the same strict shape/date validation after the response is received.
+    if re.match(r'^https?://(?:127\.0\.0\.1|localhost)(?::\d+)?(?:/|$)', api_url, flags=re.IGNORECASE):
+        return {'type': 'text'}
+    return STRUCTURED_RESPONSE_FORMAT
+
+
+def _analysis_body(value: object) -> str:
+    body = _text(value)
+    if len(body) <= MAX_ANALYSIS_BODY_CHARS:
+        return body
+    head = MAX_ANALYSIS_BODY_CHARS * 3 // 4
+    tail = MAX_ANALYSIS_BODY_CHARS - head
+    return f'{body[:head]}\n\n[본문 중간 생략]\n\n{body[-tail:]}'
+
+
 def _request_provider(mail: dict[str, object]) -> object:
     api_url, api_key, model = _provider_config()
     if not api_url or not api_key or not model:
@@ -158,7 +210,11 @@ def _request_provider(mail: dict[str, object]) -> object:
     payload = {
         'model': model,
         'temperature': 0,
-        'response_format': {'type': 'json_object'},
+        'max_tokens': 512,
+        # Qwen reasoning models can spend the whole request budget on hidden
+        # reasoning. Mail extraction needs a concise structured response.
+        'reasoning_effort': 'none',
+        'response_format': _response_format(api_url),
         'messages': [
             {'role': 'system', 'content': SYSTEM_PROMPT},
             {
@@ -168,7 +224,7 @@ def _request_provider(mail: dict[str, object]) -> object:
                     'senderName': _text(mail.get('sender_name')),
                     'senderAddress': _text(mail.get('sender_email')),
                     'receivedAt': _text(mail.get('received_at')),
-                    'body': _text(mail.get('body'))[:MAX_MAIL_BODY_CHARS],
+                    'body': _analysis_body(mail.get('body')),
                 }, ensure_ascii=False),
             },
         ],
