@@ -177,7 +177,7 @@ export function calendarEventIdForCandidate(mailId: string, candidateId: string)
 }
 
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
-const DATE_TIME_WITHOUT_ZONE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/;
+const DATE_TIME_RE = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::(\d{2}(?:\.\d{1,3})?))?(Z|[+-]\d{2}:\d{2})?$/;
 
 function dateOnlyIsValid(value: string): boolean {
   if (!DATE_ONLY_RE.test(value)) return false;
@@ -187,7 +187,9 @@ function dateOnlyIsValid(value: string): boolean {
 }
 
 function dateTimeValue(value: string): string {
-  return DATE_TIME_WITHOUT_ZONE_RE.test(value) ? `${value}+09:00` : value;
+  const match = value.match(DATE_TIME_RE);
+  if (!match) return value;
+  return `${match[1]}:${match[2] || '00'}${match[3] || '+09:00'}`;
 }
 
 function dateTimeIsValid(value: string): boolean {

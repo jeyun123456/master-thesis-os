@@ -176,6 +176,25 @@ describe('service account Calendar requests', () => {
     expect(payload.extendedProperties).toMatchObject({ private: { masterThesisOsMailId: 'mail-1', masterThesisOsCandidateId: 'mail-calendar:abcd1234' } });
   });
 
+  it('normalizes minute-only timed candidates to RFC3339 seconds', async () => {
+    const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === TOKEN_ENDPOINT) return new Response(JSON.stringify({ access_token: 'token', expires_in: 3600 }), { status: 200 });
+      const payload = JSON.parse(String(init?.body)) as { start: { dateTime: string }; end: { dateTime: string } };
+      return new Response(JSON.stringify({
+        id: 'timed-event',
+        summary: '면담',
+        start: payload.start,
+        end: payload.end,
+      }), { status: 200 });
+    }) as typeof fetch;
+    const result = await createCalendarEvent({
+      mailId: 'mail-timed', candidateId: 'candidate-timed', title: '면담', start: '2026-09-20T14:00+09:00', end: null, allDay: false,
+    }, { fetchImpl: fetcher, now: baseNow });
+    expect(result.created).toBe(true);
+    expect(result.event?.start).toBe('2026-09-20T14:00:00+09:00');
+    expect(result.event?.end).toBe('2026-09-20T06:00:00.000Z');
+  });
+
   it('treats a deterministic event ID conflict as an already-added event', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const event = { id: calendarEventIdForCandidate('mail-2', 'candidate-2'), summary: '면담', start: { dateTime: '2026-09-20T14:00:00+09:00' }, end: { dateTime: '2026-09-20T15:00:00+09:00' } };
