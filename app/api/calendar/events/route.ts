@@ -31,10 +31,12 @@ function createInput(value: unknown): CalendarCreateInput | null {
 }
 
 function calendarWriteErrorMessage(errorCode: string): string {
+  if (errorCode === 'insufficient_permissions') return 'Google Calendar API가 일정 등록 권한을 거부했어. Service Account와 Calendar ID가 실제 공유 대상과 같은지 확인해줘.';
   if (errorCode === 'auth_error') return 'Google Calendar 등록 권한이 없어. Calendar 공유 설정에서 Service Account에 “Make changes to events” 권한을 부여해줘.';
   if (errorCode === 'invalid_calendar') return 'Calendar ID가 잘못됐거나 Service Account에 해당 Calendar가 공유되지 않았어.';
   if (errorCode === 'quota_error') return 'Google Calendar API quota 또는 rate limit을 확인해줘.';
   if (errorCode === 'malformed_response') return 'Google Calendar 응답 형식을 확인할 수 없어.';
+  if (errorCode === 'conflict') return '같은 Calendar event가 이미 존재해.';
   return 'Google Calendar 연결을 확인해줘.';
 }
 
@@ -70,6 +72,12 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const errorCode = error instanceof CalendarIntegrationError ? error.code : 'network_error';
     const status = errorCode === 'invalid_request' ? 400 : 502;
+    console.error('[calendar] POST /api/calendar/events failed', JSON.stringify({
+      errorCode,
+      httpStatus: error instanceof CalendarIntegrationError ? error.httpStatus || null : null,
+      providerReason: error instanceof CalendarIntegrationError ? error.providerReason || null : null,
+      providerMessage: error instanceof CalendarIntegrationError ? error.providerMessage || null : null,
+    }));
     return NextResponse.json({ ok: false, errorCode, error: error instanceof CalendarIntegrationError ? calendarWriteErrorMessage(errorCode) : 'Google Calendar 연결을 확인해줘.' }, { status });
   }
 }

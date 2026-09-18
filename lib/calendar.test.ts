@@ -253,6 +253,13 @@ describe('service account Calendar requests', () => {
     await expect(getCalendarEvents(14, { fetchImpl: malformed, now: baseNow, bypassCache: true })).rejects.toMatchObject({ code: 'malformed_response' });
     const auth = mockGoogle({ primary: { status: 403, body: { error: 'permission denied' } } });
     await expect(getCalendarEvents(14, { fetchImpl: auth, now: baseNow, bypassCache: true })).rejects.toMatchObject({ code: 'auth_error' });
+    clearCalendarCacheForTests();
+    const insufficient = mockGoogle({ primary: { status: 403, body: { error: { message: 'Insufficient Permission', errors: [{ reason: 'insufficientPermissions' }] } } } });
+    await expect(getCalendarEvents(14, { fetchImpl: insufficient, now: baseNow, bypassCache: true })).rejects.toMatchObject({
+      code: 'insufficient_permissions',
+      httpStatus: 403,
+      providerReason: 'insufficientPermissions',
+    });
     const quota = mockGoogle({ primary: { status: 403, body: { error: { errors: [{ reason: 'quotaExceeded' }] } } } });
     await expect(getCalendarEvents(14, { fetchImpl: quota, now: baseNow, bypassCache: true })).rejects.toMatchObject({ code: 'quota_error' });
     clearCalendarCacheForTests();

@@ -9,7 +9,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const TOKEN_CACHE_SKEW_MS = 60 * 1000;
 
 export type CalendarCategory = 'Meeting' | 'Deadline' | 'Research' | 'Presentation' | 'Other';
-export type CalendarErrorCode = 'auth_error' | 'quota_error' | 'network_error' | 'malformed_response' | 'invalid_calendar' | 'invalid_request';
+export type CalendarErrorCode = 'auth_error' | 'insufficient_permissions' | 'quota_error' | 'network_error' | 'malformed_response' | 'invalid_calendar' | 'conflict' | 'invalid_request';
 export type CalendarEvent = {
   id: string;
   title: string;
@@ -62,9 +62,20 @@ const cache = new Map<string, CacheEntry>();
 let accessTokenCache: AccessTokenEntry | null = null;
 
 export class CalendarIntegrationError extends Error {
-  constructor(public readonly code: CalendarErrorCode, message: string) {
+  readonly httpStatus?: number;
+  readonly providerReason?: string;
+  readonly providerMessage?: string;
+
+  constructor(
+    public readonly code: CalendarErrorCode,
+    message: string,
+    details?: { httpStatus?: number; providerReason?: string; providerMessage?: string },
+  ) {
     super(message);
     this.name = 'CalendarIntegrationError';
+    this.httpStatus = details?.httpStatus;
+    this.providerReason = details?.providerReason;
+    this.providerMessage = details?.providerMessage;
   }
 }
 
@@ -274,6 +285,78 @@ async function responseJson(response: Response): Promise<unknown> {
   }
 }
 
+type ProviderErrorDetails = {
+  providerReason?: string;
+  providerMessage?: string;
+  providerBody: string;
+};
+
+function providerErrorDetails(body: unknown): ProviderErrorDetails {
+  const root = body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : {};
+  const error = root.error && typeof root.error === 'object' && !Array.isArray(root.error)
+    ? root.error as Record<string, unknown>
+    : {};
+  const errors = Array.isArray(error.errors) ? error.errors : [];
+  const firstError = errors.find((item) => item && typeof item === 'object') as Record<string, unknown> | undefined;
+  const providerReason = typeof firstError?.reason === 'string'
+    ? firstError.reason
+    : typeof error.reason === 'string'
+      ? error.reason
+      : undefined;
+  const providerMessage = typeof error.message === 'string'
+    ? error.message
+    : typeof body === 'string'
+      ? body
+      : undefined;
+  let providerBody = '{}';
+  try {
+    providerBody = JSON.stringify(body, (key, value) =>
+      /token|secret|private.?key|assertion|authorization/i.test(key) ? '[redacted]' : value,
+    ).slice(0, 2000);
+  } catch {
+    providerBody = '[unserializable provider response]';
+  }
+  return { providerReason, providerMessage, providerBody };
+}
+
+function providerFailure(
+  operation: string,
+  status: number,
+  body: unknown,
+  value: CalendarConfig,
+  calendarId?: string,
+): CalendarIntegrationError {
+  const details = providerErrorDetails(body);
+  const code = calendarErrorCode(status, body);
+  console.error('[calendar] Google API failure', JSON.stringify({
+    operation,
+    status,
+    code,
+    serviceAccountEmail: value.serviceAccountEmail || '<missing>',
+    calendarId: calendarId || null,
+    scope: CALENDAR_SCOPE,
+    providerReason: details.providerReason || null,
+    providerMessage: details.providerMessage || null,
+    providerBody: details.providerBody,
+  }));
+  return new CalendarIntegrationError(code, 'Google Calendar request failed.', {
+    httpStatus: status,
+    providerReason: details.providerReason,
+    providerMessage: details.providerMessage,
+  });
+}
+
+function logRuntimeConfig(operation: string, value: CalendarConfig, calendarId?: string): void {
+  console.info('[calendar] runtime config', JSON.stringify({
+    operation,
+    serviceAccountEmail: value.serviceAccountEmail || '<missing>',
+    calendarId: calendarId || null,
+    calendarIds: value.calendarIds,
+    hasPrivateKey: Boolean(value.privateKey),
+    scope: CALENDAR_SCOPE,
+  }));
+}
+
 function tokenErrorCode(status: number): CalendarErrorCode {
   if (status === 429) return 'quota_error';
   if (status === 400 || status === 401 || status === 403) return 'auth_error';
@@ -282,9 +365,11 @@ function tokenErrorCode(status: number): CalendarErrorCode {
 
 function calendarErrorCode(status: number, body: unknown): CalendarErrorCode {
   if (status === 404) return 'invalid_calendar';
+  if (status === 409) return 'conflict';
   if (status === 429) return 'quota_error';
   const serialized = JSON.stringify(body);
   if (status === 403 && /quotaExceeded|rateLimitExceeded|userRateLimitExceeded/.test(serialized)) return 'quota_error';
+  if (status === 403 && /insufficientPermissions|insufficient permissions/i.test(serialized)) return 'insufficient_permissions';
   if (status === 400 || status === 401 || status === 403) return 'auth_error';
   return 'network_error';
 }
@@ -294,6 +379,7 @@ async function accessToken(fetchImpl: FetchLike, now: Date): Promise<string> {
   if (!value.serviceAccountEmail || !value.privateKey || !value.calendarIds.length) {
     throw new CalendarIntegrationError('auth_error', 'Google Calendar service account is not configured.');
   }
+  logRuntimeConfig('oauth-token', value);
 
   const nowMs = now.getTime();
   if (accessTokenCache && accessTokenCache.expiresAt - TOKEN_CACHE_SKEW_MS > nowMs) {
@@ -318,7 +404,12 @@ async function accessToken(fetchImpl: FetchLike, now: Date): Promise<string> {
 
   const data = await responseJson(response);
   if (!response.ok) {
-    throw new CalendarIntegrationError(tokenErrorCode(response.status), 'Google service account token request failed.');
+    const failure = providerFailure('oauth-token', response.status, data, value);
+    throw new CalendarIntegrationError(tokenErrorCode(response.status), failure.message, {
+      httpStatus: response.status,
+      providerReason: failure.providerReason,
+      providerMessage: failure.providerMessage,
+    });
   }
   const token = typeof data === 'object' && data && 'access_token' in data ? stringValue(data.access_token) : '';
   if (!token) {
@@ -368,7 +459,7 @@ async function fetchCalendarEvents(
 
   const data = await responseJson(response);
   if (!response.ok) {
-    throw new CalendarIntegrationError(calendarErrorCode(response.status, data), 'Google Calendar request failed.');
+    throw providerFailure('events.list', response.status, data, config(), calendarId);
   }
   if (!data || typeof data !== 'object' || !('items' in data) || !Array.isArray(data.items)) {
     throw new CalendarIntegrationError('malformed_response', 'Google Calendar response did not contain an event list.');
@@ -392,7 +483,7 @@ async function fetchCalendarEventById(
     throw new CalendarIntegrationError('network_error', 'Google Calendar request could not be reached.');
   }
   const data = await responseJson(response);
-  if (!response.ok) throw new CalendarIntegrationError(calendarErrorCode(response.status, data), 'Google Calendar request failed.');
+  if (!response.ok) throw providerFailure('events.get', response.status, data, config(), calendarId);
   return normalizeCalendarEvent(data as GoogleEvent, calendarId);
 }
 
@@ -408,6 +499,7 @@ export async function createCalendarEvent(
   const fetchImpl = options.fetchImpl || fetch;
   const now = options.now || new Date();
   const calendarId = value.calendarIds[0];
+  logRuntimeConfig('events.insert', value, calendarId);
   const token = await accessToken(fetchImpl, now);
   let response: Response;
   try {
@@ -438,11 +530,23 @@ export async function createCalendarEvent(
 
   const data = await responseJson(response);
   if (response.status === 409) {
+    const details = providerErrorDetails(data);
+    console.warn('[calendar] events.insert conflict; checking deterministic event', JSON.stringify({
+      operation: 'events.insert',
+      status: response.status,
+      code: 'conflict',
+      serviceAccountEmail: value.serviceAccountEmail,
+      calendarId,
+      scope: CALENDAR_SCOPE,
+      providerReason: details.providerReason || null,
+      providerMessage: details.providerMessage || null,
+      providerBody: details.providerBody,
+    }));
     const event = await fetchCalendarEventById(calendarId, normalized.eventId, token, fetchImpl);
     cache.clear();
     return { created: false, eventId: normalized.eventId, calendarId, event };
   }
-  if (!response.ok) throw new CalendarIntegrationError(calendarErrorCode(response.status, data), 'Google Calendar request failed.');
+  if (!response.ok) throw providerFailure('events.insert', response.status, data, value, calendarId);
   const event = normalizeCalendarEvent(data as GoogleEvent, calendarId);
   cache.clear();
   return { created: true, eventId: normalized.eventId, calendarId, event };
