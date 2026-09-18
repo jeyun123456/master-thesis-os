@@ -6,6 +6,7 @@ describe('GitHub tree loading', () => {
     vi.resetModules();
     vi.stubEnv('GITHUB_OWNER', 'owner');
     vi.stubEnv('GITHUB_REPO', 'private-repo');
+    vi.stubEnv('GITHUB_REPOSITORY', '');
     vi.stubEnv('GITHUB_BRANCH', 'master');
     vi.stubEnv('GITHUB_TOKEN', 'test-read-token');
   });
