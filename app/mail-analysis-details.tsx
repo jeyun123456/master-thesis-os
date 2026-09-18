@@ -34,7 +34,7 @@ export function MailAnalysisDetails({ record, candidates = [], onRetry, onAddCan
     <div className="mail-analysis-heading"><b>AI 요약</b>{record.model && <small>{record.model}</small>}</div>
     <p className="mail-analysis-summary">{record.summary || '요약이 비어 있어. AI 재분석을 시도해줘.'}</p>
     {record.action && <div className="mail-analysis-action"><b>해야 할 일</b><p>{record.action}</p></div>}
-    <div className="mail-analysis-heading mail-analysis-calendar-heading"><b>일정 후보</b><small>확인 후 Calendar에 추가</small></div>
+    <div className="mail-analysis-heading mail-analysis-calendar-heading"><b>일정 후보</b><small>확인 후 Google Calendar에 추가</small></div>
     {candidates.length ? <div className="mail-analysis-candidates">{candidates.map((candidate) => <CalendarCandidateCard
       candidate={candidate}
       key={candidate.id}
@@ -109,7 +109,7 @@ function CalendarCandidateCard({
 
   const statusLabel = candidateStatusLabel(candidate.status);
   return <article className={`mail-analysis-candidate ${candidate.status}`}>
-    <div className="mail-analysis-candidate-top"><div><span className={`mail-analysis-type ${candidate.type}`}>{candidate.type === 'deadline' ? 'deadline' : 'event'}</span><b>{candidate.title}</b></div><span className="mail-analysis-candidate-status">{statusLabel}</span></div>
+    <div className="mail-analysis-candidate-top"><div><span className={`mail-analysis-type ${candidate.type}`}>{candidate.type === 'deadline' ? '마감' : '일정'}</span><b>{candidate.title}</b></div><span className="mail-analysis-candidate-status">{statusLabel}</span></div>
     <small className="mail-analysis-reason">{candidate.reason}</small>
     {candidate.status === 'pending' && <div className="mail-analysis-form">
       <label>제목<input onChange={(event) => setTitle(event.target.value)} value={title} /></label>

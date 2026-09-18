@@ -272,7 +272,7 @@ python local-bridge/mail_cli.py analyze --new
 python local-bridge/mail_cli.py reanalyze <mail-id>
 ```
 
-AI provider에는 JSON structured output을 요구한다. 응답이 잘못되거나 provider가 설정되지 않으면 해당 메일만 `failed`로 저장하고 재분석할 수 있으며, 임의 Calendar 후보는 만들지 않는다. 브라우저는 AI API를 직접 호출하지 않는다. 기존 `master-thesis-os:mail-analysis` localStorage 분석 데이터는 새 SQLite로 자동 migration하지 않고 읽지 않는다.
+AI provider에는 JSON structured output을 요구한다. `summary`, `action`, 일정 후보의 제목·사유는 한국어로 생성하고, 날짜·시간은 Calendar 호환 ISO 형식으로 유지한다. 응답이 잘못되거나 provider가 설정되지 않으면 해당 메일만 `failed`로 저장하고 재분석할 수 있으며, 임의 Calendar 후보는 만들지 않는다. 브라우저는 AI API를 직접 호출하지 않는다. 기존 `master-thesis-os:mail-analysis` localStorage 분석 데이터는 새 SQLite로 자동 migration하지 않고 읽지 않는다.
 
 Calendar 후보는 사용자가 제목·날짜·시간을 확인·수정한 뒤 **캘린더 추가**를 눌러야 `POST /api/calendar/events`가 실행된다. 메일 ID와 candidate ID에서 만든 결정적 Google event ID, private extended property, SQLite의 `added` 상태를 함께 사용하므로 재시도·앱 재시작 시 중복 등록을 피한다. **무시**는 SQLite에 `ignored`로 저장한다.
 
