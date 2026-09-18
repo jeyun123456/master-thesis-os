@@ -1,16 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
-  getRecentThunderbirdMail,
   openThunderbird,
   openThunderbirdMessage,
   thunderbirdMailErrorMessage,
   ThunderbirdMailError,
   type ThunderbirdMail,
   type ThunderbirdMailErrorCode,
-  type ThunderbirdFolderId,
+  type ThunderbirdAnalysisFolderId,
 } from '../lib/thunderbird-mail';
+import { getMailAnalysis, MailAnalysisClientError, readBridgeToken } from '../lib/mail-analysis-client';
 import {
   mailPriorityLabel,
   prioritizeMails,
@@ -20,12 +20,11 @@ import {
 
 type SchoolMailPanelVariant = 'home' | 'settings';
 type SchoolMailStatus = 'loading' | 'ready' | 'empty' | 'bridge_offline' | 'thunderbird_not_found' | 'sync_required' | 'error';
-export const SCHOOL_MAIL_HOME_FOLDER: ThunderbirdFolderId = 'school-work';
+export const SCHOOL_MAIL_HOME_FOLDER: ThunderbirdAnalysisFolderId = 'school-work';
 
-export function SchoolMailPanel({ variant, folder = SCHOOL_MAIL_HOME_FOLDER }: { variant: SchoolMailPanelVariant; folder?: ThunderbirdFolderId }) {
+export function SchoolMailPanel({ variant, folder = SCHOOL_MAIL_HOME_FOLDER }: { variant: SchoolMailPanelVariant; folder?: ThunderbirdAnalysisFolderId }) {
   const [status, setStatus] = useState<SchoolMailStatus>('loading');
   const [errorCode, setErrorCode] = useState<ThunderbirdMailErrorCode | null>(null);
-  const [account, setAccount] = useState('');
   const [items, setItems] = useState<PrioritizedMail[]>([]);
   const [openState, setOpenState] = useState<'idle' | 'opening' | 'opened'>('idle');
   const [openingMailId, setOpeningMailId] = useState<string | null>(null);
@@ -36,14 +35,12 @@ export function SchoolMailPanel({ variant, folder = SCHOOL_MAIL_HOME_FOLDER }: {
     setErrorCode(null);
     setItems([]);
     try {
-      const result = await getRecentThunderbirdMail(readBridgeToken(), fetch, 20, folder);
-      const prioritizedItems = prioritizeMails(result.items);
-      setAccount(result.account);
+      const result = await getMailAnalysis(readBridgeToken(), { folder, limit: 20 });
+      const prioritizedItems = prioritizeMails(result.items.map((item) => item.mail));
       setItems(prioritizedItems);
       setStatus(prioritizedItems.length ? 'ready' : 'empty');
     } catch (error) {
       const nextCode = readErrorCode(error);
-      setAccount('');
       setItems([]);
       setErrorCode(nextCode);
       setStatus(statusForError(nextCode));
@@ -88,9 +85,9 @@ export function SchoolMailPanel({ variant, folder = SCHOOL_MAIL_HOME_FOLDER }: {
 
   return <section className="card section microsoft-mail-card school-mail-card">
     <div className="head"><h3>학교 메일</h3><span>{schoolMailStatusLabel(status, errorCode)}</span></div>
-    <div className="muted"><small>{folder === 'school-work' ? '학교 업무' : folder === 'international-office' ? '국제과' : '받은 편지함'} · Thunderbird · 로컬 읽기 전용{account ? ` · ${account}` : ''}</small></div>
-    {variant === 'settings' && <div className="note">Thunderbird가 이 컴퓨터에 동기화한 학교 메일의 헤더만 Local Bridge로 읽어와. Microsoft Graph OAuth token과 Thunderbird 인증정보는 읽지 않아.<br />중요 메일 자동 선별: 켜짐<br />행동 후보 추출: 켜짐</div>}
-    {status === 'loading' && <div className="microsoft-mail-state">Thunderbird 로컬 메일을 확인하는 중이야…</div>}
+    <div className="muted"><small>{folder === 'school-work' ? '학교 업무' : '국제과'} · SQLite · Thunderbird 동기화 결과</small></div>
+    {variant === 'settings' && <div className="note">메일 탭의 <b>메일 분석 동기화</b> 버튼을 눌렀을 때만 Thunderbird의 학교 업무·국제과 폴더를 스캔해. 수집한 메일과 AI 분석 결과는 Local Bridge의 SQLite에 저장되고, 이 카드와 대시보드는 저장된 결과만 읽어. Microsoft Graph OAuth token·첨부파일은 읽지 않아.<br />중요 메일 자동 선별: 켜짐<br />행동 후보 추출: 규칙 + 로컬 CLI AI</div>}
+    {status === 'loading' && <div className="microsoft-mail-state">SQLite에 저장된 학교 메일을 확인하는 중이야…</div>}
     {(status === 'ready' || status === 'empty') && (items.length ? <div className="microsoft-mail-list">{items.map((item, index) => <SchoolMailRow item={item} isOpening={openingMailId === item.id} key={schoolMailRowKey(item, index)} onOpen={handleOpenMail} />)}</div> : <div className="empty compact-empty">최근 학교 메일이 없어.</div>)}
     {status !== 'loading' && status !== 'ready' && status !== 'empty' && <SchoolMailErrorState errorCode={errorCode} onRetry={() => void loadMail()} />}
     {openError && <div className="error school-mail-open-error">{thunderbirdMailErrorMessage(openError)}</div>}
@@ -101,7 +98,25 @@ export function SchoolMailPanel({ variant, folder = SCHOOL_MAIL_HOME_FOLDER }: {
   </section>;
 }
 
-export function SchoolMailRow({ item, isOpening = false, onOpen }: { item: PrioritizedMail; isOpening?: boolean; onOpen?: (item: PrioritizedMail) => void | Promise<void> }) {
+export type SchoolMailAnalysisState = 'queued' | 'processing' | 'completed' | 'failed';
+
+export function SchoolMailRow({
+  item,
+  isOpening = false,
+  onOpen,
+  analysisState,
+  analysisExpanded = false,
+  onToggleAnalysis,
+  analysisDetails,
+}: {
+  item: PrioritizedMail;
+  isOpening?: boolean;
+  onOpen?: (item: PrioritizedMail) => void | Promise<void>;
+  analysisState?: SchoolMailAnalysisState;
+  analysisExpanded?: boolean;
+  onToggleAnalysis?: () => void;
+  analysisDetails?: ReactNode;
+}) {
   const priorityLabel = mailPriorityLabel(item.priority);
   const content = <>
     <span className={`microsoft-mail-dot${item.isRead ? '' : ' unread'}`} aria-label={item.isRead ? '읽음' : '미읽음'}>{schoolMailIndicator(item.isRead)}</span>
@@ -112,14 +127,21 @@ export function SchoolMailRow({ item, isOpening = false, onOpen }: { item: Prior
     </span>
     {onOpen && <span className="school-mail-open-hint" aria-hidden="true">{isOpening ? '여는 중…' : '열기'}</span>}
   </>;
-  if (!onOpen) return <div className={schoolMailRowClass(item.isRead, item.priority)}>{content}</div>;
-  return <button
+  const row = !onOpen ? <div className={schoolMailRowClass(item.isRead, item.priority)}>{content}</div> : <button
     aria-label={isOpening ? 'Thunderbird에서 메일을 여는 중' : `${item.subject} 메일 열기`}
     className={`${schoolMailRowClass(item.isRead, item.priority)} school-mail-row-button`}
     disabled={isOpening}
     onClick={() => { void onOpen(item); }}
     type="button"
   >{content}</button>;
+  if (!onToggleAnalysis) return row;
+  return <div className="school-mail-item">
+    {row}
+    <button className={`school-mail-analysis-toggle${analysisExpanded ? ' active' : ''}`} onClick={onToggleAnalysis} type="button">
+      {analysisExpanded ? 'AI 분석 닫기' : analysisState === 'queued' || analysisState === 'processing' ? 'AI 분석 대기…' : analysisState === 'failed' ? 'AI 다시 시도' : 'AI 분석 보기'}
+    </button>
+    {analysisExpanded && analysisDetails}
+  </div>;
 }
 
 function SchoolMailErrorState({ errorCode, onRetry }: { errorCode: ThunderbirdMailErrorCode | null; onRetry: () => void }) {
@@ -170,15 +192,11 @@ function statusForError(errorCode: ThunderbirdMailErrorCode): SchoolMailStatus {
 
 function readErrorCode(error: unknown): ThunderbirdMailErrorCode {
   if (error instanceof ThunderbirdMailError) return error.code;
-  return 'bridge_offline';
-}
-
-function readBridgeToken(): string {
-  try {
-    return localStorage.getItem('thesisBridgeToken') || '';
-  } catch {
-    return '';
+  if (error instanceof MailAnalysisClientError) {
+    if (error.code === 'bridge_auth') return 'bridge_auth';
+    return error.code === 'bridge_offline' ? 'bridge_offline' : 'parse_error';
   }
+  return 'bridge_offline';
 }
 
 function relativeMailDate(value: string): string {

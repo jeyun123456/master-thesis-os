@@ -7,6 +7,8 @@ import {
   calendarRange,
   classifyCalendarEvent,
   clearCalendarCacheForTests,
+  calendarEventIdForCandidate,
+  createCalendarEvent,
   createServiceAccountAssertion,
   getCalendarEvents,
   normalizeCalendarEvent,
@@ -93,7 +95,7 @@ describe('calendar configuration and JWT helpers', () => {
     expect(normalizePrivateKey('first\\nsecond')).toBe('first\nsecond');
   });
 
-  it('creates an RS256 JWT with the Calendar readonly claims', () => {
+  it('creates an RS256 JWT with the Calendar read/write claims', () => {
     const assertion = createServiceAccountAssertion('service@example.com', privateKeyPem, baseNow);
     const [encodedHeader, encodedClaim, encodedSignature] = assertion.split('.');
     const decode = (value: string) => JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as Record<string, unknown>;
@@ -128,6 +130,69 @@ describe('calendar normalization and ranges', () => {
 });
 
 describe('service account Calendar requests', () => {
+  it('rejects a date-only value for a timed candidate', async () => {
+    await expect(createCalendarEvent({
+      mailId: 'mail-date-only',
+      candidateId: 'candidate-date-only',
+      title: '날짜만 있는 후보',
+      start: '2026-09-20',
+      end: null,
+      allDay: false,
+    }, { fetchImpl: (async () => new Response()) as typeof fetch, now: baseNow })).rejects.toMatchObject({ code: 'invalid_request' });
+  });
+
+  it('inserts a reviewed all-day candidate with a deterministic event ID', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, init });
+      if (url === TOKEN_ENDPOINT) return new Response(JSON.stringify({ access_token: 'token', expires_in: 3600 }), { status: 200 });
+      const payload = JSON.parse(String(init?.body)) as { id: string; summary: string; start: { date: string }; end: { date: string }; extendedProperties: { private: Record<string, string> } };
+      return new Response(JSON.stringify({
+        id: payload.id,
+        summary: payload.summary,
+        start: payload.start,
+        end: payload.end,
+        extendedProperties: payload.extendedProperties,
+      }), { status: 200 });
+    }) as typeof fetch;
+    const result = await createCalendarEvent({
+      mailId: 'mail-1',
+      candidateId: 'mail-calendar:abcd1234',
+      title: '발표',
+      start: '2026-09-20',
+      end: null,
+      allDay: true,
+      type: 'event',
+      reason: '실제 참석 일정',
+    }, { fetchImpl: fetcher, now: baseNow });
+    expect(result.created).toBe(true);
+    expect(result.eventId).toBe(calendarEventIdForCandidate('mail-1', 'mail-calendar:abcd1234'));
+    const insert = calls.find((call) => call.init?.method === 'POST' && call.url.includes('/events?'));
+    const payload = JSON.parse(String(insert?.init?.body)) as Record<string, unknown>;
+    expect(payload.id).toBe(result.eventId);
+    expect(payload.start).toEqual({ date: '2026-09-20' });
+    expect(payload.end).toEqual({ date: '2026-09-21' });
+    expect(payload.extendedProperties).toMatchObject({ private: { masterThesisOsMailId: 'mail-1', masterThesisOsCandidateId: 'mail-calendar:abcd1234' } });
+  });
+
+  it('treats a deterministic event ID conflict as an already-added event', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const event = { id: calendarEventIdForCandidate('mail-2', 'candidate-2'), summary: '면담', start: { dateTime: '2026-09-20T14:00:00+09:00' }, end: { dateTime: '2026-09-20T15:00:00+09:00' } };
+    const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, init });
+      if (url === TOKEN_ENDPOINT) return new Response(JSON.stringify({ access_token: 'token', expires_in: 3600 }), { status: 200 });
+      if (init?.method === 'POST') return new Response(JSON.stringify({ error: 'already exists' }), { status: 409 });
+      return new Response(JSON.stringify(event), { status: 200 });
+    }) as typeof fetch;
+    const result = await createCalendarEvent({
+      mailId: 'mail-2', candidateId: 'candidate-2', title: '면담', start: '2026-09-20T14:00', end: '2026-09-20T15:00', allDay: false, type: 'event',
+    }, { fetchImpl: fetcher, now: baseNow });
+    expect(result).toMatchObject({ created: false, eventId: event.id, event: { title: '면담' } });
+    expect(calls.some((call) => call.url.includes(`/events/${event.id}`))).toBe(true);
+  });
+
   it('sends a JWT bearer request and returns an empty calendar', async () => {
     const fetcher = mockGoogle({ primary: { body: { items: [] } } });
     expect(await getCalendarEvents(14, { fetchImpl: fetcher, now: baseNow, bypassCache: true })).toEqual([]);

@@ -17,6 +17,8 @@ internal sealed class BridgeProcessManager : IDisposable
         "bridge_security.py",
         "shortcut_launcher.py",
         "thunderbird_mail.py",
+        "mail_db.py",
+        "mail_cli.py",
     ];
 
     private readonly HttpClient _httpClient = new()

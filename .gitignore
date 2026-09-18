@@ -14,3 +14,5 @@ __pycache__/
 /CLAUDE.md
 local-bridge/config.json
 local-bridge/__pycache__/
+local-bridge/data/
+*.db

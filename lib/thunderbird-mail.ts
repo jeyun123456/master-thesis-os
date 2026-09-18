@@ -9,6 +9,14 @@ export const THUNDERBIRD_FOLDER_LABELS: Record<ThunderbirdFolderId, string> = {
   inbox: '받은 편지함',
 };
 
+/** Folders included by the explicit SQLite mail-analysis synchronization. */
+export const THUNDERBIRD_ANALYSIS_FOLDER_IDS = ['school-work', 'international-office'] as const;
+export type ThunderbirdAnalysisFolderId = (typeof THUNDERBIRD_ANALYSIS_FOLDER_IDS)[number];
+export const THUNDERBIRD_ANALYSIS_FOLDER_LABELS: Record<ThunderbirdAnalysisFolderId, string> = {
+  'school-work': THUNDERBIRD_FOLDER_LABELS['school-work'],
+  'international-office': THUNDERBIRD_FOLDER_LABELS['international-office'],
+};
+
 export type ThunderbirdFolder = {
   id: ThunderbirdFolderId;
   label: string;
@@ -25,6 +33,10 @@ export type ThunderbirdMail = {
   messageId?: string;
 };
 
+export type ThunderbirdMailMessage = ThunderbirdMail & {
+  body: string;
+};
+
 export type ThunderbirdMailErrorCode =
   | 'bridge_offline'
   | 'bridge_auth'
@@ -35,6 +47,7 @@ export type ThunderbirdMailErrorCode =
   | 'folder_not_found'
   | 'local_sync_required'
   | 'unsupported_store'
+  | 'mail_not_found'
   | 'parse_error'
   | 'malformed_response';
 
@@ -59,6 +72,7 @@ const ERROR_MESSAGES: Record<ThunderbirdMailErrorCode, string> = {
   folder_not_found: 'Thunderbird 메일 폴더를 찾지 못했어.',
   local_sync_required: 'Thunderbird에서 이 계정의 메시지를 이 컴퓨터에 보관해줘.',
   unsupported_store: 'Thunderbird 로컬 메일 저장 방식을 아직 읽을 수 없어.',
+  mail_not_found: 'Thunderbird에서 해당 메일을 찾지 못했어. 새로고침 후 다시 시도해줘.',
   parse_error: 'Thunderbird 메일 헤더를 읽지 못했어.',
   malformed_response: 'Local Bridge 메일 응답 형식을 확인할 수 없어.',
 };
@@ -92,6 +106,7 @@ function readErrorCode(value: unknown, status: number): ThunderbirdMailErrorCode
   if (code === 'folder_not_found') return 'folder_not_found';
   if (code === 'local_sync_required') return 'local_sync_required';
   if (code === 'unsupported_store') return 'unsupported_store';
+  if (code === 'mail_not_found') return 'mail_not_found';
   if (code === 'parse_error') return 'parse_error';
   if (status === 404 || status === 408 || status >= 500) return 'bridge_offline';
   return 'malformed_response';
@@ -142,6 +157,22 @@ export function normalizeThunderbirdMailResponse(raw: unknown): { account: strin
   return { account: stringValue(raw.account), items };
 }
 
+export function normalizeThunderbirdMailMessageResponse(raw: unknown): { account: string; item: ThunderbirdMailMessage; folder: ThunderbirdFolderId } {
+  if (!isRecord(raw) || raw.ok !== true || raw.source !== 'thunderbird' || !isRecord(raw.item) || typeof raw.body !== 'string') {
+    throw new ThunderbirdMailError('malformed_response', errorMessage('malformed_response'));
+  }
+  const folderValue = stringValue(raw.folder);
+  const folder = folderValue ? (isThunderbirdFolderId(folderValue) ? folderValue : null) : 'inbox';
+  if (!folder) {
+    throw new ThunderbirdMailError('malformed_response', errorMessage('malformed_response'));
+  }
+  return {
+    account: stringValue(raw.account),
+    folder,
+    item: { ...normalizeThunderbirdMail(raw.item), body: raw.body },
+  };
+}
+
 export function normalizeThunderbirdFolderResponse(raw: unknown): { account: string; folders: ThunderbirdFolder[] } {
   if (!isRecord(raw) || raw.ok !== true || raw.source !== 'thunderbird' || !Array.isArray(raw.folders)) {
     throw new ThunderbirdMailError('malformed_response', errorMessage('malformed_response'));
@@ -187,7 +218,7 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 async function requestBridge(
-  endpoint: '/mail/recent' | '/mail/folders' | '/mail/open',
+  endpoint: '/mail/recent' | '/mail/folders' | '/mail/message' | '/mail/open',
   token: string,
   body: Record<string, unknown>,
   fetchImpl: typeof fetch,
@@ -229,6 +260,20 @@ export async function getThunderbirdFolders(
 ): Promise<{ account: string; folders: ThunderbirdFolder[] }> {
   const raw = await requestBridge('/mail/folders', token, {}, fetchImpl);
   return normalizeThunderbirdFolderResponse(raw);
+}
+
+export async function getThunderbirdMailMessage(
+  token: string,
+  mailId: string,
+  folder: ThunderbirdFolderId = 'inbox',
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ account: string; item: ThunderbirdMailMessage; folder: ThunderbirdFolderId }> {
+  const normalizedMailId = mailId.trim();
+  if (!normalizedMailId) {
+    throw new ThunderbirdMailError('malformed_response', errorMessage('malformed_response'));
+  }
+  const raw = await requestBridge('/mail/message', token, { mailId: normalizedMailId, folder }, fetchImpl);
+  return normalizeThunderbirdMailMessageResponse(raw);
 }
 
 export async function openThunderbird(

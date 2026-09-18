@@ -263,6 +263,10 @@ class BridgeConfigurationTests(unittest.TestCase):
         ).read_text(encoding='utf-8-sig')
         self.assertIn('"thunderbird_mail.py"', manager)
         self.assertIn("'thunderbird_mail.py'", publisher)
+        self.assertIn('"mail_db.py"', manager)
+        self.assertIn("'mail_db.py'", publisher)
+        self.assertIn('"mail_cli.py"', manager)
+        self.assertIn("'mail_cli.py'", publisher)
 
     def test_accepts_exact_production_and_explicit_local_origins(self):
         self.assertTrue(valid_origins({PRODUCTION_ORIGIN, 'http://localhost:3000', 'http://127.0.0.1:3001'}))

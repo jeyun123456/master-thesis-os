@@ -8,6 +8,7 @@ Product versions are tracked independently. See [`VERSIONING.md`](./VERSIONING.m
 
 - Added Local Bridge token copy/view and config-folder access to the Wallpaper Companion tray, with shared config-path migration and legacy local-config fallback.
 - Unified shared/override config precedence across the Companion and Bridge launchers and removed raw config parser details from tray errors.
+- Moved Thunderbird mail analysis from browser/API/localStorage catch-up to explicit two-folder synchronization through the local CLI and SQLite, while retaining reviewed Calendar candidate registration and deterministic deduplication.
 
 ## [1.3.0] - 2026-09-14
 

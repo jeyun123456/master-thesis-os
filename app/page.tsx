@@ -50,7 +50,7 @@ const pageMeta: Record<Page, [string, string]> = {
   library: ['자료실', '주요 자료 · 대표 문헌 · 연구 Wiki'],
   slot: ['슬롯', '다음 연구 작업을 작은 보상 단위로 관리'],
   shortcuts: ['바로가기', '반복해서 여는 연구 파일 · 폴더 · 웹 주소'],
-  mail: ['메일', '학교 업무 · 국제과 · 받은 편지함을 폴더별로 확인'],
+  mail: ['메일', '학교 업무 · 국제과를 폴더별로 확인'],
   settings: ['설정', '연구 저장소 · Google Calendar · 학교 메일 · 로컬 브리지'],
 };
 

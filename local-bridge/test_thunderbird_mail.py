@@ -15,6 +15,7 @@ from thunderbird_mail import (
     discover_folders,
     FOLDER_IDS,
     get_mail_folders,
+    get_mail_message,
     get_recent_mail,
     launch_thunderbird,
     normalize_folder_id,
@@ -250,6 +251,41 @@ class ThunderbirdMailTests(unittest.TestCase):
         _, items = get_recent_mail(self.settings())
         self.assertEqual(len(items), 2)
         self.assertEqual(len({item.id for item in items}), 2)
+
+    def test_reads_plain_text_body_by_existing_internal_mail_id_without_writing_profile(self):
+        self.fixture.write_mbox([{
+            'Subject': 'Body available',
+            'From': 'sender@example.edu',
+            'Date': 'Tue, 15 Sep 2026 01:10:00 +0000',
+            'Message-ID': '<body@example.edu>',
+        }])
+        _, items = get_recent_mail(self.settings())
+        account, message = get_mail_message(self.settings(), items[0].id)
+        self.assertEqual(account, 'sc***@example.edu')
+        self.assertEqual(message.item.id, items[0].id)
+        self.assertIn('Body is intentionally not returned.', message.body)
+        self.assertEqual(message.item.message_id, '<body@example.edu>')
+
+    def test_reads_html_body_but_skips_attachments(self):
+        mailbox = self.fixture.mail_root / 'Inbox'
+        mailbox.parent.mkdir(parents=True, exist_ok=True)
+        raw = (
+            b'From sender0@example.edu Tue Sep 15 01:10:00 2026\n'
+            b'Subject: HTML body\n'
+            b'From: sender@example.edu\n'
+            b'Date: Tue, 15 Sep 2026 01:10:00 +0000\n'
+            b'Message-ID: <html@example.edu>\n'
+            b'Content-Type: multipart/mixed; boundary="x"\n'
+            b'\n'
+            b'--x\nContent-Type: text/html; charset=utf-8\n\n<p>Keep this <b>text</b>.</p>\n'
+            b'--x\nContent-Type: application/octet-stream\nContent-Disposition: attachment; filename="secret.txt"\n\nDo not include this.\n'
+            b'--x--\n'
+        )
+        mailbox.write_bytes(raw)
+        _, items = get_recent_mail(self.settings())
+        _, message = get_mail_message(self.settings(), items[0].id)
+        self.assertIn('Keep this text.', message.body)
+        self.assertNotIn('Do not include this.', message.body)
 
     def test_limit_is_clamped_to_one_hundred(self):
         messages = []

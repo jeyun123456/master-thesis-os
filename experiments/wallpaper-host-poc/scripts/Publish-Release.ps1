@@ -17,6 +17,8 @@ $BridgeRuntimeFiles = @(
     'bridge_security.py',
     'shortcut_launcher.py',
     'thunderbird_mail.py',
+    'mail_db.py',
+    'mail_cli.py',
     'start_bridge.ps1'
 )
 

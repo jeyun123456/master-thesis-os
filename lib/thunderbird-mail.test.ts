@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   getRecentThunderbirdMail,
+  getThunderbirdMailMessage,
   getThunderbirdFolders,
   normalizeThunderbirdMail,
   normalizeThunderbirdFolderResponse,
@@ -77,6 +78,26 @@ describe('Thunderbird mail normalization', () => {
     expect(calls[0].url).toContain('/mail/recent');
     expect(String(calls[0].init?.body)).toContain('"folder":"school-work"');
     expect(String(calls[0].init?.body)).not.toContain('school.example');
+  });
+
+  it('reads a message body through the authenticated bridge using the existing internal id', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchMock = async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init });
+      return new Response(JSON.stringify({
+        ok: true,
+        source: 'thunderbird',
+        account: 'sc***@example.ac.jp',
+        folder: 'school-work',
+        item: newest,
+        body: '발표 일정 본문',
+      }), { status: 200 });
+    };
+    const result = await getThunderbirdMailMessage('bridge-secret-for-test', 'newest', 'school-work', fetchMock);
+    expect(result.item.body).toBe('발표 일정 본문');
+    expect(calls[0].url).toContain('/mail/message');
+    expect(String(calls[0].init?.body)).toContain('"mailId":"newest"');
+    expect(String(calls[0].init?.body)).toContain('"folder":"school-work"');
   });
 
   it('allows the list fetch to request at most one hundred messages', async () => {

@@ -1,7 +1,7 @@
-import { createSign } from 'node:crypto';
+import { createHash, createSign } from 'node:crypto';
 
 export const CALENDAR_TIMEZONE = 'Asia/Seoul';
-export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
+export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar';
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const CALENDAR_API_ROOT = 'https://www.googleapis.com/calendar/v3/calendars';
 const DEFAULT_DAYS = 14;
@@ -9,7 +9,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const TOKEN_CACHE_SKEW_MS = 60 * 1000;
 
 export type CalendarCategory = 'Meeting' | 'Deadline' | 'Research' | 'Presentation' | 'Other';
-export type CalendarErrorCode = 'auth_error' | 'quota_error' | 'network_error' | 'malformed_response' | 'invalid_calendar';
+export type CalendarErrorCode = 'auth_error' | 'quota_error' | 'network_error' | 'malformed_response' | 'invalid_calendar' | 'invalid_request';
 export type CalendarEvent = {
   id: string;
   title: string;
@@ -39,6 +39,24 @@ type CalendarOptions = { fetchImpl?: FetchLike; now?: Date; bypassCache?: boolea
 type CalendarConfig = { serviceAccountEmail: string; privateKey: string; calendarIds: string[] };
 type CacheEntry = { expiresAt: number; items: CalendarEvent[] };
 type AccessTokenEntry = { token: string; expiresAt: number };
+
+export type CalendarCreateInput = {
+  mailId: string;
+  candidateId: string;
+  title: string;
+  start: string;
+  end?: string | null;
+  allDay: boolean;
+  type?: 'event' | 'deadline';
+  reason?: string;
+};
+
+export type CalendarCreateResult = {
+  created: boolean;
+  eventId: string;
+  calendarId: string;
+  event?: CalendarEvent;
+};
 
 const cache = new Map<string, CacheEntry>();
 let accessTokenCache: AccessTokenEntry | null = null;
@@ -134,6 +152,93 @@ export function calendarRange(days = DEFAULT_DAYS, now = new Date()) {
 
 export function normalizePrivateKey(value: string): string {
   return value.replace(/\\n/g, '\n');
+}
+
+function validIdentifier(value: string): boolean {
+  return Boolean(value) && value.length <= 256 && !/[\u0000-\u001f\u007f\s]/.test(value);
+}
+
+export function calendarEventIdForCandidate(mailId: string, candidateId: string): string {
+  if (!validIdentifier(mailId) || !validIdentifier(candidateId)) {
+    throw new CalendarIntegrationError('invalid_request', 'Calendar candidate identifiers are invalid.');
+  }
+  return createHash('sha256').update(`${mailId}\u0000${candidateId}`, 'utf8').digest('hex');
+}
+
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_TIME_WITHOUT_ZONE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/;
+
+function dateOnlyIsValid(value: string): boolean {
+  if (!DATE_ONLY_RE.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function dateTimeValue(value: string): string {
+  return DATE_TIME_WITHOUT_ZONE_RE.test(value) ? `${value}+09:00` : value;
+}
+
+function dateTimeIsValid(value: string): boolean {
+  return !Number.isNaN(Date.parse(dateTimeValue(value)));
+}
+
+function addOneDay(value: string): string {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function addOneHour(value: string): string {
+  return new Date(Date.parse(dateTimeValue(value)) + 3_600_000).toISOString();
+}
+
+function normalizeCreateInput(input: CalendarCreateInput): {
+  eventId: string;
+  title: string;
+  start: { date: string } | { dateTime: string; timeZone: string };
+  end: { date: string } | { dateTime: string; timeZone: string };
+  description: string;
+} {
+  const mailId = typeof input.mailId === 'string' ? input.mailId.trim() : '';
+  const candidateId = typeof input.candidateId === 'string' ? input.candidateId.trim() : '';
+  const title = typeof input.title === 'string' ? input.title.trim() : '';
+  const startValue = typeof input.start === 'string' ? input.start.trim() : '';
+  const endValue = typeof input.end === 'string' ? input.end.trim() : '';
+  if (!validIdentifier(mailId) || !validIdentifier(candidateId) || !title || title.length > 500 || !startValue) {
+    throw new CalendarIntegrationError('invalid_request', 'Calendar event input is invalid.');
+  }
+
+  if (input.allDay) {
+    if (!dateOnlyIsValid(startValue)) throw new CalendarIntegrationError('invalid_request', 'Calendar all-day start date is invalid.');
+    const end = endValue || addOneDay(startValue);
+    if (!dateOnlyIsValid(end) || end <= startValue) {
+      throw new CalendarIntegrationError('invalid_request', 'Calendar all-day end date is invalid.');
+    }
+    return {
+      eventId: calendarEventIdForCandidate(mailId, candidateId),
+      title,
+      start: { date: startValue },
+      end: { date: end },
+      description: `${input.type === 'deadline' ? '메일에서 확인한 마감 후보' : '메일에서 확인한 일정 후보'}${input.reason ? `\n${input.reason.trim().slice(0, 500)}` : ''}`,
+    };
+  }
+
+  if (!startValue.includes('T') || !dateTimeIsValid(startValue)) {
+    throw new CalendarIntegrationError('invalid_request', 'Calendar start time is invalid.');
+  }
+  const start = dateTimeValue(startValue);
+  const end = endValue ? dateTimeValue(endValue) : addOneHour(startValue);
+  if ((endValue && !endValue.includes('T')) || !dateTimeIsValid(end) || Date.parse(end) <= Date.parse(start)) {
+    throw new CalendarIntegrationError('invalid_request', 'Calendar end time is invalid.');
+  }
+  return {
+    eventId: calendarEventIdForCandidate(mailId, candidateId),
+    title,
+    start: { dateTime: start, timeZone: CALENDAR_TIMEZONE },
+    end: { dateTime: end, timeZone: CALENDAR_TIMEZONE },
+    description: `${input.type === 'deadline' ? '메일에서 확인한 마감 후보' : '메일에서 확인한 일정 후보'}${input.reason ? `\n${input.reason.trim().slice(0, 500)}` : ''}`,
+  };
 }
 
 function base64Url(value: string | Record<string, unknown> | Buffer): string {
@@ -269,6 +374,78 @@ async function fetchCalendarEvents(
     throw new CalendarIntegrationError('malformed_response', 'Google Calendar response did not contain an event list.');
   }
   return data.items.map((item) => normalizeCalendarEvent(item as GoogleEvent, calendarId));
+}
+
+async function fetchCalendarEventById(
+  calendarId: string,
+  eventId: string,
+  token: string,
+  fetchImpl: FetchLike,
+): Promise<CalendarEvent> {
+  let response: Response;
+  try {
+    response = await fetchImpl(`${CALENDAR_API_ROOT}/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+  } catch {
+    throw new CalendarIntegrationError('network_error', 'Google Calendar request could not be reached.');
+  }
+  const data = await responseJson(response);
+  if (!response.ok) throw new CalendarIntegrationError(calendarErrorCode(response.status, data), 'Google Calendar request failed.');
+  return normalizeCalendarEvent(data as GoogleEvent, calendarId);
+}
+
+export async function createCalendarEvent(
+  input: CalendarCreateInput,
+  options: { fetchImpl?: FetchLike; now?: Date } = {},
+): Promise<CalendarCreateResult> {
+  const value = config();
+  if (!value.serviceAccountEmail || !value.privateKey || !value.calendarIds.length) {
+    throw new CalendarIntegrationError('auth_error', 'Google Calendar service account is not configured.');
+  }
+  const normalized = normalizeCreateInput(input);
+  const fetchImpl = options.fetchImpl || fetch;
+  const now = options.now || new Date();
+  const calendarId = value.calendarIds[0];
+  const token = await accessToken(fetchImpl, now);
+  let response: Response;
+  try {
+    response = await fetchImpl(`${CALENDAR_API_ROOT}/${encodeURIComponent(calendarId)}/events?sendUpdates=none`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: normalized.eventId,
+        summary: normalized.title,
+        description: normalized.description,
+        start: normalized.start,
+        end: normalized.end,
+        extendedProperties: {
+          private: {
+            masterThesisOsMailId: input.mailId.trim(),
+            masterThesisOsCandidateId: input.candidateId.trim(),
+          },
+        },
+      }),
+      cache: 'no-store',
+    });
+  } catch {
+    throw new CalendarIntegrationError('network_error', 'Google Calendar request could not be reached.');
+  }
+
+  const data = await responseJson(response);
+  if (response.status === 409) {
+    const event = await fetchCalendarEventById(calendarId, normalized.eventId, token, fetchImpl);
+    cache.clear();
+    return { created: false, eventId: normalized.eventId, calendarId, event };
+  }
+  if (!response.ok) throw new CalendarIntegrationError(calendarErrorCode(response.status, data), 'Google Calendar request failed.');
+  const event = normalizeCalendarEvent(data as GoogleEvent, calendarId);
+  cache.clear();
+  return { created: true, eventId: normalized.eventId, calendarId, event };
 }
 
 export async function getCalendarEvents(days = DEFAULT_DAYS, options: CalendarOptions = {}): Promise<CalendarEvent[]> {

@@ -11,10 +11,10 @@
 ## 구성
 
 - `app/`: 9개 필수 페이지 UI와 서버 API routes
-- `lib/`: GitHub·Calendar 서버 클라이언트, Thunderbird Local Bridge·Microsoft Graph 브라우저 클라이언트, project/result discovery, repository 분류, Results 데이터 계약
+- `lib/`: GitHub·Calendar 서버 클라이언트, Thunderbird Local Bridge·로컬 메일 분석 client, Microsoft Graph 브라우저 클라이언트, project/result discovery, repository 분류, Results 데이터 계약
 - `schemas/`: Excel과 UI 사이의 dashboard JSON Schema
 - `exporter/`: canonical 결과 workbook을 검증된 dashboard JSON으로 변환
-- `local-bridge/`: GitHub 상대경로와 Thunderbird 로컬 메일 메타데이터를 읽는 loopback 전용 브리지
+- `local-bridge/`: GitHub 상대경로와 Thunderbird 로컬 메일을 읽고 SQLite·로컬 CLI 분석을 제공하는 loopback 전용 브리지
 
 이 repository는 앱 코드만 담는다. 기존 `Obsidian-Vault`의 `Calc/`, `wiki/`, `연구/` 구조와 결과 파일은 이동하거나 복제하지 않는다. 기존 Vault 안의 `master-thesis-os/` checkout은 로컬 개발용으로 계속 둘 수 있다.
 
@@ -54,7 +54,7 @@ LOCAL_REPOSITORY_ROOT=D:\path\to\Obsidian-Vault
 
 ## 환경변수
 
-GitHub·Google 비밀값은 `.env.local` 또는 배포 플랫폼의 서버 환경변수로만 설정한다. Microsoft 365의 `NEXT_PUBLIC_` client ID와 authority는 SPA 브라우저 설정이라 공개되어도 되지만, client secret은 만들지 않고 access token은 저장하지 않는다.
+GitHub·Google·AI provider 비밀값은 `.env.local` 또는 배포 플랫폼의 서버 환경변수로만 설정한다. Microsoft 365의 `NEXT_PUBLIC_` client ID와 authority는 SPA 브라우저 설정이라 공개되어도 되지만, client secret은 만들지 않고 access token은 저장하지 않는다.
 
 | 변수 | 필수 | 설명 |
 | --- | --- | --- |
@@ -67,8 +67,12 @@ GitHub·Google 비밀값은 `.env.local` 또는 배포 플랫폼의 서버 환�
 | `LOCAL_REPOSITORY_ROOT` | 로컬 Vault 모드·fallback/exporter 시 | 기존 `Obsidian-Vault` checkout의 절대 경로. Vercel에는 설정하지 않음 |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Calendar 연결 시 | Google Service Account 이메일 |
 | `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | Calendar 연결 시 | Service Account RS256 private key. Vercel에서는 `\n` escape를 허용 |
-| `GOOGLE_CALENDAR_IDS` | Calendar 연결 시 | 쉼표로 구분한 하나 이상의 Calendar ID |
+| `GOOGLE_CALENDAR_IDS` | Calendar 연결 시 | 쉼표로 구분한 하나 이상의 Calendar ID. 읽기와 메일 후보 등록에 사용 |
 | `GOOGLE_CALENDAR_ID` | 임시 fallback | 기존 단일 Calendar ID. `GOOGLE_CALENDAR_IDS`가 우선 |
+| `MAIL_AI_API_URL` | AI 사용 시 | 로컬 `local-bridge/mail_cli.py`가 호출하는 OpenAI-compatible chat JSON endpoint |
+| `MAIL_AI_API_KEY` | AI 사용 시 | 로컬 CLI 전용 AI provider key. SQLite·브라우저에 저장하지 않음 |
+| `MAIL_AI_MODEL` | AI 사용 시 | 로컬 CLI provider가 지원하는 모델 이름 |
+| `MAIL_ANALYSIS_DB_PATH` | 아니오 | SQLite 절대경로 override. 기본값 `local-bridge/data/mail-analysis.db` |
 | `NEXT_PUBLIC_LOCAL_BRIDGE_URL` | 아니오 | 기본값 `http://127.0.0.1:38471` |
 | `NEXT_PUBLIC_MICROSOFT_CLIENT_ID` | Microsoft 연결 시 | Entra SPA App Registration의 Application (client) ID. secret 아님 |
 | `NEXT_PUBLIC_MICROSOFT_AUTHORITY` | 아니오 | 기본값 `https://login.microsoftonline.com/organizations` |
@@ -133,14 +137,14 @@ shared/shortcuts.md
 
 ## Google Calendar
 
-Calendar 연결은 Service Account JWT bearer 인증을 사용하는 서버 전용 읽기 방식이다. 사용자 OAuth와 refresh token이 runtime 경로에 필요하지 않으므로 반복 재인증에 의존하지 않는다.
+Calendar 연결은 Service Account JWT bearer 인증을 사용하는 서버 전용 읽기·쓰기 방식이다. 사용자 OAuth와 refresh token이 runtime 경로에 필요하지 않으므로 반복 재인증에 의존하지 않는다.
 
 ### Service Account 설정
 
 1. [Google Cloud Console](https://console.cloud.google.com/)에서 project를 만들거나 선택한다.
 2. API Library에서 **Google Calendar API**를 활성화한다.
 3. IAM 및 관리자 → **Service Accounts**에서 Service Account를 만들고 credentials를 생성한다. JSON key 파일은 로컬에서만 사용하며 Git에 추가하지 않는다.
-4. 읽을 각 Google Calendar의 **Settings and sharing → Share with specific people**에서 Service Account 이메일을 추가하고 **See all event details** 권한을 부여한다.
+4. 사용할 각 Google Calendar의 **Settings and sharing → Share with specific people**에서 Service Account 이메일을 추가하고 **Make changes to events** 권한을 부여한다.
 5. `.env.example`을 `.env.local`로 복사하고 서버 환경변수에 다음 값을 설정한다.
 
 ```dotenv
@@ -169,11 +173,11 @@ GOOGLE_CALENDAR_IDS=calendar-id@example.com,research-id@group.calendar.google.co
 - `network_error`: Google endpoint 연결 실패 또는 기타 upstream 오류
 - `malformed_response`: token/event 응답 형식이 예상 계약과 다름
 
-기준 문서는 [Service Account OAuth 2.0](https://developers.google.com/identity/protocols/oauth2/service-account), [Calendar API 인증](https://developers.google.com/workspace/calendar/api/auth), [Events.list reference](https://developers.google.com/calendar/api/v3/reference/events/list)다.
+기준 문서는 [Service Account OAuth 2.0](https://developers.google.com/identity/protocols/oauth2/service-account), [Calendar API 인증](https://developers.google.com/workspace/calendar/api/auth), [Events.list reference](https://developers.google.com/calendar/api/v3/reference/events/list), [Events.insert reference](https://developers.google.com/calendar/api/v3/reference/events/insert)다.
 
 ### 다른 Calendar 추가
 
-1. 새 Calendar를 같은 Service Account 이메일에 **See all event details** 권한으로 공유한다.
+1. 새 Calendar를 같은 Service Account 이메일에 **Make changes to events** 권한으로 공유한다.
 2. 해당 Calendar ID를 `GOOGLE_CALENDAR_IDS` 쉼표 목록에 추가한다.
 3. Vercel 환경변수를 갱신하고 필요하면 재배포한다.
 
@@ -209,7 +213,7 @@ GOOGLE_CALENDAR_ID                -> GOOGLE_CALENDAR_IDS (쉼표 구분)
 
 ## Thunderbird Local 학교 메일
 
-현재 기본 학교 메일 소스는 Thunderbird Local이다. Thunderbird가 OAuth 또는 IMAP/Graph로 이미 동기화한 로컬 profile의 받은편지함 mbox/maildir에서 메일 **헤더 메타데이터만** Local Bridge가 read-only로 읽는다. Microsoft Graph access token, Thunderbird OAuth token·password·cookie, `logins.json`, `key4.db`, 메일 본문과 첨부파일은 읽지 않는다. `global-messages-db.sqlite`와 `.msf` 파일도 canonical source로 사용하지 않는다.
+현재 기본 학교 메일 소스는 Thunderbird Local이다. Thunderbird가 OAuth 또는 IMAP/Graph로 이미 동기화한 로컬 profile의 받은편지함 mbox/maildir에서 Local Bridge가 헤더 메타데이터를 읽고, AI 분석을 요청한 메일에 한해 본문 텍스트만 read-only로 읽는다. Microsoft Graph access token, Thunderbird OAuth token·password·cookie, `logins.json`, `key4.db`, 첨부파일은 읽지 않는다. `global-messages-db.sqlite`와 `.msf` 파일도 canonical source로 사용하지 않는다.
 
 기존 `local-bridge/config.json`은 그대로 동작한다. 자동 탐지가 애매할 때만 다음 선택 설정을 추가한다. 실제 이메일 주소나 profile 절대 경로는 repository에 넣지 않는다.
 
@@ -222,9 +226,9 @@ GOOGLE_CALENDAR_ID                -> GOOGLE_CALENDAR_IDS (쉼표 구분)
 }
 ```
 
-`account`와 `profile_path`가 비어 있으면 `%APPDATA%\\Thunderbird\\profiles.ini`의 우선 profile과 `prefs.js`를 자동 탐색한다. mbox는 확장자 없는 받은편지함 파일을, maildir은 `cur/new/tmp`를 읽으며 요청당 기본 5개·최대 100개의 제목·발신자·Date·read 상태만 반환한다. mbox가 변경되면 mtime/size 기반의 메타데이터 cache를 무효화한다. Thunderbird profile에는 어떤 write도 수행하지 않는다.
+`account`와 `profile_path`가 비어 있으면 `%APPDATA%\\Thunderbird\\profiles.ini`의 우선 profile과 `prefs.js`를 자동 탐색한다. 기존 scanner는 mbox의 확장자 없는 mailbox와 maildir의 `cur/new/tmp`를 읽는다. 새 메일 분석 동기화는 **학교 업무**와 **국제과** 두 폴더만 각각 최대 100개까지 스캔하고, 본문 텍스트(최대 60,000자, 첨부파일 제외)를 SQLite에 저장한다. mbox가 변경되면 mtime/size 기반의 메타데이터 cache를 무효화한다. Thunderbird profile에는 어떤 write도 수행하지 않는다.
 
-Home의 **학교 메일** 카드는 `Thunderbird ● 로컬`을 primary source로 표시하고, Local Bridge가 꺼져 있거나 local sync가 부족하면 해당 상태만 보여준다. 받은 metadata 중 최근 최대 20개를 웹의 규칙 기반 classifier로 평가해 긴급·중요 메일을 최대 5개 우선 표시한다. 이 분류는 제목·발신자·수신 시각·read 상태만 사용하며 본문을 읽거나 외부 API로 전송하지 않는다. 메일 행을 클릭하면 인증된 `/mail/open`을 통해 해당 헤더의 `Message-ID`를 `mid:` URI로 전달해 Thunderbird에서 메시지를 직접 연다. `Message-ID`가 없는 경우에는 Thunderbird 프로그램만 열며, 브리지는 파일 경로나 메일 본문을 브라우저에 노출하지 않는다. 메일 탭은 현재 불러온 최대 100개 metadata에서 제목·발신자 검색, 미읽음·중요·긴급 필터, 최신순·중요도순 정렬, 20개 단위 더 보기를 제공한다. 중요 메일은 별도 **메일에서 확인 필요** 카드에서 마감·면담·발표·연구·학사·행정 확인 후보로 표시할 수 있으며, 제목의 명시적 날짜만 마감 후보 날짜로 사용한다. 확인 완료 상태는 브라우저에 후보 id와 timestamp만 저장한다.
+Home의 **학교 메일** 카드와 메일 탭은 모두 SQLite 저장 결과만 읽는다. 저장된 metadata 중 최근 최대 20개를 기존 규칙 기반 classifier로 평가해 긴급·중요 메일을 최대 5개 우선 표시한다. 메일 탭은 제목·발신자 검색, 미읽음·중요·긴급 필터, 최신순·중요도순 정렬, 20개 단위 더 보기를 제공한다. 메일 탭 상단의 **메일 분석 동기화**를 눌렀을 때만 Local Bridge가 두 Thunderbird 폴더를 스캔하고, 미분석 메일을 로컬 CLI로 분석한다. 메일 탭을 여는 것과 새로고침은 SQLite 조회만 수행하며 AI catch-up을 시작하지 않는다. 각 행의 **AI 분석 보기**를 펼치면 저장된 2~3문장 요약, 해야 할 일, 일정 후보를 확인할 수 있고, 후보의 제목·날짜·시간을 수정한 뒤에만 Calendar에 추가할 수 있다. 일정 후보는 event/deadline별로 `pending`·`added`·`ignored` 상태를 SQLite에 저장한다. AI provider 미설정·호출 실패·JSON 파싱 실패는 해당 메일을 `failed`로 기록하며 임의 요약이나 Calendar 후보를 만들지 않는다. 메일 행을 클릭하면 인증된 `/mail/open`을 통해 해당 헤더의 `Message-ID`를 `mid:` URI로 전달해 Thunderbird에서 메시지를 직접 연다. `Message-ID`가 없는 경우에는 Thunderbird 프로그램만 열며, 브리지는 파일 경로나 token을 로그에 남기지 않는다.
 
 ## localhost bridge
 
@@ -244,11 +248,30 @@ Wallpaper Companion과 Bridge tray는 다음 공용 설정을 우선 사용한�
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. 학교 메일은 같은 인증 모델의 `POST /mail/recent`와 `POST /mail/open`을 사용하며, `/mail/open`은 선택적으로 헤더의 `Message-ID`만 받아 Thunderbird `mid:` URI로 전달한다. 메일 endpoint는 경로·본문·제목·발신자·token을 로그에 남기지 않는다. Settings의 token은 `보기/숨기기`와 `복사`로 관리할 수 있고, Local Bridge tray와 Wallpaper Companion tray의 **Bridge token 보기/복사**에서도 로컬 config 값을 확인·복사할 수 있다. token을 HTTP endpoint나 원격 페이지에 자동 노출하지는 않는다. 실제 `config.json`은 git에서 제외된다.
+브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. 새 메일 분석 UI는 `GET /mail/sync-status`, `GET /mail/analysis`, `GET /mail/analysis/<mail-id>`, `POST /mail/sync`, `POST /mail/analysis/<mail-id>/reanalyze`, `POST /mail/analysis/candidate`를 사용한다. `/mail/sync`는 background job으로 `mail_cli.py`를 실행하고, 상태는 `mail-analysis.db`에서 polling한다. 기존 `POST /mail/recent`, `/mail/message`, `/mail/open`은 Thunderbird 열기·호환용으로 남아 있지만 새 동기화 UI의 수집 경로가 아니다. 메일 endpoint는 경로·본문·제목·발신자·token을 로그에 남기지 않는다. Settings의 token은 `보기/숨기기`와 `복사`로 관리할 수 있고, Local Bridge tray와 Wallpaper Companion tray의 **Bridge token 보기/복사**에서도 로컬 config 값을 확인·복사할 수 있다. token을 HTTP endpoint나 원격 페이지에 자동 노출하지는 않는다. 실제 `config.json`은 git에서 제외된다.
+
+## 학교 메일 AI 분석
+
+메일 탭 상단에서 **메일 분석 동기화**를 눌러야 Thunderbird의 `학교 업무`·`국제과` 폴더를 읽는다. 흐름은 `Thunderbird → mail_cli.py sync → local-bridge/data/mail-analysis.db → Bridge API → 웹 UI`이며, PC가 꺼져 있던 동안의 미처리 메일도 다음 명시적 동기화에서 catch-up한다. DB에는 메일 metadata/body, AI 상태(`queued`·`processing`·`completed`·`failed`), 요약·action·모델·prompt version, Calendar 후보 상태를 저장한다. 기본 SQLite 경로는 `local-bridge/data/mail-analysis.db`이고 `MAIL_ANALYSIS_DB_PATH`로 바꿀 수 있다. `MAIL_AI_API_URL`, `MAIL_AI_API_KEY`, `MAIL_AI_MODEL`은 로컬 CLI 프로세스만 읽으며 API key는 DB나 브라우저에 저장하지 않는다.
+
+로컬 CLI는 다음 명령을 제공한다.
+
+```powershell
+python local-bridge/mail_cli.py sync
+python local-bridge/mail_cli.py status
+python local-bridge/mail_cli.py analyze --new
+python local-bridge/mail_cli.py reanalyze <mail-id>
+```
+
+AI provider에는 JSON structured output을 요구한다. 응답이 잘못되거나 provider가 설정되지 않으면 해당 메일만 `failed`로 저장하고 재분석할 수 있으며, 임의 Calendar 후보는 만들지 않는다. 브라우저는 AI API를 직접 호출하지 않는다. 기존 `master-thesis-os:mail-analysis` localStorage 분석 데이터는 새 SQLite로 자동 migration하지 않고 읽지 않는다.
+
+Calendar 후보는 사용자가 제목·날짜·시간을 확인·수정한 뒤 **캘린더 추가**를 눌러야 `POST /api/calendar/events`가 실행된다. 메일 ID와 candidate ID에서 만든 결정적 Google event ID, private extended property, SQLite의 `added` 상태를 함께 사용하므로 재시도·앱 재시작 시 중복 등록을 피한다. **무시**는 SQLite에 `ignored`로 저장한다.
 
 ### 브리지 상시 실행
 
 Windows에서 `local-bridge/start_bridge.bat`을 실행하면 설정을 확인한 뒤 브리지를 계속 실행한다. 브리지가 일시적인 오류로 종료되면 3초 후 자동으로 재시작하지만, `config.json` 영구 설정 오류는 exit code 78로 식별해 재시작하지 않는다. 콘솔 없이 실행하려면 `start_bridge_hidden.vbs`를 사용한다. 시스템 트레이 아이콘과 상태 확인·종료 메뉴를 쓰려면 `start_bridge_tray.vbs`를 사용한다. Local Bridge tray 또는 Wallpaper Companion tray의 **Bridge token 복사**를 누른 뒤 Production Settings의 **붙여넣기**와 **저장**을 누르면 토큰을 설정할 수 있다. 브라우저 보안상 트레이가 웹페이지에 token을 자동 주입하지는 않는다. 트레이에서 상태 확인을 누르면 공용 또는 override config의 `port`를 사용하며, 생략 시 `38471`을 사용한다. 잘못된 port는 트레이에 설정 오류로 표시된다. 설정 오류 balloon이 표시되면 `config.json`을 수정한 뒤 트레이 실행기를 다시 시작한다. Windows 로그인 때마다 트레이 실행기를 자동 시작하려면 해당 VBS 파일의 바로가기를 `Win+R` → `shell:startup` 폴더에 넣는다. 일반 브라우저 개발 시에는 `start_bridge.bat`을 사용하고, 중지는 콘솔 창에서 `Ctrl+C` 또는 창 닫기로 수행한다.
+
+Wallpaper Companion의 설치된 `app\bridge-runtime`은 release 시점의 브리지 사본이다. 브리지 모듈을 추가·변경한 뒤에는 `experiments/wallpaper-host-poc/scripts/Install-WallpaperHost.ps1`로 Companion을 다시 설치하거나, 기존 브리지 프로세스를 종료하고 `local-bridge/start_bridge.bat`을 다시 실행해야 한다. `/health`가 응답하더라도 구버전 사본이면 새 메일 endpoint가 404가 될 수 있다.
 
 ## Sucrose 설정
 

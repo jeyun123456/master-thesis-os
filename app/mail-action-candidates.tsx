@@ -2,15 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  getRecentThunderbirdMail,
-  MAX_MAIL_LIMIT,
   openThunderbird,
   openThunderbirdMessage,
   thunderbirdMailErrorMessage,
   ThunderbirdMailError,
   type ThunderbirdMailErrorCode,
-  type ThunderbirdFolderId,
+  type ThunderbirdAnalysisFolderId,
 } from '../lib/thunderbird-mail';
+import { getMailAnalysis, MailAnalysisClientError, readBridgeToken } from '../lib/mail-analysis-client';
 import { prioritizeMail } from '../lib/mail-priority';
 import {
   createMailActionCandidates,
@@ -21,7 +20,7 @@ import {
 } from '../lib/mail-action';
 
 type MailActionStatus = 'loading' | 'ready' | 'empty' | 'error';
-export const MAIL_ACTION_SOURCE_FOLDER: ThunderbirdFolderId = 'school-work';
+export const MAIL_ACTION_SOURCE_FOLDER: ThunderbirdAnalysisFolderId = 'school-work';
 
 export function MailActionCandidates() {
   const [status, setStatus] = useState<MailActionStatus>('loading');
@@ -35,8 +34,8 @@ export function MailActionCandidates() {
     setErrorCode(null);
     setOpenError(null);
     try {
-      const result = await getRecentThunderbirdMail(readBridgeToken(), fetch, MAX_MAIL_LIMIT, MAIL_ACTION_SOURCE_FOLDER);
-      const prioritized = result.items.map(prioritizeMail);
+      const result = await getMailAnalysis(readBridgeToken(), { folder: MAIL_ACTION_SOURCE_FOLDER, limit: 100 });
+      const prioritized = result.items.map((item) => prioritizeMail(item.mail));
       const nextCandidates = createMailActionCandidates(prioritized, { dismissedIds: readDismissedIds() });
       setCandidates(nextCandidates);
       setStatus(nextCandidates.length ? 'ready' : 'empty');
@@ -121,14 +120,6 @@ export function mailActionErrorMessage(errorCode: ThunderbirdMailErrorCode | nul
   return errorCode ? thunderbirdMailErrorMessage(errorCode) : '메일 행동 후보를 읽지 못했어.';
 }
 
-function readBridgeToken(): string {
-  try {
-    return localStorage.getItem('thesisBridgeToken') || '';
-  } catch {
-    return '';
-  }
-}
-
 function readDismissedRecord(): Record<string, number> {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(MAIL_ACTION_DISMISSED_STORAGE_KEY) || '{}');
@@ -145,6 +136,7 @@ function readDismissedIds(): string[] {
 
 function readErrorCode(error: unknown): ThunderbirdMailErrorCode {
   if (error instanceof ThunderbirdMailError) return error.code;
+  if (error instanceof MailAnalysisClientError) return error.code === 'bridge_auth' ? 'bridge_auth' : 'bridge_offline';
   return 'bridge_offline';
 }
 

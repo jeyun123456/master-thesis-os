@@ -12,14 +12,16 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from email import policy
 from email.header import decode_header
-from email.parser import BytesFeedParser
+from email.parser import BytesFeedParser, BytesParser
 from email.utils import parsedate_to_datetime, parseaddr
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import BinaryIO, Iterable
 
 
 DEFAULT_MAIL_LIMIT = 5
 MAX_MAIL_LIMIT = 100
+MAX_MAIL_BODY_CHARS = 60_000
 BERKELEY_STORE_CONTRACT = '@mozilla.org/msgstore/berkeleystore;1'
 MAILDIR_STORE_CONTRACT = '@mozilla.org/msgstore/maildirstore;1'
 
@@ -78,6 +80,7 @@ class ThunderbirdMailError(RuntimeError):
         'local_sync_required': 'Thunderbird에서 이 계정의 메시지를 이 컴퓨터에 보관해줘.',
         'unsupported_store': 'Thunderbird 로컬 메일 저장 방식을 아직 읽을 수 없어.',
         'parse_error': 'Thunderbird 메일 헤더를 읽지 못했어.',
+        'mail_not_found': 'Thunderbird에서 해당 메일을 찾지 못했어. 새로고침 후 다시 시도해줘.',
         'bridge_auth': 'Local Bridge token을 확인해줘.',
         'bridge_offline': 'Local Bridge가 실행 중인지 확인해줘.',
     }
@@ -161,6 +164,15 @@ class ThunderbirdMailItem:
         if self.message_id:
             result['messageId'] = self.message_id
         return result
+
+
+@dataclass(frozen=True)
+class ThunderbirdMailMessage:
+    item: ThunderbirdMailItem
+    body: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self.item.to_dict(), 'body': self.body}
 
 
 @dataclass(frozen=True)
@@ -653,6 +665,130 @@ def _parse_maildir(path: Path) -> list[ThunderbirdMailItem]:
     return items
 
 
+class _HTMLTextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        if data.strip():
+            self.parts.append(data)
+
+
+def _clean_body_text(value: str) -> str:
+    lines: list[str] = []
+    for line in value.replace('\x00', '').splitlines():
+        normalized = re.sub(r'[ \t]+', ' ', line).strip()
+        if normalized:
+            lines.append(normalized)
+    return '\n'.join(lines)[:MAX_MAIL_BODY_CHARS].strip()
+
+
+def _decode_message_part(part: object) -> str:
+    try:
+        content = part.get_content()  # type: ignore[union-attr]
+    except (LookupError, TypeError, UnicodeError):
+        try:
+            payload = part.get_payload(decode=True)  # type: ignore[union-attr]
+            if isinstance(payload, bytes):
+                return payload.decode('utf-8', errors='replace')
+        except (TypeError, UnicodeError):
+            return ''
+        return ''
+    return content if isinstance(content, str) else ''
+
+
+def _message_body(raw_message: bytes) -> str:
+    # BytesParser accepts a Unix mbox separator, but removing it also keeps the
+    # parser behavior identical for mbox and maildir messages.
+    if raw_message.startswith(b'From '):
+        _, separator, raw_message = raw_message.partition(b'\n')
+        if not separator:
+            return ''
+    try:
+        message = BytesParser(policy=policy.default).parsebytes(raw_message)
+    except (LookupError, TypeError, ValueError, UnicodeError):
+        return ''
+
+    plain_parts: list[str] = []
+    html_parts: list[str] = []
+    for part in message.walk():
+        if (
+            part.is_multipart()
+            or str(part.get_content_disposition() or '').casefold() == 'attachment'
+            or part.get_filename()
+        ):
+            continue
+        content_type = str(part.get_content_type()).casefold()
+        content = _decode_message_part(part)
+        if not content:
+            continue
+        if content_type == 'text/plain':
+            plain_parts.append(content)
+        elif content_type == 'text/html':
+            extractor = _HTMLTextExtractor()
+            try:
+                extractor.feed(content)
+                extractor.close()
+            except (TypeError, ValueError):
+                continue
+            html_parts.append(re.sub(r'\s+([,.;:!?%。！？])', r'\1', ' '.join(extractor.parts)))
+    return _clean_body_text('\n'.join(plain_parts) if plain_parts else '\n'.join(html_parts))
+
+
+def _read_mbox_message_at(handle: BinaryIO, offset: int) -> bytes:
+    handle.seek(offset)
+    first_line = handle.readline()
+    if not first_line:
+        return b''
+    lines = [first_line]
+    while True:
+        line = handle.readline()
+        if not line:
+            break
+        if line.startswith(b'From '):
+            break
+        lines.append(line)
+    return b''.join(lines)
+
+
+def _find_mbox_message(path: Path, mail_id: str) -> ThunderbirdMailMessage | None:
+    with path.open('rb') as mbox_file:
+        for offset, headers in _iter_mbox_headers(mbox_file):
+            item = _parse_mail_headers(headers, path.name, offset)
+            if item is None or item.id != mail_id:
+                continue
+            return ThunderbirdMailMessage(item, _message_body(_read_mbox_message_at(mbox_file, offset)))
+    return None
+
+
+def _find_maildir_message(path: Path, mail_id: str) -> ThunderbirdMailMessage | None:
+    for folder_name in ('cur', 'new'):
+        folder = path / folder_name
+        if not folder.is_dir():
+            continue
+        try:
+            entries = sorted(folder.iterdir(), key=lambda entry: entry.name.casefold())
+        except OSError:
+            continue
+        for message_path in entries:
+            if not message_path.is_file():
+                continue
+            try:
+                raw_message = message_path.read_bytes()
+            except OSError:
+                continue
+            item = _parse_mail_headers(
+                raw_message.split(b'\r\n\r\n', 1)[0] if b'\r\n\r\n' in raw_message else raw_message.split(b'\n\n', 1)[0],
+                f'{folder_name}/{message_path.name}',
+                0,
+                status_override=0x0001 if ':2,' in message_path.name and 'S' in message_path.name.rsplit(':2,', 1)[1] else 0,
+            )
+            if item is not None and item.id == mail_id:
+                return ThunderbirdMailMessage(item, _message_body(raw_message))
+    return None
+
+
 def _cached_mbox(path: Path) -> list[ThunderbirdMailItem]:
     for attempt in range(2):
         try:
@@ -713,6 +849,40 @@ def _items_for_account(account: ThunderbirdAccount, profile_path: Path, limit: i
     return items[:limit]
 
 
+def _normalize_mail_id(value: object) -> str:
+    if not isinstance(value, str):
+        raise ThunderbirdMailError('mail_not_found', http_status=400)
+    mail_id = value.strip()
+    if not mail_id or len(mail_id) > 256 or not re.fullmatch(r'[A-Za-z0-9._:-]+', mail_id):
+        raise ThunderbirdMailError('mail_not_found', http_status=400)
+    return mail_id
+
+
+def _find_mail_message_for_account(
+    account: ThunderbirdAccount,
+    profile_path: Path,
+    mail_id: str,
+    folder_id: str,
+) -> ThunderbirdMailMessage | None:
+    folder = find_folder(account, profile_path, folder_id)
+    if folder is None or folder.path is None:
+        raise ThunderbirdMailError('inbox_not_found' if folder_id == 'inbox' else 'folder_not_found')
+    mailbox = folder.path
+    if mailbox.is_file() and mailbox.stat().st_size == 0 and folder_id == 'inbox':
+        raise ThunderbirdMailError('local_sync_required')
+    if _is_maildir(mailbox):
+        if account.store_contract_id and account.store_contract_id != MAILDIR_STORE_CONTRACT:
+            raise ThunderbirdMailError('unsupported_store')
+        return _find_maildir_message(mailbox, mail_id)
+    if mailbox.is_file():
+        if account.store_contract_id and account.store_contract_id not in ('', BERKELEY_STORE_CONTRACT):
+            raise ThunderbirdMailError('unsupported_store')
+        if mailbox.stat().st_size == 0:
+            return None
+        return _find_mbox_message(mailbox, mail_id)
+    raise ThunderbirdMailError('unsupported_store')
+
+
 def get_recent_mail(
     settings: ThunderbirdSettings,
     limit: object = DEFAULT_MAIL_LIMIT,
@@ -737,6 +907,35 @@ def get_recent_mail(
     if account_error is not None:
         raise account_error
     raise ThunderbirdMailError('account_not_found')
+
+
+def get_mail_message(
+    settings: ThunderbirdSettings,
+    mail_id: object,
+    folder: object = 'inbox',
+) -> tuple[str, ThunderbirdMailMessage]:
+    requested_id = _normalize_mail_id(mail_id)
+    requested_folder = normalize_folder_id(folder)
+    profiles = resolve_profile_candidates(settings)
+    account_error: ThunderbirdMailError | None = None
+    for profile_path in profiles:
+        accounts = discover_accounts(profile_path)
+        if not accounts:
+            continue
+        try:
+            account = _select_account(accounts, settings.account)
+            message = _find_mail_message_for_account(account, profile_path, requested_id, requested_folder)
+        except ThunderbirdMailError as exc:
+            account_error = exc
+            if exc.code in {'folder_not_found', 'inbox_not_found', 'local_sync_required', 'unsupported_store'}:
+                raise
+            continue
+        if message is not None:
+            account_value = account.username or account.name
+            return mask_account(account_value), message
+    if account_error is not None and account_error.code == 'account_not_found':
+        raise account_error
+    raise ThunderbirdMailError('mail_not_found', http_status=404)
 
 
 def get_mail_folders(settings: ThunderbirdSettings) -> tuple[str, list[ThunderbirdFolder]]:
