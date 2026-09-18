@@ -134,10 +134,10 @@ try {
         Write-Host 'Migrated the existing Local Bridge config to the shared data directory.'
     }
 
-    if (Test-Path $AppDirectory) {
-        Remove-Item $AppDirectory -Recurse -Force
-    }
-
+    # Replace the release contents in place. Keeping the app directory itself
+    # avoids a Windows directory-handle race when a child bridge process has
+    # just exited. The release copy remains authoritative for every packaged
+    # file, while settings/logs stay outside this replaceable directory.
     New-Item -ItemType Directory -Path $AppDirectory -Force | Out-Null
     Copy-Item -Path (Join-Path $PublishDirectory '*') -Destination $AppDirectory -Recurse -Force
     Copy-Item -Path $UninstallScript -Destination $InstalledUninstaller -Force
