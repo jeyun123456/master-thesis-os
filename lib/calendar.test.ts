@@ -279,6 +279,9 @@ describe('service account Calendar requests', () => {
       httpStatus: 403,
       providerReason: 'insufficientPermissions',
     });
+    clearCalendarCacheForTests();
+    const badRequest = mockGoogle({ primary: { status: 400, body: { error: { errors: [{ reason: 'badRequest' }], message: 'Bad Request' } } } });
+    await expect(getCalendarEvents(14, { fetchImpl: badRequest, now: baseNow, bypassCache: true })).rejects.toMatchObject({ code: 'provider_bad_request', httpStatus: 400 });
     const quota = mockGoogle({ primary: { status: 403, body: { error: { errors: [{ reason: 'quotaExceeded' }] } } } });
     await expect(getCalendarEvents(14, { fetchImpl: quota, now: baseNow, bypassCache: true })).rejects.toMatchObject({ code: 'quota_error' });
     clearCalendarCacheForTests();

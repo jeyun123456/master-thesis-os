@@ -9,7 +9,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const TOKEN_CACHE_SKEW_MS = 60 * 1000;
 
 export type CalendarCategory = 'Meeting' | 'Deadline' | 'Research' | 'Presentation' | 'Other';
-export type CalendarErrorCode = 'auth_error' | 'insufficient_permissions' | 'quota_error' | 'network_error' | 'malformed_response' | 'invalid_calendar' | 'conflict' | 'invalid_request';
+export type CalendarErrorCode = 'auth_error' | 'insufficient_permissions' | 'provider_bad_request' | 'quota_error' | 'network_error' | 'malformed_response' | 'invalid_calendar' | 'conflict' | 'invalid_request';
 export type CalendarEvent = {
   id: string;
   title: string;
@@ -372,6 +372,7 @@ function calendarErrorCode(status: number, body: unknown): CalendarErrorCode {
   const serialized = JSON.stringify(body);
   if (status === 403 && /quotaExceeded|rateLimitExceeded|userRateLimitExceeded/.test(serialized)) return 'quota_error';
   if (status === 403 && /insufficientPermissions|insufficient permissions/i.test(serialized)) return 'insufficient_permissions';
+  if (status === 400) return 'provider_bad_request';
   if (status === 400 || status === 401 || status === 403) return 'auth_error';
   return 'network_error';
 }
