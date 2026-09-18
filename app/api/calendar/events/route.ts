@@ -30,6 +30,14 @@ function createInput(value: unknown): CalendarCreateInput | null {
   };
 }
 
+function calendarWriteErrorMessage(errorCode: string): string {
+  if (errorCode === 'auth_error') return 'Google Calendar 등록 권한이 없어. Calendar 공유 설정에서 Service Account에 “Make changes to events” 권한을 부여해줘.';
+  if (errorCode === 'invalid_calendar') return 'Calendar ID가 잘못됐거나 Service Account에 해당 Calendar가 공유되지 않았어.';
+  if (errorCode === 'quota_error') return 'Google Calendar API quota 또는 rate limit을 확인해줘.';
+  if (errorCode === 'malformed_response') return 'Google Calendar 응답 형식을 확인할 수 없어.';
+  return 'Google Calendar 연결을 확인해줘.';
+}
+
 export async function GET(req: NextRequest) {
   const requestedDays = Number(req.nextUrl.searchParams.get('days') || 14);
   const range = calendarRange(requestedDays);
@@ -62,6 +70,6 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const errorCode = error instanceof CalendarIntegrationError ? error.code : 'network_error';
     const status = errorCode === 'invalid_request' ? 400 : 502;
-    return NextResponse.json({ ok: false, errorCode, error: error instanceof CalendarIntegrationError ? error.message : 'Google Calendar 연결을 확인해줘.' }, { status });
+    return NextResponse.json({ ok: false, errorCode, error: error instanceof CalendarIntegrationError ? calendarWriteErrorMessage(errorCode) : 'Google Calendar 연결을 확인해줘.' }, { status });
   }
 }
