@@ -29,7 +29,23 @@ async function mutate<T>(url: string, method: 'PUT' | 'PATCH', body: unknown): P
   if (!response.ok) throw new Error(data.error || `Request failed: ${response.status}`);
   return data as T;
 }
-async function calendarRequest():Promise<CalendarApiResponse>{const response=await fetch('/api/calendar/events?days=14');const data=await response.json() as CalendarApiResponse;if(!data||!Array.isArray(data.items)||!data.state)throw new Error('Calendar API returned an invalid response');return data}
+async function calendarRequest():Promise<CalendarApiResponse>{
+  let lastError: unknown;
+  for(let attempt=0;attempt<2;attempt+=1){
+    try{
+      const response=await fetch('/api/calendar/events?days=14',{cache:'no-store'});
+      const data=await response.json() as CalendarApiResponse;
+      if(!data||!Array.isArray(data.items)||!data.state)throw new Error('Calendar API returned an invalid response');
+      if(data.state!=='error'||attempt===1)return data;
+      lastError=new Error(data.error||'Calendar API returned an error response');
+    }catch(error){
+      lastError=error;
+      if(attempt===1)throw error;
+    }
+    await new Promise((resolve)=>setTimeout(resolve,500));
+  }
+  throw lastError instanceof Error?lastError:new Error('Calendar API request failed');
+}
 
 export const dashboardApi = {
   tree: () => request<RepositoryApiResponse>('/api/github/tree'),
