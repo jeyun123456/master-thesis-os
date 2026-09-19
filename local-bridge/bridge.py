@@ -671,9 +671,9 @@ class Handler(BaseHTTPRequestHandler):
                     'error': '브라우저로 열 URL이 필요해.',
                 })
             try:
-                from portal_client import PortalError, open_url_in_default_browser, resolve_profile_path
+                from portal_client import PortalError, open_url_in_default_browser
 
-                open_url_in_default_browser(url, resolve_profile_path(ROOT))
+                open_url_in_default_browser(url)
             except PortalError as exc:
                 status = 400 if exc.code == 'invalid_url' else 503
                 return self.json_out(status, {

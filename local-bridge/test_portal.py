@@ -62,6 +62,16 @@ class PortalParsingTests(unittest.TestCase):
         self.assertEqual(arguments[-2:], ['--new-tab', url])
         self.assertFalse(popen.call_args.kwargs['shell'])
 
+    def test_default_browser_links_without_profile_use_the_normal_browser_session(self):
+        if os.name != 'nt':
+            self.skipTest('Windows default browser profile behavior')
+        url = 'https://sp.ritsumei.ac.jp/studentportal/s/r-information/a0/view'
+        executable = Path('C:/Program Files/Microsoft/Edge/Application/msedge.exe')
+        with patch('portal_client.find_system_default_browser_executable', return_value=executable):
+            with patch.object(portal_client.os, 'startfile', create=True) as startfile:
+                open_url_in_default_browser(url)
+        startfile.assert_called_once_with(url)
+
     def test_login_window_close_finishes_the_job_immediately(self):
         class FakePage:
             url = 'https://login.microsoftonline.com/'

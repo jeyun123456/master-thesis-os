@@ -258,7 +258,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 Orca 내부 브라우저의 로그인 profile과 이 Local Bridge의 Playwright profile은 브라우저 저장소가 서로 다르므로 cookie를 복사하지 않는다. Orca는 포털 구조·live 동작 확인에 사용하고, 실제 Local Bridge 수집은 위 persistent profile에서 명시적 `login` 후 실행한다.
 
-처음 한 번 Playwright를 설치하면 Windows에서는 OS 기본 Chromium 브라우저(예: Edge)를 persistent profile로 사용하고, 확인할 수 없으면 Chrome channel로 fallback한다. `RITSUMEI_BROWSER_CHANNEL=chrome|msedge|chromium`으로 이를 명시할 수도 있다. 원문·첨부파일 열기도 같은 기본 Chromium 브라우저와 persistent profile을 사용한다. `RITSUMEI_BROWSER_PROFILE_DIR`를 지정하면 persistent profile 위치를 명시적으로 바꿀 수 있다.
+처음 한 번 Playwright를 설치하면 Windows에서는 OS 기본 Chromium 브라우저(예: Edge)를 전용 persistent profile로 사용하고, 확인할 수 없으면 Chrome channel로 fallback한다. `RITSUMEI_BROWSER_CHANNEL=chrome|msedge|chromium`으로 이를 명시할 수도 있다. 원문·첨부파일 링크는 동기화 profile과 충돌하지 않도록 OS 기본 브라우저의 일반 세션으로 연다. `RITSUMEI_BROWSER_PROFILE_DIR`를 지정하면 persistent profile 위치를 명시적으로 바꿀 수 있다.
 
 ```powershell
 python -m pip install -r local-bridge/requirements.txt

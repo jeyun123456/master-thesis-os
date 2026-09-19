@@ -257,7 +257,7 @@ def open_url_in_default_browser(url: object, profile_path: str | Path | None = N
     safe_url = validate_external_url(url)
     try:
         executable = find_system_default_browser_executable()
-        if os.name == "nt" and _is_chromium_browser_executable(executable):
+        if os.name == "nt" and profile_path is not None and _is_chromium_browser_executable(executable):
             profile = resolve_profile_path() if profile_path is None else Path(profile_path).expanduser().resolve(strict=False)
             arguments = [str(executable), f"--user-data-dir={profile}", "--new-tab", safe_url]
             options: dict[str, object] = {
