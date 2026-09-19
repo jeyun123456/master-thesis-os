@@ -22,6 +22,7 @@ internal sealed class BridgeProcessManager : IDisposable
         "portal_db.py",
         "portal_client.py",
         "portal_cli.py",
+        "portal_ai.py",
     ];
 
     private readonly HttpClient _httpClient = new()

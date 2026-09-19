@@ -271,13 +271,15 @@ python local-bridge/portal_cli.py notices --type DM
 npm run test:portal:e2e
 ```
 
-`login` 명령 또는 UI의 **로그인 창 열기**만 headed 브라우저 창을 열고, 일반 `sync` 수집은 같은 profile을 headless로 재사용한다. 동시에 같은 profile을 여는 작업은 lock으로 직렬화한다. 세션이 없거나 만료되면 `sync`는 `login_required`/`session_expired`를 저장하고 창을 반복해서 열지 않는다. 학교 SQLite는 기존 메일 DB와 분리된 `local-bridge/data/portal-notices.db`이며 `portal_notices`, `portal_notice_attachments`, `portal_sync_state`, `portal_sync_runs` 테이블을 사용한다. 웹의 **학교 공지** 탭은 저장된 결과만 읽고, **공지 동기화**를 눌렀을 때만 `POST /portal/sync`를 호출한다. 관련 Bridge endpoint는 `GET /portal/status`, `GET /portal/notices`, `GET /portal/notices/<notice-id>`, `POST /portal/sync`, `POST /portal/login`이다. `/portal/status`에는 최근 동기화 실행 10건의 결과와 오류 코드가 함께 포함된다.
+`login` 명령 또는 UI의 **로그인 창 열기**만 headed 브라우저 창을 열고, 일반 `sync` 수집은 같은 profile을 headless로 재사용한다. 동시에 같은 profile을 여는 작업은 lock으로 직렬화한다. 세션이 없거나 만료되면 `sync`는 `login_required`/`session_expired`를 저장하고 창을 반복해서 열지 않는다. 학교 SQLite는 기존 메일 DB와 분리된 `local-bridge/data/portal-notices.db`이며 `portal_notices`, `portal_notice_attachments`, `portal_notice_ai`, `portal_notice_calendar_candidates`, `portal_sync_state`, `portal_sync_runs` 테이블을 사용한다. 웹의 **학교 공지** 탭은 저장된 결과만 읽고, **공지 동기화**를 눌렀을 때만 `POST /portal/sync`를 호출한다. 관련 Bridge endpoint는 `GET /portal/status`, `GET /portal/notices`, `GET /portal/notices/<notice-id>`, `POST /portal/sync`, `POST /portal/login`, `POST /portal/notices/<notice-id>/analyze`, `POST /portal/notices/<notice-id>/candidate`다. `/portal/status`에는 최근 동기화 실행 10건의 결과와 오류 코드가 함께 포함된다.
 
 `npm run test:portal:e2e`는 현재 production UI와 실행 중인 Local Bridge를 대상으로 학교 공지 목록, 중복 notice ID, 동기화 이력, 제목 검색, 본문 검색을 확인한다. 첫 공지를 클릭하지 않으므로 읽음 상태는 변경하지 않는다. 이 smoke test는 로컬 Bridge token만 사용하며 학교 ID·비밀번호나 포털 session cookie를 읽지 않는다.
 
 학교 공지의 사용자 상태는 `portal_notice_user_state`에 원문과 분리해 저장한다. 화면에서는 포털의 `担当部課`를 `발신처·담당부서` 기준으로 집계·필터링하고, 상위 담당부서별 ALL/DM·미읽음·중요 수를 요약해 보여준다. 제목·본문·담당부서·카테고리·공지 ID를 검색할 수 있으며 최신 게시순·마감 임박순·제목순 정렬과 미읽음·중요·보관·마감 있음·기한 종료 필터를 제공한다. 데스크톱에서는 목록 오른쪽 상세 패널에 공지를 표시하고, 모바일에서는 목록과 상세를 전환한다. 공지를 열면 읽음 처리하며 중요·보관 상태를 로컬에서 관리한다. `POST /portal/notices/<notice-id>/state`가 상태 변경 endpoint다. 목록·상세 조회는 자동 동기화하지 않는다.
 
 공지 metadata hash가 달라지면 해당 상세를 즉시 다시 읽고, 본문만 바뀌는 경우는 7일 주기 상세 재검증에서 content hash로 감지한다. 즉시 전체 상세를 다시 확인하려면 `python local-bridge/portal_cli.py sync --refresh-details`를 사용한다. `/portal/status`와 UI에는 최근 동기화의 신규·수정·상세 실패 건수가 표시된다. CLI 중단이나 Bridge 재시작으로 SQLite에 `running`만 남으면 다음 상태 조회 또는 동기화에서 `sync_interrupted`로 정리하고 재시도할 수 있다.
+
+공지 상세의 **AI 분석**은 자동 동기화에 포함되지 않으며 사용자가 상세 패널의 버튼을 눌렀을 때만 실행된다. 기존 `MAIL_AI_*` provider 경계를 재사용해 한국어 요약·본문 번역·일정 후보를 `portal_notice_ai`와 `portal_notice_calendar_candidates`에 저장한다. 후보는 `pending` 상태로 남고, 사용자가 제목·날짜·시간을 확인한 뒤 **캘린더 추가**를 눌러야 `/api/calendar/events`가 실행된다. 분석 실패는 해당 공지에만 `failed`와 오류 코드를 남기며, 학교 계정·비밀번호·브라우저 cookie·AI key는 SQLite에 저장하지 않는다.
 
 ## 학교 메일 AI 분석
 

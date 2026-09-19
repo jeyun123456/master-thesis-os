@@ -11,14 +11,17 @@ import hashlib
 import json
 import os
 import sqlite3
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Mapping
 
 
 NOTICE_TYPES = ("ALL", "DM")
 SYNC_STATUSES = ("idle", "running", "completed", "failed")
+AI_STATUSES = ("idle", "queued", "processing", "completed", "failed")
+CANDIDATE_STATUSES = ("pending", "added", "ignored")
+CANDIDATE_TYPES = ("event", "deadline")
 SOURCE = "ritsumei"
 SYNC_INTERRUPTED_CODE = "sync_interrupted"
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "data" / "portal-notices.db"
@@ -69,6 +72,42 @@ CREATE TABLE IF NOT EXISTS portal_notice_attachments (
 
 CREATE INDEX IF NOT EXISTS idx_portal_notice_attachments_notice
     ON portal_notice_attachments(notice_id);
+
+CREATE TABLE IF NOT EXISTS portal_notice_ai (
+    notice_id TEXT PRIMARY KEY REFERENCES portal_notices(notice_id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK(status IN ('queued', 'processing', 'completed', 'failed')),
+    summary TEXT,
+    translation TEXT,
+    error_code TEXT,
+    error TEXT,
+    analyzed_at TEXT,
+    prompt_version TEXT,
+    model TEXT,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_portal_notice_ai_status
+    ON portal_notice_ai(status);
+
+CREATE TABLE IF NOT EXISTS portal_notice_calendar_candidates (
+    id TEXT PRIMARY KEY,
+    notice_id TEXT NOT NULL REFERENCES portal_notices(notice_id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    start TEXT,
+    end TEXT,
+    all_day INTEGER NOT NULL DEFAULT 0,
+    type TEXT NOT NULL CHECK(type IN ('event', 'deadline')),
+    reason TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL CHECK(status IN ('pending', 'added', 'ignored')),
+    calendar_event_id TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_portal_notice_calendar_candidates_notice
+    ON portal_notice_calendar_candidates(notice_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_portal_notice_calendar_candidates_event
+    ON portal_notice_calendar_candidates(calendar_event_id)
+    WHERE calendar_event_id IS NOT NULL AND calendar_event_id <> '';
 
 CREATE TABLE IF NOT EXISTS portal_notice_user_state (
     notice_id TEXT PRIMARY KEY REFERENCES portal_notices(notice_id) ON DELETE CASCADE,
@@ -132,6 +171,27 @@ def _notice_type(value: object) -> str:
     normalized = str(value or "").strip().upper()
     if normalized not in NOTICE_TYPES:
         raise PortalDatabaseError("unsupported portal notice type")
+    return normalized
+
+
+def _ai_status(value: object) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized not in AI_STATUSES:
+        raise PortalDatabaseError("unsupported portal notice AI status")
+    return normalized
+
+
+def _candidate_status(value: object) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized not in CANDIDATE_STATUSES:
+        raise PortalDatabaseError("unsupported portal notice calendar candidate status")
+    return normalized
+
+
+def _candidate_type(value: object) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized not in CANDIDATE_TYPES:
+        raise PortalDatabaseError("unsupported portal notice calendar candidate type")
     return normalized
 
 
@@ -245,6 +305,47 @@ def _attachment_id(notice_id: str, filename: str, url: str, index: int) -> str:
     return "portal-attachment:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _ai_payload(row: sqlite3.Row | None, notice_id: str) -> dict[str, object]:
+    if row is None or "ai_status" not in row.keys() or row["ai_status"] is None:
+        return {
+            "noticeId": notice_id,
+            "status": "idle",
+            "summary": None,
+            "translation": None,
+            "errorCode": None,
+            "error": None,
+            "analyzedAt": None,
+            "promptVersion": None,
+            "model": None,
+        }
+    return {
+        "noticeId": notice_id,
+        "status": _ai_status(row["ai_status"]),
+        "summary": row["ai_summary"],
+        "translation": row["ai_translation"],
+        "errorCode": row["ai_error_code"],
+        "error": row["ai_error"],
+        "analyzedAt": row["ai_analyzed_at"],
+        "promptVersion": row["ai_prompt_version"],
+        "model": row["ai_model"],
+    }
+
+
+def _candidate_payload(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "id": str(row["id"]),
+        "noticeId": str(row["notice_id"]),
+        "title": str(row["title"] or ""),
+        "start": str(row["start"] or ""),
+        "end": str(row["end"] or "") or None,
+        "allDay": bool(int(row["all_day"] or 0)),
+        "type": _candidate_type(row["type"]),
+        "reason": str(row["reason"] or ""),
+        "status": _candidate_status(row["status"]),
+        "calendarEventId": str(row["calendar_event_id"] or "") or None,
+    }
+
+
 def _notice_payload(
     row: sqlite3.Row,
     attachments: Iterable[sqlite3.Row] = (),
@@ -295,6 +396,8 @@ def _notice_payload(
         # Keep the rendered list fields separate while allowing the local UI
         # to search notice bodies without fetching every detail again.
         payload["searchText"] = str(row["body"] or "")
+    if "ai_status" in row_keys:
+        payload["ai"] = _ai_payload(row, str(row["notice_id"]))
     return payload
 
 
@@ -585,9 +688,295 @@ def mark_detail_error(
         connection.close()
 
 
+def queue_notice_analysis(
+    notice_id: str,
+    path: str | Path | None = None,
+    *,
+    force: bool = False,
+) -> bool:
+    normalized = _notice_id(notice_id)
+    connection = _connect(path)
+    try:
+        exists = connection.execute(
+            "SELECT 1 FROM portal_notices WHERE notice_id = ?",
+            (normalized,),
+        ).fetchone()
+        if exists is None:
+            raise PortalDatabaseError("portal notice not found")
+        current = connection.execute(
+            "SELECT status FROM portal_notice_ai WHERE notice_id = ?",
+            (normalized,),
+        ).fetchone()
+        current_status = str(current["status"]) if current else "idle"
+        if current_status in {"queued", "processing"}:
+            return False
+        if current_status == "completed" and not force:
+            return False
+        observed_at = now_iso()
+        connection.execute(
+            """
+            INSERT INTO portal_notice_ai(
+                notice_id, status, summary, translation, error_code, error,
+                analyzed_at, prompt_version, model, updated_at
+            ) VALUES (?, 'queued', NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?)
+            ON CONFLICT(notice_id) DO UPDATE SET
+                status = 'queued',
+                error_code = NULL,
+                error = NULL,
+                updated_at = excluded.updated_at
+            """,
+            (normalized, observed_at),
+        )
+        connection.commit()
+        return True
+    except PortalDatabaseError:
+        connection.rollback()
+        raise
+    except sqlite3.Error as exc:
+        connection.rollback()
+        raise PortalDatabaseError("portal notice AI analysis could not be queued") from exc
+    finally:
+        connection.close()
+
+
+def claim_notice_analysis(notice_id: str, path: str | Path | None = None) -> bool:
+    normalized = _notice_id(notice_id)
+    connection = _connect(path)
+    try:
+        cursor = connection.execute(
+            """
+            UPDATE portal_notice_ai
+               SET status = 'processing', error_code = NULL, error = NULL,
+                   updated_at = ?
+             WHERE notice_id = ? AND status = 'queued'
+            """,
+            (now_iso(), normalized),
+        )
+        connection.commit()
+        return cursor.rowcount > 0
+    except sqlite3.Error as exc:
+        connection.rollback()
+        raise PortalDatabaseError("portal notice AI analysis could not start") from exc
+    finally:
+        connection.close()
+
+
+def recover_interrupted_ai(path: str | Path | None = None) -> int:
+    connection = _connect(path)
+    try:
+        recovered_at = now_iso()
+        cursor = connection.execute(
+            """
+            UPDATE portal_notice_ai
+               SET status = 'failed', error_code = 'ai_interrupted',
+                   error = ?, updated_at = ?
+             WHERE status IN ('queued', 'processing')
+            """,
+            ("이전 공지 AI 분석이 정상적으로 끝나지 않아 중단 상태로 정리했어.", recovered_at),
+        )
+        connection.commit()
+        return cursor.rowcount
+    except sqlite3.Error as exc:
+        connection.rollback()
+        raise PortalDatabaseError("portal notice AI state could not be recovered") from exc
+    finally:
+        connection.close()
+
+
+def save_notice_analysis(
+    notice_id: str,
+    result: Mapping[str, object],
+    prompt_version: str,
+    model: str,
+    analyzed_at: str,
+    path: str | Path | None = None,
+) -> None:
+    normalized = _notice_id(notice_id)
+    summary = _text(result.get("summary"))
+    translation = _text(result.get("translation"))
+    raw_candidates = result.get("calendarCandidates")
+    candidates = raw_candidates if isinstance(raw_candidates, list) else []
+    connection = _connect(path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        exists = connection.execute(
+            "SELECT 1 FROM portal_notices WHERE notice_id = ?",
+            (normalized,),
+        ).fetchone()
+        if exists is None:
+            raise PortalDatabaseError("portal notice not found")
+        connection.execute(
+            """
+            UPDATE portal_notice_ai
+               SET status = 'completed', summary = ?, translation = ?,
+                   error_code = NULL, error = NULL, analyzed_at = ?,
+                   prompt_version = ?, model = ?, updated_at = ?
+             WHERE notice_id = ?
+            """,
+            (summary, translation, _text(analyzed_at), _text(prompt_version), _text(model), now_iso(), normalized),
+        )
+        candidate_ids: list[str] = []
+        for candidate in candidates:
+            if not isinstance(candidate, Mapping):
+                continue
+            candidate_id = _text(candidate.get("id"))
+            title = _text(candidate.get("title"))
+            start = _text(candidate.get("start"))
+            if not candidate_id or not title or not start:
+                continue
+            candidate_ids.append(candidate_id)
+            existing = connection.execute(
+                "SELECT status, calendar_event_id FROM portal_notice_calendar_candidates WHERE id = ? AND notice_id = ?",
+                (candidate_id, normalized),
+            ).fetchone()
+            status = str(existing["status"]) if existing and str(existing["status"]) in CANDIDATE_STATUSES else "pending"
+            event_id = str(existing["calendar_event_id"] or "") if existing else ""
+            connection.execute(
+                """
+                INSERT INTO portal_notice_calendar_candidates(
+                    id, notice_id, title, start, end, all_day, type, reason,
+                    status, calendar_event_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    notice_id = excluded.notice_id,
+                    title = excluded.title,
+                    start = excluded.start,
+                    end = excluded.end,
+                    all_day = excluded.all_day,
+                    type = excluded.type,
+                    reason = excluded.reason,
+                    status = excluded.status,
+                    calendar_event_id = excluded.calendar_event_id
+                """,
+                (
+                    candidate_id,
+                    normalized,
+                    title[:500],
+                    start[:100],
+                    _text(candidate.get("end"))[:100] or None,
+                    1 if candidate.get("allDay") is True else 0,
+                    "deadline" if candidate.get("type") == "deadline" else "event",
+                    _text(candidate.get("reason"))[:500],
+                    status,
+                    event_id or None,
+                ),
+            )
+        if candidate_ids:
+            placeholders = ",".join("?" for _ in candidate_ids)
+            connection.execute(
+                f"DELETE FROM portal_notice_calendar_candidates WHERE notice_id = ? AND status = 'pending' AND id NOT IN ({placeholders})",
+                [normalized, *candidate_ids],
+            )
+        else:
+            connection.execute(
+                "DELETE FROM portal_notice_calendar_candidates WHERE notice_id = ? AND status = 'pending'",
+                (normalized,),
+            )
+        connection.commit()
+    except PortalDatabaseError:
+        connection.rollback()
+        raise
+    except sqlite3.Error as exc:
+        connection.rollback()
+        raise PortalDatabaseError("portal notice AI analysis could not be saved") from exc
+    finally:
+        connection.close()
+
+
+def save_notice_analysis_failed(
+    notice_id: str,
+    error_code: str,
+    error: str,
+    path: str | Path | None = None,
+) -> None:
+    normalized = _notice_id(notice_id)
+    connection = _connect(path)
+    try:
+        connection.execute(
+            """
+            UPDATE portal_notice_ai
+               SET status = 'failed', error_code = ?, error = ?, updated_at = ?
+             WHERE notice_id = ?
+            """,
+            (_text(error_code)[:100], _text(error)[:1000], now_iso(), normalized),
+        )
+        connection.commit()
+    except sqlite3.Error as exc:
+        connection.rollback()
+        raise PortalDatabaseError("portal notice AI failure could not be saved") from exc
+    finally:
+        connection.close()
+
+
+def update_notice_calendar_candidate(
+    notice_id: str,
+    candidate_id: str,
+    status: str,
+    *,
+    title: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    all_day: bool | None = None,
+    calendar_event_id: str | None = None,
+    path: str | Path | None = None,
+) -> dict[str, object]:
+    normalized_notice_id = _notice_id(notice_id)
+    normalized_candidate_id = _text(candidate_id)
+    if not normalized_candidate_id or len(normalized_candidate_id) > 256:
+        raise PortalDatabaseError("invalid portal notice calendar candidate id")
+    normalized_status = _candidate_status(status)
+    connection = _connect(path)
+    try:
+        row = connection.execute(
+            "SELECT * FROM portal_notice_calendar_candidates WHERE id = ? AND notice_id = ?",
+            (normalized_candidate_id, normalized_notice_id),
+        ).fetchone()
+        if row is None:
+            raise PortalDatabaseError("portal notice calendar candidate not found")
+        next_title = _text(title) if title is not None else str(row["title"] or "")
+        next_start = _text(start) if start is not None else str(row["start"] or "")
+        next_end = _text(end) if end is not None else (str(row["end"] or "") or None)
+        next_all_day = all_day if all_day is not None else bool(int(row["all_day"] or 0))
+        next_event_id = _text(calendar_event_id) if calendar_event_id is not None else (str(row["calendar_event_id"] or "") or None)
+        if not next_title or not next_start:
+            raise PortalDatabaseError("portal notice calendar candidate requires title and start")
+        connection.execute(
+            """
+            UPDATE portal_notice_calendar_candidates
+               SET title = ?, start = ?, end = ?, all_day = ?, status = ?, calendar_event_id = ?
+             WHERE id = ? AND notice_id = ?
+            """,
+            (next_title[:500], next_start[:100], next_end[:100] if next_end else None, 1 if next_all_day else 0, normalized_status, next_event_id, normalized_candidate_id, normalized_notice_id),
+        )
+        updated = connection.execute(
+            "SELECT * FROM portal_notice_calendar_candidates WHERE id = ? AND notice_id = ?",
+            (normalized_candidate_id, normalized_notice_id),
+        ).fetchone()
+        connection.commit()
+        if updated is None:
+            raise PortalDatabaseError("portal notice calendar candidate could not be updated")
+        return _candidate_payload(updated)
+    except PortalDatabaseError:
+        connection.rollback()
+        raise
+    except sqlite3.Error as exc:
+        connection.rollback()
+        raise PortalDatabaseError("portal notice calendar candidate could not be updated") from exc
+    finally:
+        connection.close()
+
+
 def _attachments_for(connection: sqlite3.Connection, notice_id: str) -> list[sqlite3.Row]:
     return connection.execute(
         "SELECT id, notice_id, filename, url FROM portal_notice_attachments WHERE notice_id = ? ORDER BY id",
+        (notice_id,),
+    ).fetchall()
+
+
+def _calendar_candidates_for(connection: sqlite3.Connection, notice_id: str) -> list[sqlite3.Row]:
+    return connection.execute(
+        "SELECT id, notice_id, title, start, end, all_day, type, reason, status, calendar_event_id "
+        "FROM portal_notice_calendar_candidates WHERE notice_id = ? ORDER BY rowid",
         (notice_id,),
     ).fetchall()
 
@@ -689,16 +1078,26 @@ def get_notice(notice_id: str, path: str | Path | None = None) -> dict[str, obje
                    n.source_url, n.synced_at,
                    n.last_changed_at, n.change_count,
                    s.is_read, s.is_important, s.is_archived, s.first_seen_at,
-                   s.read_at, s.updated_at
+                   s.read_at, s.updated_at,
+                   a.status AS ai_status, a.summary AS ai_summary,
+                   a.translation AS ai_translation, a.error_code AS ai_error_code,
+                   a.error AS ai_error, a.analyzed_at AS ai_analyzed_at,
+                   a.prompt_version AS ai_prompt_version, a.model AS ai_model
               FROM portal_notices AS n
               LEFT JOIN portal_notice_user_state AS s ON s.notice_id = n.notice_id
+              LEFT JOIN portal_notice_ai AS a ON a.notice_id = n.notice_id
              WHERE n.notice_id = ?
             """,
             (normalized,),
         ).fetchone()
         if row is None:
             return None
-        return _notice_payload(row, _attachments_for(connection, normalized), include_body=True)
+        payload = _notice_payload(row, _attachments_for(connection, normalized), include_body=True)
+        payload["calendarCandidates"] = [
+            _candidate_payload(candidate)
+            for candidate in _calendar_candidates_for(connection, normalized)
+        ]
+        return payload
     finally:
         connection.close()
 
@@ -750,14 +1149,23 @@ def update_notice_state(
                    n.source_url, n.synced_at,
                    n.last_changed_at, n.change_count,
                    s.is_read, s.is_important, s.is_archived, s.first_seen_at,
-                   s.read_at, s.updated_at
+                   s.read_at, s.updated_at,
+                   a.status AS ai_status, a.summary AS ai_summary,
+                   a.translation AS ai_translation, a.error_code AS ai_error_code,
+                   a.error AS ai_error, a.analyzed_at AS ai_analyzed_at,
+                   a.prompt_version AS ai_prompt_version, a.model AS ai_model
               FROM portal_notices AS n
               LEFT JOIN portal_notice_user_state AS s ON s.notice_id = n.notice_id
+              LEFT JOIN portal_notice_ai AS a ON a.notice_id = n.notice_id
              WHERE n.notice_id = ?
             """,
             (normalized,),
         ).fetchone()
         payload = _notice_payload(row, _attachments_for(connection, normalized), include_body=True)
+        payload["calendarCandidates"] = [
+            _candidate_payload(candidate)
+            for candidate in _calendar_candidates_for(connection, normalized)
+        ]
         connection.commit()
         return payload
     except PortalDatabaseError:

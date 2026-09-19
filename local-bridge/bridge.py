@@ -209,6 +209,36 @@ def _run_portal_login_job() -> None:
         _remember_portal_job_end()
 
 
+def _run_portal_ai_job(notice_id: str) -> None:
+    try:
+        import portal_ai
+
+        notice = portal_db.get_notice(notice_id, PORTAL_DB_PATH)
+        if notice is None:
+            raise portal_ai.PortalAIError('공지 상세를 찾지 못했어.', 'notice_not_found')
+        if not portal_db.claim_notice_analysis(notice_id, PORTAL_DB_PATH):
+            raise portal_ai.PortalAIError('공지 AI 분석 작업을 시작하지 못했어.', 'ai_job_already_running')
+        result = portal_ai.analyze_notice(notice)
+        portal_db.save_notice_analysis(
+            notice_id,
+            result,
+            portal_ai.PROMPT_VERSION,
+            portal_ai.provider_model(),
+            portal_db.now_iso(),
+            PORTAL_DB_PATH,
+        )
+    except Exception as exc:
+        code = getattr(exc, 'code', 'ai_provider_failed')
+        message = getattr(exc, 'message', str(exc) or '공지 AI 분석이 중단되었어.')
+        try:
+            portal_db.save_notice_analysis_failed(notice_id, code, message, PORTAL_DB_PATH)
+        except Exception:
+            pass
+        _remember_portal_job_end(message, code)
+    else:
+        _remember_portal_job_end()
+
+
 def start_portal_sync_job() -> bool:
     global PORTAL_JOB_THREAD, PORTAL_JOB_KIND, PORTAL_JOB_ERROR, PORTAL_JOB_ERROR_CODE
     with PORTAL_JOB_LOCK:
@@ -231,6 +261,26 @@ def start_portal_login_job() -> bool:
         PORTAL_JOB_ERROR_CODE = None
         PORTAL_JOB_KIND = 'login'
         PORTAL_JOB_THREAD = threading.Thread(target=_run_portal_login_job, name='portal-login', daemon=True)
+        PORTAL_JOB_THREAD.start()
+        return True
+
+
+def start_portal_notice_analysis(notice_id: str, *, force: bool = False) -> bool:
+    global PORTAL_JOB_THREAD, PORTAL_JOB_KIND, PORTAL_JOB_ERROR, PORTAL_JOB_ERROR_CODE
+    with PORTAL_JOB_LOCK:
+        if _portal_job_active():
+            return False
+        if not portal_db.queue_notice_analysis(notice_id, PORTAL_DB_PATH, force=force):
+            return False
+        PORTAL_JOB_ERROR = None
+        PORTAL_JOB_ERROR_CODE = None
+        PORTAL_JOB_KIND = 'ai'
+        PORTAL_JOB_THREAD = threading.Thread(
+            target=_run_portal_ai_job,
+            args=(notice_id,),
+            name='portal-ai-analysis',
+            daemon=True,
+        )
         PORTAL_JOB_THREAD.start()
         return True
 
@@ -346,6 +396,7 @@ class Handler(BaseHTTPRequestHandler):
             # may still contain the previous run's `running` state. Recover
             # that stale state before exposing status to the UI.
             portal_db.recover_interrupted_sync(PORTAL_DB_PATH)
+            portal_db.recover_interrupted_ai(PORTAL_DB_PATH)
         status = portal_db.sync_status(PORTAL_DB_PATH)
         persisted_error_code = status.get('lastErrorCode')
         effective_error_code = job_error_code or persisted_error_code
@@ -611,6 +662,36 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_out(409, {'ok': False, 'source': 'sqlite', 'error': 'portal_job_already_running'})
             return self.json_out(202, {'ok': True, 'source': 'sqlite', 'status': 'running', 'jobKind': 'login'})
         prefix = '/portal/notices/'
+        if body is not None and path.startswith(prefix) and path.endswith('/analyze'):
+            notice_id = unquote(path[len(prefix):-len('/analyze')]).strip()
+            if not notice_id or len(notice_id) > 512:
+                return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'notice not found'})
+            if portal_db.get_notice(notice_id, PORTAL_DB_PATH) is None:
+                return self.json_out(404, {'ok': False, 'source': 'sqlite', 'error': 'notice not found'})
+            if not start_portal_notice_analysis(notice_id, force=body.get('force') is True):
+                return self.json_out(409, {'ok': False, 'source': 'sqlite', 'error': 'ai_job_already_running'})
+            return self.json_out(202, {'ok': True, 'source': 'sqlite', 'status': 'queued', 'jobKind': 'ai', 'noticeId': notice_id})
+        if body is not None and path.startswith(prefix) and path.endswith('/candidate'):
+            notice_id = unquote(path[len(prefix):-len('/candidate')]).strip()
+            candidate_id = body.get('candidateId')
+            status = body.get('status')
+            if not notice_id or len(notice_id) > 512 or not isinstance(candidate_id, str) or not candidate_id.strip() or not isinstance(status, str) or not status.strip():
+                return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'invalid portal notice candidate request'})
+            try:
+                candidate = portal_db.update_notice_calendar_candidate(
+                    notice_id,
+                    candidate_id.strip(),
+                    status.strip(),
+                    title=body.get('title') if isinstance(body.get('title'), str) else None,
+                    start=body.get('start') if isinstance(body.get('start'), str) else None,
+                    end=body.get('end') if isinstance(body.get('end'), str) else None,
+                    all_day=body.get('allDay') if isinstance(body.get('allDay'), bool) else None,
+                    calendar_event_id=body.get('calendarEventId') if isinstance(body.get('calendarEventId'), str) else None,
+                    path=PORTAL_DB_PATH,
+                )
+            except portal_db.PortalDatabaseError as exc:
+                return self.json_out(404 if 'not found' in str(exc) else 400, {'ok': False, 'source': 'sqlite', 'error': str(exc)})
+            return self.json_out(200, {'ok': True, 'source': 'sqlite', 'candidate': candidate})
         if body is not None and path.startswith(prefix) and path.endswith('/state'):
             notice_id = unquote(path[len(prefix):-len('/state')]).strip()
             if not notice_id or len(notice_id) > 512:
@@ -647,7 +728,9 @@ class Handler(BaseHTTPRequestHandler):
             '/portal/sync', '/portal/login',
         )
         is_portal_state = path.startswith('/portal/notices/') and path.endswith('/state')
-        if path not in allowed and not is_portal_state and not (path.startswith('/mail/analysis/') and path.endswith('/reanalyze')):
+        is_portal_analyze = path.startswith('/portal/notices/') and path.endswith('/analyze')
+        is_portal_candidate = path.startswith('/portal/notices/') and path.endswith('/candidate')
+        if path not in allowed and not is_portal_state and not is_portal_analyze and not is_portal_candidate and not (path.startswith('/mail/analysis/') and path.endswith('/reanalyze')):
             return self.json_out(404, {'error': 'not found'})
         if not self._origin_allowed():
             return

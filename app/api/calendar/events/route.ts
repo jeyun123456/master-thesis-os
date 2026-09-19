@@ -27,6 +27,7 @@ function createInput(value: unknown): CalendarCreateInput | null {
     allDay: value.allDay === true,
     ...(value.type === 'deadline' || value.type === 'event' ? { type: value.type } : {}),
     ...(typeof value.reason === 'string' ? { reason: value.reason } : {}),
+    ...(value.source === 'portal' || value.source === 'mail' ? { source: value.source } : {}),
   };
 }
 

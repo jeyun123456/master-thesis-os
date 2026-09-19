@@ -1,6 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { addCalendarEvent } from '../lib/calendar-client';
+import { PortalNoticeAI } from './portal-notice-ai';
+import type { CalendarCandidateEdit } from './mail-analysis-details';
 import {
   getPortalNotice,
   getPortalNotices,
@@ -8,8 +11,11 @@ import {
   PortalNoticesClientError,
   readPortalBridgeToken,
   startPortalLogin,
+  startPortalNoticeAnalysis,
   startPortalSync,
+  updatePortalNoticeCandidate,
   updatePortalNoticeState,
+  type PortalNoticeCalendarCandidate,
   type PortalNotice,
   type PortalNoticeDepartment,
   type PortalNoticeSummary,
@@ -34,6 +40,7 @@ const INITIAL_STATUS: PortalSyncStatus = {
 };
 
 const PORTAL_JOB_TIMEOUT_MS = 15 * 60_000;
+const PORTAL_AI_TIMEOUT_MS = 5 * 60_000;
 
 export type PortalNoticeViewFilter = 'all' | 'unread' | 'important' | 'archived' | 'deadline' | 'expired';
 export type PortalNoticeSort = 'published_desc' | 'deadline_asc' | 'title_asc';
@@ -139,6 +146,13 @@ export function portalNoticeErrorMessage(error: unknown): string {
     parsing_failed: '공지 페이지 구조를 해석하지 못했어. portal-debug.log를 확인해줘.',
     notice_detail_failed: '일부 공지 상세를 읽지 못했어. 목록은 계속 저장돼.',
     database_error: '학교 공지 SQLite를 사용할 수 없어.',
+    ai_body_missing: '본문이 없는 공지는 AI 분석할 수 없어.',
+    ai_provider_unconfigured: 'AI provider 설정이 없어. MAIL_AI_* 환경변수를 확인해줘.',
+    ai_provider_failed: 'AI provider 요청에 실패했어. 잠시 후 다시 시도해줘.',
+    ai_response_invalid: 'AI 응답 형식을 해석하지 못했어. 다시 분석해줘.',
+    ai_interrupted: '이전 AI 분석이 중단됐어. 다시 분석해줘.',
+    ai_job_already_running: '공지 AI 분석이 이미 진행 중이야.',
+    notice_not_found: '공지 상세를 찾지 못했어. 먼저 다시 동기화해줘.',
     sync_interrupted: '이전 동기화가 중단되어 상태를 정리했어. 다시 동기화해줘.',
     sync_already_running: '학교 공지 동기화가 이미 진행 중이야.',
     portal_job_already_running: '학교 포털 작업이 이미 진행 중이야.',
@@ -213,6 +227,7 @@ export function PortalNoticesPanel() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [stateAction, setStateAction] = useState<string | null>(null);
   const [action, setAction] = useState<'idle' | 'sync' | 'login'>('idle');
+  const [aiAction, setAiAction] = useState<'idle' | 'analyze'>('idle');
   const [error, setError] = useState<unknown>(null);
 
   const loadStored = useCallback(async () => {
@@ -320,6 +335,81 @@ export function PortalNoticesPanel() {
     }
   }
 
+  async function runNoticeAnalysis(force = false) {
+    if (!detail || aiAction !== 'idle') return;
+    const noticeId = detail.noticeId;
+    setAiAction('analyze');
+    setError(null);
+    try {
+      await startPortalNoticeAnalysis(noticeId, force, readPortalBridgeToken());
+      const started = Date.now();
+      while (Date.now() - started < PORTAL_AI_TIMEOUT_MS) {
+        const nextDetail = await getPortalNotice(noticeId, readPortalBridgeToken());
+        setDetail((current) => current?.noticeId === noticeId ? nextDetail : current);
+        if (nextDetail.ai.status === 'completed') return;
+        if (nextDetail.ai.status === 'failed') {
+          throw new PortalNoticesClientError(
+            nextDetail.ai.errorCode || 'ai_provider_failed',
+            nextDetail.ai.error || '공지 AI 분석을 완료하지 못했어.',
+          );
+        }
+        await sleep(1000);
+      }
+      throw new PortalNoticesClientError('ai_provider_failed', '공지 AI 분석이 제한 시간 안에 끝나지 않았어.');
+    } catch (nextError) {
+      setError(nextError);
+    } finally {
+      setAiAction('idle');
+    }
+  }
+
+  async function addPortalCandidate(candidate: PortalNoticeCalendarCandidate, edit: CalendarCandidateEdit) {
+    if (!detail) return;
+    const noticeId = detail.noticeId;
+    setError(null);
+    const result = await addCalendarEvent({
+      mailId: `portal-notice:${noticeId}`,
+      candidateId: candidate.id,
+      source: 'portal',
+      title: edit.title,
+      start: edit.start,
+      end: edit.end,
+      allDay: edit.allDay,
+      type: candidate.type,
+      reason: candidate.reason,
+    });
+    const updated = await updatePortalNoticeCandidate(
+      noticeId,
+      {
+        candidateId: candidate.id,
+        status: 'added',
+        title: edit.title,
+        start: edit.start,
+        end: edit.end,
+        allDay: edit.allDay,
+        calendarEventId: result.eventId,
+      },
+      readPortalBridgeToken(),
+    );
+    setDetail((current) => current?.noticeId === noticeId
+      ? { ...current, calendarCandidates: current.calendarCandidates.map((item) => item.id === updated.id ? updated : item) }
+      : current);
+  }
+
+  async function ignorePortalCandidate(candidate: PortalNoticeCalendarCandidate) {
+    if (!detail) return;
+    const noticeId = detail.noticeId;
+    setError(null);
+    const updated = await updatePortalNoticeCandidate(
+      noticeId,
+      { candidateId: candidate.id, status: 'ignored' },
+      readPortalBridgeToken(),
+    );
+    setDetail((current) => current?.noticeId === noticeId
+      ? { ...current, calendarCandidates: current.calendarCandidates.map((item) => item.id === updated.id ? updated : item) }
+      : current);
+  }
+
   async function openDetail(notice: PortalNoticeSummary) {
     if (selectedId === notice.noticeId) {
       setSelectedId(null);
@@ -382,7 +472,7 @@ export function PortalNoticesPanel() {
         </div>
         <div className="portal-notice-actions">
           {needsLogin && <button className="btn" type="button" disabled={action !== 'idle'} onClick={() => void runPortalAction('login')}>로그인 창 열기</button>}
-          <button className="btn primary" type="button" disabled={action !== 'idle'} onClick={() => void runPortalAction('sync')}>{actionLabel}</button>
+          <button className="btn primary" type="button" disabled={action !== 'idle' || aiAction !== 'idle'} onClick={() => void runPortalAction('sync')}>{actionLabel}</button>
         </div>
       </div>
       <div className="portal-notices-meta">
@@ -501,6 +591,14 @@ export function PortalNoticesPanel() {
             <div><dt>최근 수정</dt><dd>{formatPortalNoticeDate(detail.lastChangedAt || '')}</dd></div>
             <div><dt>수정 횟수</dt><dd>{detail.changeCount}</dd></div>
           </dl>
+          <PortalNoticeAI
+            ai={detail.ai}
+            candidates={detail.calendarCandidates}
+            busy={aiAction === 'analyze'}
+            onAnalyze={runNoticeAnalysis}
+            onAddCandidate={addPortalCandidate}
+            onIgnoreCandidate={ignorePortalCandidate}
+          />
           <div className="portal-notice-body">{detail.body ? detail.body.split(/\r?\n/).map((line, index) => <p key={`${index}-${line}`}>{line || '\u00a0'}</p>) : <span className="muted">저장된 본문이 없어.</span>}</div>
           {detail.attachments.length > 0 && <div className="portal-notice-attachments"><b>첨부파일 metadata</b>{detail.attachments.map((attachment) => <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer">{attachment.filename || attachment.url}</a>)}</div>}
           <div className="portal-notice-source"><a href={detail.sourceUrl} target="_blank" rel="noreferrer">원문 열기 ↗</a><small>notice_id: {detail.noticeId}</small></div>

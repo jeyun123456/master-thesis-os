@@ -249,6 +249,79 @@ class PortalDatabaseTests(unittest.TestCase):
         self.assertEqual(department_map['새 담당부서']['count'], 1)
         self.assertEqual(department_map['教学推進課']['counts']['DM'], 1)
 
+    def test_notice_ai_and_calendar_candidate_state_survives_reanalysis(self):
+        portal_db.upsert_notice_summary(self.summary, self.synced_at, self.path)
+        portal_db.upsert_notice_detail({**self.summary, 'body': '공지 본문'}, [], self.synced_at, self.path)
+
+        initial = portal_db.get_notice(self.summary['notice_id'], self.path)
+        self.assertEqual(initial['ai']['status'], 'idle')
+        self.assertTrue(portal_db.queue_notice_analysis(self.summary['notice_id'], self.path))
+        self.assertFalse(portal_db.queue_notice_analysis(self.summary['notice_id'], self.path))
+        self.assertTrue(portal_db.claim_notice_analysis(self.summary['notice_id'], self.path))
+        self.assertFalse(portal_db.claim_notice_analysis(self.summary['notice_id'], self.path))
+
+        result = {
+            'summary': '한국어 요약',
+            'translation': '한국어 번역 본문',
+            'calendarCandidates': [{
+                'id': 'portal-calendar:test-1',
+                'title': '설명회',
+                'start': '2099-09-20',
+                'end': None,
+                'allDay': True,
+                'type': 'event',
+                'reason': '공지에 참석 일정으로 명시됨',
+            }],
+        }
+        portal_db.save_notice_analysis(
+            self.summary['notice_id'],
+            result,
+            'portal-notice-ai-v1-ko',
+            'test-model',
+            '2026-09-18T15:00:00Z',
+            self.path,
+        )
+        completed = portal_db.get_notice(self.summary['notice_id'], self.path)
+        self.assertEqual(completed['ai']['status'], 'completed')
+        self.assertEqual(completed['ai']['translation'], '한국어 번역 본문')
+        self.assertEqual(completed['calendarCandidates'][0]['status'], 'pending')
+
+        added = portal_db.update_notice_calendar_candidate(
+            self.summary['notice_id'],
+            'portal-calendar:test-1',
+            'added',
+            title='수정한 설명회',
+            start='2099-09-20',
+            all_day=True,
+            calendar_event_id='google-event-1',
+            path=self.path,
+        )
+        self.assertEqual(added['status'], 'added')
+        self.assertEqual(added['calendarEventId'], 'google-event-1')
+
+        self.assertTrue(portal_db.queue_notice_analysis(self.summary['notice_id'], self.path, force=True))
+        self.assertTrue(portal_db.claim_notice_analysis(self.summary['notice_id'], self.path))
+        portal_db.save_notice_analysis(
+            self.summary['notice_id'],
+            {**result, 'summary': '재분석 요약', 'calendarCandidates': [{**result['calendarCandidates'][0], 'title': '새 설명회 제목'}]},
+            'portal-notice-ai-v1-ko',
+            'test-model-2',
+            '2026-09-18T16:00:00Z',
+            self.path,
+        )
+        reanalyzed = portal_db.get_notice(self.summary['notice_id'], self.path)
+        self.assertEqual(reanalyzed['ai']['summary'], '재분석 요약')
+        self.assertEqual(reanalyzed['calendarCandidates'][0]['title'], '새 설명회 제목')
+        self.assertEqual(reanalyzed['calendarCandidates'][0]['status'], 'added')
+        self.assertEqual(reanalyzed['calendarCandidates'][0]['calendarEventId'], 'google-event-1')
+
+        self.assertTrue(portal_db.queue_notice_analysis(self.summary['notice_id'], self.path, force=True))
+        self.assertTrue(portal_db.claim_notice_analysis(self.summary['notice_id'], self.path))
+        self.assertEqual(portal_db.recover_interrupted_ai(self.path), 1)
+        recovered = portal_db.get_notice(self.summary['notice_id'], self.path)
+        self.assertEqual(recovered['ai']['status'], 'failed')
+        self.assertEqual(recovered['ai']['errorCode'], 'ai_interrupted')
+
 
 class PortalProfileTests(unittest.TestCase):
     def test_default_profile_uses_local_app_data(self):

@@ -49,6 +49,7 @@ export type CalendarCreateInput = {
   allDay: boolean;
   type?: 'event' | 'deadline';
   reason?: string;
+  source?: 'mail' | 'portal';
 };
 
 export type CalendarCreateResult = {
@@ -233,7 +234,7 @@ function normalizeCreateInput(input: CalendarCreateInput): {
       title,
       start: { date: startValue },
       end: { date: end },
-      description: `${input.type === 'deadline' ? '메일에서 확인한 마감 후보' : '메일에서 확인한 일정 후보'}${input.reason ? `\n${input.reason.trim().slice(0, 500)}` : ''}`,
+      description: `${input.source === 'portal' ? '학교 공지에서 확인한' : '메일에서 확인한'} ${input.type === 'deadline' ? '마감 후보' : '일정 후보'}${input.reason ? `\n${input.reason.trim().slice(0, 500)}` : ''}`,
     };
   }
 
@@ -250,7 +251,7 @@ function normalizeCreateInput(input: CalendarCreateInput): {
     title,
     start: { dateTime: start, timeZone: CALENDAR_TIMEZONE },
     end: { dateTime: end, timeZone: CALENDAR_TIMEZONE },
-    description: `${input.type === 'deadline' ? '메일에서 확인한 마감 후보' : '메일에서 확인한 일정 후보'}${input.reason ? `\n${input.reason.trim().slice(0, 500)}` : ''}`,
+    description: `${input.source === 'portal' ? '학교 공지에서 확인한' : '메일에서 확인한'} ${input.type === 'deadline' ? '마감 후보' : '일정 후보'}${input.reason ? `\n${input.reason.trim().slice(0, 500)}` : ''}`,
   };
 }
 
@@ -522,6 +523,7 @@ export async function createCalendarEvent(
           private: {
             masterThesisOsMailId: input.mailId.trim(),
             masterThesisOsCandidateId: input.candidateId.trim(),
+            masterThesisOsSource: input.source === 'portal' ? 'portal-notice' : 'mail',
           },
         },
       }),
