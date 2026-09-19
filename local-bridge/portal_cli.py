@@ -147,12 +147,21 @@ def sync_portal(
         raise PortalError("parsing_failed", "학교 공지 동기화가 중단되었어.", cause=exc) from exc
 
 
-def login_portal(root: str | Path | None = None, *, timeout_seconds: int = DEFAULT_LOGIN_WAIT_SECONDS) -> dict[str, str]:
+def login_portal(
+    root: str | Path | None = None,
+    db_path: str | Path | None = None,
+    *,
+    timeout_seconds: int = DEFAULT_LOGIN_WAIT_SECONDS,
+) -> dict[str, str]:
     client = PortalClient(resolve_profile_path(root))
     try:
-        return client.login(timeout_seconds=timeout_seconds)
+        result = client.login(timeout_seconds=timeout_seconds)
+        portal_db.clear_sync_error(db_path)
+        return result
     except PortalError:
         raise
+    except portal_db.PortalDatabaseError as exc:
+        raise _portal_error_from_database(exc) from exc
 
 
 def status_portal(root: str | Path | None = None, db_path: str | Path | None = None) -> dict[str, object]:

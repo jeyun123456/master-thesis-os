@@ -327,7 +327,8 @@ export function PortalNoticesPanel() {
       if (kind === 'sync') await startPortalSync(token);
       else await startPortalLogin(token);
       const nextStatus = await waitForJob();
-      if (nextStatus.status === 'failed' || nextStatus.jobErrorCode) {
+      const actionFailed = nextStatus.jobErrorCode || (kind === 'sync' && nextStatus.status === 'failed');
+      if (actionFailed) {
         throw new PortalNoticesClientError(
           nextStatus.jobErrorCode || nextStatus.lastErrorCode || 'portal_unreachable',
           nextStatus.jobError || nextStatus.lastError || '학교 포털 작업이 실패했어.',

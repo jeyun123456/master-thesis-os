@@ -92,6 +92,33 @@ class PortalParsingTests(unittest.TestCase):
                 client._wait_for_login(FakeContext(), timeout_seconds=5)
         self.assertEqual(raised.exception.code, 'login_cancelled')
 
+    def test_login_accepts_authenticated_frontdoor_callback(self):
+        class FakeLocator:
+            def inner_text(self, timeout):
+                return 'RITSUMEIKAN STUDENT PORTAL'
+
+        class FakePage:
+            url = 'https://sp.ritsumei.ac.jp/studentportal/secur/frontdoor.jsp'
+
+            def locator(self, selector):
+                return FakeLocator()
+
+        class FakeContext:
+            pages = [FakePage()]
+
+        client = object.__new__(portal_client.PortalClient)
+        client.logger = portal_client.logging.getLogger('portal-login-test')
+        with patch('portal_client.time.sleep'):
+            page = client._wait_for_login(FakeContext(), timeout_seconds=5)
+        self.assertIsInstance(page, FakePage)
+
+    def test_frontdoor_callback_is_not_a_collection_page(self):
+        class FakePage:
+            url = 'https://sp.ritsumei.ac.jp/studentportal/secur/frontdoor.jsp'
+
+        self.assertFalse(portal_client._is_portal_page(FakePage()))
+        self.assertTrue(portal_client._is_portal_frontdoor_page(FakePage()))
+
     def test_maps_observed_portal_distribution_to_all_and_dm(self):
         self.assertEqual(classify_notice_type('全体'), 'ALL')
         self.assertEqual(classify_notice_type('個人'), 'DM')
@@ -461,6 +488,26 @@ class PortalProfileTests(unittest.TestCase):
 
 
 class PortalSyncLoginTests(unittest.TestCase):
+    def test_successful_login_clears_stale_authentication_error(self):
+        class FakeClient:
+            def login(self, **kwargs):
+                return {'status': 'authenticated', 'url': '/studentportal/secur/frontdoor.jsp'}
+
+        with tempfile.TemporaryDirectory() as temp:
+            db_path = Path(temp) / 'portal-notices.db'
+            portal_db.fail_sync(
+                portal_db.now_iso(),
+                'session_expired',
+                'expired',
+                path=db_path,
+            )
+            with patch.object(portal_cli, 'PortalClient', return_value=FakeClient()):
+                result = portal_cli.login_portal(db_path=db_path, timeout_seconds=1)
+            self.assertEqual(result['status'], 'authenticated')
+            status = portal_db.sync_status(db_path)
+            self.assertEqual(status['status'], 'idle')
+            self.assertNotIn('lastErrorCode', status)
+
     def test_sync_reports_expired_session_without_opening_login_window(self):
         class FakeClient:
             login_called = False

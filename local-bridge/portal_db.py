@@ -1358,6 +1358,30 @@ def fail_sync(
         connection.close()
 
 
+def clear_sync_error(path: str | Path | None = None) -> None:
+    """Clear an authentication error after an explicit successful login.
+
+    The previous failed sync remains in history, but the current session
+    should no longer be presented as expired once the user has authenticated
+    in the persistent browser profile.
+    """
+
+    connection = _connect(path)
+    try:
+        connection.execute(
+            """
+            UPDATE portal_sync_state
+               SET status = CASE WHEN status = 'failed' THEN 'idle' ELSE status END,
+                   last_error_code = NULL, last_error = NULL
+             WHERE source = ? AND last_error_code IN ('login_required', 'session_expired')
+            """,
+            (SOURCE,),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def sync_status(path: str | Path | None = None) -> dict[str, object]:
     connection = _connect(path)
     try:

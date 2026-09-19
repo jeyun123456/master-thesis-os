@@ -200,7 +200,7 @@ def _run_portal_login_job() -> None:
     try:
         from portal_cli import login_portal
 
-        login_portal(ROOT)
+        login_portal(ROOT, PORTAL_DB_PATH)
     except Exception as exc:
         code = getattr(exc, 'code', 'portal_unreachable')
         message = getattr(exc, 'message', '학교 포털 로그인 창을 처리하지 못했어.')

@@ -26,6 +26,7 @@ PORTAL_ENTRY_URL = "https://sp.ritsumei.ac.jp/studentportal"
 PORTAL_HOME_URL = "https://sp.ritsumei.ac.jp/studentportal/s/"
 INFORMATION_HOME_URL = "https://sp.ritsumei.ac.jp/studentportal/s/information-home"
 PORTAL_HOST = "sp.ritsumei.ac.jp"
+PORTAL_FRONTDOOR_PATH = "/studentportal/secur/frontdoor.jsp"
 PROFILE_DIRECTORY_NAME = "ritsumei-browser-profile"
 PROFILE_APP_DIRECTORY_NAME = "MasterThesisOSWallpaper"
 DEFAULT_WAIT_SECONDS = 60
@@ -318,6 +319,21 @@ def _is_portal_page(page: Any) -> bool:
     return parsed.hostname == PORTAL_HOST and (
         path == "/studentportal/s" or path.startswith("/studentportal/s/")
     )
+
+
+def _is_portal_frontdoor_page(page: Any) -> bool:
+    """Recognize the SAML callback page used after manual portal login.
+
+    Ritsumeikan sometimes leaves the headed browser on Salesforce's
+    ``frontdoor.jsp`` callback even though the authenticated portal UI is
+    already visible.  This URL is only a login-completion signal; normal
+    notice collection still requires the concrete ``/studentportal/s/...``
+    application route in ``_authenticated_context``.
+    """
+
+    url = str(getattr(page, "url", ""))
+    parsed = urlsplit(url)
+    return parsed.hostname == PORTAL_HOST and parsed.path.rstrip("/") == PORTAL_FRONTDOOR_PATH
 
 
 def _text(value: object) -> str:
@@ -620,7 +636,7 @@ class PortalClient:
         pages = list(context.pages)
         if pages:
             for page in reversed(pages):
-                if _is_portal_page(page) or _is_login_page(page):
+                if _is_portal_page(page) or _is_portal_frontdoor_page(page) or _is_login_page(page):
                     return page
             return pages[-1]
         return context.new_page()
@@ -656,6 +672,9 @@ class PortalClient:
                     # URL is the stable signal; the collection methods still
                     # validate the actual notice page structure afterward.
                     return page
+                if _is_portal_frontdoor_page(page):
+                    self.logger.info("login wait observed authenticated portal callback path=%s", page_path)
+                    return page
             time.sleep(0.5)
         if saw_login:
             raise _portal_error("login_required", "학교 포털에 직접 로그인해줘.")
@@ -672,7 +691,7 @@ class PortalClient:
                     except Exception:
                         self.logger.debug("could not bring login page to front", exc_info=True)
                     page.goto(PORTAL_ENTRY_URL, wait_until="domcontentloaded", timeout=60000)
-                    if _is_portal_page(page):
+                    if _is_portal_page(page) or _is_portal_frontdoor_page(page):
                         self.logger.info("login reused saved session")
                         return {"status": "authenticated", "url": _safe_url_path(page.url)}
                     self.logger.info("login window opened; waiting for user-authenticated portal page")
