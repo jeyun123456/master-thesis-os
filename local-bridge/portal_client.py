@@ -30,6 +30,8 @@ PORTAL_FRONTDOOR_PATH = "/studentportal/secur/frontdoor.jsp"
 PROFILE_DIRECTORY_NAME = "ritsumei-browser-profile"
 PROFILE_APP_DIRECTORY_NAME = "MasterThesisOSWallpaper"
 DEFAULT_WAIT_SECONDS = 60
+PORTAL_READY_TIMEOUT_SECONDS = 10
+PORTAL_BODY_TIMEOUT_MS = 750
 DETAIL_NAVIGATION_TIMEOUT_MS = 30000
 DEFAULT_LOGIN_WAIT_SECONDS = 300
 NOTICE_TYPES = ("ALL", "DM")
@@ -301,19 +303,25 @@ def _safe_url_path(url: str) -> str:
     return urlsplit(url).path or "/"
 
 
-def _is_login_page(page: Any) -> bool:
-    url = str(getattr(page, "url", ""))
+def _page_body_text(page: Any, timeout_ms: int = PORTAL_BODY_TIMEOUT_MS) -> str:
+    try:
+        return " ".join(page.locator("body").inner_text(timeout=timeout_ms).split())
+    except Exception:
+        return ""
+
+
+def _is_login_snapshot(url: str, body: str) -> bool:
     if "login.microsoftonline.com" in url or "login.live.com" in url:
         return True
-    try:
-        text = page.locator("body").inner_text(timeout=1500)
-    except Exception:
-        return False
-    return "Sign in" in text and "Ritsumeikan" in text
+    return "Sign in" in body and "Ritsumeikan" in body
 
 
-def _is_portal_page(page: Any) -> bool:
+def _is_login_page(page: Any) -> bool:
     url = str(getattr(page, "url", ""))
+    return _is_login_snapshot(url, _page_body_text(page, timeout_ms=1500))
+
+
+def _is_portal_url(url: str) -> bool:
     parsed = urlsplit(url)
     path = parsed.path.rstrip("/")
     return parsed.hostname == PORTAL_HOST and (
@@ -321,14 +329,40 @@ def _is_portal_page(page: Any) -> bool:
     )
 
 
+def _is_portal_page(page: Any) -> bool:
+    url = str(getattr(page, "url", ""))
+    return _is_portal_url(url)
+
+
+def _is_portal_ready_page(page: Any, expected_page: str, body: str | None = None) -> bool:
+    """Require both the final portal route and its rendered application marker."""
+
+    url = str(getattr(page, "url", ""))
+    if not _is_portal_url(url):
+        return False
+    rendered = body if body is not None else _page_body_text(page)
+    if expected_page == "portal":
+        return (
+            ("StudentPortal" in rendered or "RITSUMEIKAN STUDENT PORTAL" in rendered)
+            and any(marker in rendered for marker in ("ホーム", "お知らせ", "ALL"))
+        )
+    if expected_page == "notices":
+        path = urlsplit(url).path.rstrip("/")
+        return (
+            path == "/studentportal/s/information-home"
+            and "ALL" in rendered
+            and "DM" in rendered
+            and any(marker in rendered for marker in ("お知らせ", "通知"))
+        )
+    raise ValueError(f"unsupported portal readiness target: {expected_page}")
+
+
 def _is_portal_frontdoor_page(page: Any) -> bool:
-    """Recognize the SAML callback page used after manual portal login.
+    """Recognize the transient SAML callback page used during portal login.
 
     Ritsumeikan sometimes leaves the headed browser on Salesforce's
-    ``frontdoor.jsp`` callback even though the authenticated portal UI is
-    already visible.  This URL is only a login-completion signal; normal
-    notice collection still requires the concrete ``/studentportal/s/...``
-    application route in ``_authenticated_context``.
+    ``frontdoor.jsp`` callback while the authenticated portal UI is still
+    redirecting. This URL is never sufficient by itself to declare readiness.
     """
 
     url = str(getattr(page, "url", ""))
@@ -641,44 +675,68 @@ class PortalClient:
             return pages[-1]
         return context.new_page()
 
-    def _wait_for_login(self, context: Any, timeout_seconds: int) -> Any:
-        deadline = time.monotonic() + max(1, timeout_seconds)
-        saw_login = False
+    def _wait_for_portal_ready(
+        self,
+        context: Any,
+        expected_page: str,
+        timeout_seconds: float,
+        *,
+        login_error_code: str,
+        login_error_message: str,
+        timeout_error_code: str = "portal_unreachable",
+        timeout_error_message: str = "포털 화면 준비를 확인하지 못했어.",
+    ) -> Any:
+        """Wait through SSO/frontdoor transitions until the app DOM is ready.
+
+        A redirect can briefly expose a Microsoft login URL or Salesforce's
+        empty ``frontdoor.jsp`` document even when the persistent session is
+        valid. Those states are transitional until the final portal route and
+        its visible application marker are both present.
+        """
+
+        deadline = time.monotonic() + max(0.1, float(timeout_seconds))
         saw_page = False
+        saw_login = False
         observed_paths: set[str] = set()
         while time.monotonic() < deadline:
             try:
                 pages = list(context.pages)
             except Exception as exc:
-                self.logger.info("login context closed before authentication")
+                self.logger.info("portal readiness context closed expected=%s", expected_page)
                 raise _portal_error("login_cancelled", "로그인 창이 닫혀서 작업을 취소했어.", exc) from exc
             if not pages:
                 if saw_page:
-                    self.logger.info("login window closed before authentication")
                     raise _portal_error("login_cancelled", "로그인 창이 닫혀서 작업을 취소했어.")
-                time.sleep(0.5)
+                time.sleep(0.25)
                 continue
             saw_page = True
             for page in pages:
-                page_path = _safe_url_path(str(getattr(page, "url", "")))
+                url = str(getattr(page, "url", ""))
+                page_path = _safe_url_path(url)
+                body = _page_body_text(page)
                 if page_path not in observed_paths:
                     observed_paths.add(page_path)
-                    self.logger.info("login wait observed page path=%s", page_path)
-                if _is_login_page(page):
+                    self.logger.info("portal readiness observed expected=%s path=%s", expected_page, page_path)
+                if _is_portal_ready_page(page, expected_page, body):
+                    self.logger.info("portal readiness complete expected=%s path=%s", expected_page, page_path)
+                    return page
+                if _is_login_snapshot(url, body):
                     saw_login = True
-                if _is_portal_page(page):
-                    # The portal may finish the SSO redirect before its
-                    # localized body has hydrated. The authenticated portal
-                    # URL is the stable signal; the collection methods still
-                    # validate the actual notice page structure afterward.
-                    return page
-                if _is_portal_frontdoor_page(page):
-                    self.logger.info("login wait observed authenticated portal callback path=%s", page_path)
-                    return page
-            time.sleep(0.5)
+            time.sleep(0.25)
         if saw_login:
-            raise _portal_error("login_required", "학교 포털에 직접 로그인해줘.")
-        raise _portal_error("portal_unreachable", "포털 로그인 완료를 확인하지 못했어.")
+            raise _portal_error(login_error_code, login_error_message)
+        raise _portal_error(timeout_error_code, timeout_error_message)
+
+    def _wait_for_login(self, context: Any, timeout_seconds: int) -> Any:
+        return self._wait_for_portal_ready(
+            context,
+            "portal",
+            timeout_seconds,
+            login_error_code="login_required",
+            login_error_message="학교 포털에 직접 로그인해줘.",
+            timeout_error_code="portal_unreachable",
+            timeout_error_message="포털 로그인 완료를 확인하지 못했어.",
+        )
 
     def login(self, timeout_seconds: int = DEFAULT_LOGIN_WAIT_SECONDS) -> dict[str, str]:
         sync_playwright, PlaywrightError, _ = self._playwright()
@@ -691,9 +749,23 @@ class PortalClient:
                     except Exception:
                         self.logger.debug("could not bring login page to front", exc_info=True)
                     page.goto(PORTAL_ENTRY_URL, wait_until="domcontentloaded", timeout=60000)
-                    if _is_portal_page(page) or _is_portal_frontdoor_page(page):
+                    try:
+                        ready = self._wait_for_portal_ready(
+                            context,
+                            "portal",
+                            PORTAL_READY_TIMEOUT_SECONDS,
+                            login_error_code="login_required",
+                            login_error_message="학교 포털에 직접 로그인해줘.",
+                            timeout_error_code="portal_unreachable",
+                            timeout_error_message="저장된 포털 세션을 확인하지 못했어.",
+                        )
+                    except PortalError as exc:
+                        if exc.code == "login_cancelled":
+                            raise
+                        self.logger.info("saved portal session was not ready; switching to manual login wait code=%s", exc.code)
+                    else:
                         self.logger.info("login reused saved session")
-                        return {"status": "authenticated", "url": _safe_url_path(page.url)}
+                        return {"status": "authenticated", "url": _safe_url_path(ready.url)}
                     self.logger.info("login window opened; waiting for user-authenticated portal page")
                     authenticated = self._wait_for_login(context, timeout_seconds)
                     self.logger.info("user-authenticated portal page detected: %s", _safe_url_path(authenticated.url))
@@ -715,27 +787,44 @@ class PortalClient:
         # explicit `login` command, so a sync does not keep popping a browser.
         with self._persistent_context(playwright, headless=True) as context:
             page = self._page(context)
+            response_pages: list[Any] = []
             if response_handler is not None:
                 page.on("response", response_handler)
+                response_pages.append(page)
             try:
                 page.goto(INFORMATION_HOME_URL, wait_until="domcontentloaded", timeout=60000)
             except Exception as exc:
                 self.logger.exception("information page navigation failed")
                 raise _portal_error("portal_unreachable", "포털 공지 페이지에 연결하지 못했어.", exc) from exc
-            if _is_login_page(page):
-                code = "session_expired" if profile_has_browser_state(self.profile_path) else "login_required"
-                message = "학교 포털 세션이 만료되었어. login 명령으로 다시 로그인해줘." if code == "session_expired" else "학교 포털에 먼저 직접 로그인해줘."
-                raise _portal_error(code, message)
-            if not _is_portal_page(page):
-                raise _portal_error("parsing_failed", "포털 공지 페이지 구조를 확인하지 못했어.")
-            try:
-                yield context, page
-            finally:
+            code = "session_expired" if profile_has_browser_state(self.profile_path) else "login_required"
+            message = "학교 포털 세션이 만료되었어. login 명령으로 다시 로그인해줘." if code == "session_expired" else "학교 포털에 먼저 직접 로그인해줘."
+            ready_page = self._wait_for_portal_ready(
+                context,
+                "notices",
+                PORTAL_READY_TIMEOUT_SECONDS,
+                login_error_code=code,
+                login_error_message=message,
+                timeout_error_code="parsing_failed",
+                timeout_error_message="포털 공지 페이지가 준비되지 않았어.",
+            )
+            if ready_page is not page:
                 if response_handler is not None:
                     try:
                         page.remove_listener("response", response_handler)
                     except Exception:
                         pass
+                    ready_page.on("response", response_handler)
+                    response_pages = [ready_page]
+                page = ready_page
+            try:
+                yield context, page
+            finally:
+                if response_handler is not None:
+                    for response_page in response_pages:
+                        try:
+                            response_page.remove_listener("response", response_handler)
+                        except Exception:
+                            pass
 
     def _capture_list_records(self, page: Any, candidates: list[list[dict[str, object]]]) -> list[NoticeSummary]:
         deadline = time.monotonic() + DEFAULT_WAIT_SECONDS

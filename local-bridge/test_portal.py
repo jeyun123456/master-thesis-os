@@ -92,25 +92,86 @@ class PortalParsingTests(unittest.TestCase):
                 client._wait_for_login(FakeContext(), timeout_seconds=5)
         self.assertEqual(raised.exception.code, 'login_cancelled')
 
-    def test_login_accepts_authenticated_frontdoor_callback(self):
+    def test_login_waits_past_frontdoor_until_portal_dom_is_ready(self):
         class FakeLocator:
+            def __init__(self, text):
+                self.text = text
+
             def inner_text(self, timeout):
-                return 'RITSUMEIKAN STUDENT PORTAL'
+                return self.text
 
         class FakePage:
-            url = 'https://sp.ritsumei.ac.jp/studentportal/secur/frontdoor.jsp'
+            def __init__(self, url, body):
+                self.url = url
+                self.body = body
 
             def locator(self, selector):
-                return FakeLocator()
+                return FakeLocator(self.body)
 
         class FakeContext:
-            pages = [FakePage()]
+            def __init__(self):
+                self.calls = 0
+                self.frontdoor = FakePage(
+                    'https://sp.ritsumei.ac.jp/studentportal/secur/frontdoor.jsp',
+                    '',
+                )
+                self.portal = FakePage(
+                    'https://sp.ritsumei.ac.jp/studentportal/s/',
+                    'StudentPortal - ホーム RITSUMEIKAN STUDENT PORTAL ホーム お知らせ',
+                )
+
+            @property
+            def pages(self):
+                self.calls += 1
+                return [[self.frontdoor], [self.portal]][min(self.calls - 1, 1)]
 
         client = object.__new__(portal_client.PortalClient)
         client.logger = portal_client.logging.getLogger('portal-login-test')
         with patch('portal_client.time.sleep'):
             page = client._wait_for_login(FakeContext(), timeout_seconds=5)
-        self.assertIsInstance(page, FakePage)
+        self.assertEqual(page.url, 'https://sp.ritsumei.ac.jp/studentportal/s/')
+
+    def test_notice_readiness_waits_for_information_dom_after_frontdoor(self):
+        class FakeLocator:
+            def __init__(self, text):
+                self.text = text
+
+            def inner_text(self, timeout):
+                return self.text
+
+        class FakePage:
+            def __init__(self, url, body):
+                self.url = url
+                self.body = body
+
+            def locator(self, selector):
+                return FakeLocator(self.body)
+
+        class FakeContext:
+            def __init__(self):
+                self.calls = 0
+                self.pages_by_step = [
+                    [FakePage('https://sp.ritsumei.ac.jp/studentportal/secur/frontdoor.jsp', '')],
+                    [FakePage('https://sp.ritsumei.ac.jp/studentportal/s/information-home', 'StudentPortal お知らせ')],
+                    [FakePage('https://sp.ritsumei.ac.jp/studentportal/s/information-home', 'StudentPortal お知らせ ALL DM 通知')],
+                ]
+
+            @property
+            def pages(self):
+                self.calls += 1
+                return self.pages_by_step[min(self.calls - 1, len(self.pages_by_step) - 1)]
+
+        client = object.__new__(portal_client.PortalClient)
+        client.logger = portal_client.logging.getLogger('portal-login-test')
+        with patch('portal_client.time.sleep'):
+            page = client._wait_for_portal_ready(
+                FakeContext(),
+                'notices',
+                timeout_seconds=5,
+                login_error_code='session_expired',
+                login_error_message='expired',
+            )
+        self.assertEqual(page.url, 'https://sp.ritsumei.ac.jp/studentportal/s/information-home')
 
     def test_frontdoor_callback_is_not_a_collection_page(self):
         class FakePage:
