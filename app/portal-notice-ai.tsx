@@ -56,21 +56,28 @@ export function PortalNoticeAI({
     {failed && <div className="mail-analysis-error">{ai.error || 'AI 분석을 완료하지 못했어.'}</div>}
     {!processing && !completed && !failed && <div className="mail-analysis-state">아직 분석하지 않은 공지야. 버튼을 누르면 한국어 요약·번역과 일정 후보를 생성해.</div>}
     {completed && <>
-      <div className="portal-notice-ai-block">
-        <b>요약</b>
-        <div className="mail-analysis-summary">{ai.summary ? renderText(ai.summary, 'summary') : '요약이 비어 있어.'}</div>
-      </div>
+      <details className="portal-notice-ai-collapsible portal-notice-ai-summary" open>
+        <summary>요약</summary>
+        <div className="portal-notice-ai-block">
+          <div className="mail-analysis-summary">{ai.summary ? renderText(ai.summary, 'summary') : '요약이 비어 있어.'}</div>
+        </div>
+      </details>
       <details className="portal-notice-ai-translation" open>
         <summary>한국어 번역</summary>
         <div>{ai.translation ? renderText(ai.translation, 'translation') : '번역이 비어 있어.'}</div>
       </details>
-      <div className="mail-analysis-heading mail-analysis-calendar-heading"><b>일정 후보</b><small>확인 후 Google Calendar에 추가</small></div>
-      {candidates.length ? <div className="mail-analysis-candidates">{candidates.map((candidate) => <CalendarCandidateCard
-        candidate={asMailCandidate(candidate)}
-        key={candidate.id}
-        onAdd={(_, edit) => onAddCandidate(candidate, edit)}
-        onIgnore={() => onIgnoreCandidate(candidate)}
-      />)}</div> : <div className="mail-analysis-empty">캘린더에 넣을 만한 일정 후보가 없어.</div>}
+      <details className="portal-notice-ai-collapsible portal-notice-ai-candidates" open>
+        <summary>
+          <span className="portal-notice-ai-candidates-label"><b>일정 후보</b><small>확인 후 Google Calendar에 추가</small></span>
+          <small className="portal-notice-ai-candidates-count">{candidates.length}건</small>
+        </summary>
+        {candidates.length ? <div className="mail-analysis-candidates">{candidates.map((candidate) => <CalendarCandidateCard
+          candidate={asMailCandidate(candidate)}
+          key={candidate.id}
+          onAdd={(_, edit) => onAddCandidate(candidate, edit)}
+          onIgnore={() => onIgnoreCandidate(candidate)}
+        />)}</div> : <div className="mail-analysis-empty">캘린더에 넣을 만한 일정 후보가 없어.</div>}
+      </details>
     </>}
   </section>;
 }

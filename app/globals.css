@@ -37,3 +37,26 @@
 @media(max-width:760px){.portal-notice-filter-tools{width:100%}.portal-notice-search{flex:1;min-width:0}.portal-notice-sort{min-width:108px}.portal-notice-view-filters{flex-wrap:wrap}.portal-notice-view-filters button{flex:1 0 auto}.portal-sync-history-row{grid-template-columns:1fr}.portal-sync-history-row>span{justify-self:start}}
 .portal-notice-filters{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);align-items:end}.portal-notice-department-filter{min-width:0}.portal-notice-department-filter select{min-width:0;width:100%}.portal-notice-filter-tools{grid-column:2}.portal-notice-view-filters{grid-column:1 / -1;justify-content:flex-start;flex-wrap:wrap}
 @media(max-width:760px){.portal-notice-filters{display:flex}.portal-notice-filter-tools{grid-column:auto}.portal-notice-view-filters{grid-column:auto}}
+.portal-notice-ai-collapsible,.portal-notice-ai-translation{min-width:0;max-width:100%;box-sizing:border-box}
+.portal-notice-ai-collapsible>summary,.portal-notice-ai-translation>summary{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0;list-style:none;color:#596985;font-size:9px;font-weight:800;cursor:pointer;overflow-wrap:anywhere}
+.portal-notice-ai-collapsible>summary::-webkit-details-marker,.portal-notice-ai-translation>summary::-webkit-details-marker{display:none}
+.portal-notice-ai-collapsible>summary::before,.portal-notice-ai-translation>summary::before{content:'▸';flex:0 0 auto;color:#8a9ab3;transition:transform .15s ease}
+.portal-notice-ai-collapsible[open]>summary::before,.portal-notice-ai-translation[open]>summary::before{transform:rotate(90deg)}
+.portal-notice-ai-candidates>summary{align-items:flex-start}
+.portal-notice-ai-candidates-label{display:flex;flex-direction:column;gap:3px;min-width:0;overflow-wrap:anywhere}
+.portal-notice-ai-candidates-label b{font-size:9px}
+.portal-notice-ai-candidates-label small,.portal-notice-ai-candidates-count{color:var(--muted);font-size:8px;line-height:1.4}
+.portal-notice-ai-candidates-count{flex:0 0 auto}
+.portal-notice-ai-candidates>.mail-analysis-candidates,.portal-notice-ai-candidates>.mail-analysis-empty{min-width:0;max-width:100%;margin-top:8px}
+.portal-notice-ai-head,.portal-notice-ai-head .mail-analysis-heading,.portal-notice-ai-block,.mail-analysis-candidates,.mail-analysis-candidate,.mail-analysis-form,.mail-analysis-date-row,.mail-analysis-candidate-actions{min-width:0;max-width:100%}
+.portal-notice-ai-head .mail-analysis-heading small{min-width:0;overflow-wrap:anywhere}
+.portal-notice-ai-head .mini,.portal-notices-panel .btn,.portal-notices-panel .mini{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.mail-analysis-candidate-top>div{flex:1 1 auto;min-width:0}
+.mail-analysis-candidate-top b{min-width:0;white-space:normal;overflow-wrap:anywhere}
+.mail-analysis-candidate-status{max-width:35%;overflow-wrap:anywhere;text-align:right}
+.mail-analysis-form input{min-width:0;max-width:100%}
+.mail-analysis-date-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.mail-analysis-candidate-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(44px,auto);justify-content:stretch;align-items:stretch}
+.mail-analysis-candidate-actions .btn,.mail-analysis-candidate-actions .mini{width:100%;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.portal-notice-actions,.portal-notice-detail-actions{min-width:0;max-width:100%}
+@media(max-width:760px){.mail-analysis-candidate-actions{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.mail-analysis-candidate-actions .btn,.mail-analysis-candidate-actions .mini{width:100%}}
