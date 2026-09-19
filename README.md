@@ -258,7 +258,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 Orca 내부 브라우저의 로그인 profile과 이 Local Bridge의 Playwright profile은 브라우저 저장소가 서로 다르므로 cookie를 복사하지 않는다. Orca는 포털 구조·live 동작 확인에 사용하고, 실제 Local Bridge 수집은 위 persistent profile에서 명시적 `login` 후 실행한다.
 
-처음 한 번 Playwright를 설치하면 기본적으로 설치된 Chrome channel을 사용한다. Chrome이 없으면 Playwright bundled Chromium으로 자동 fallback하며, `RITSUMEI_BROWSER_CHANNEL=chromium`으로 이를 명시할 수도 있다. `RITSUMEI_BROWSER_PROFILE_DIR`를 지정하면 persistent profile 위치를 명시적으로 바꿀 수 있다.
+처음 한 번 Playwright를 설치하면 Windows에서는 OS 기본 Chromium 브라우저(예: Edge)를 persistent profile로 사용하고, 확인할 수 없으면 Chrome channel로 fallback한다. `RITSUMEI_BROWSER_CHANNEL=chrome|msedge|chromium`으로 이를 명시할 수도 있다. 원문·첨부파일 열기도 같은 기본 Chromium 브라우저와 persistent profile을 사용한다. `RITSUMEI_BROWSER_PROFILE_DIR`를 지정하면 persistent profile 위치를 명시적으로 바꿀 수 있다.
 
 ```powershell
 python -m pip install -r local-bridge/requirements.txt
@@ -271,7 +271,7 @@ python local-bridge/portal_cli.py notices --type DM
 npm run test:portal:e2e
 ```
 
-`login` 명령 또는 UI의 **로그인 창 열기**만 headed 브라우저 창을 열고, 일반 `sync` 수집은 같은 profile을 headless로 재사용한다. 동시에 같은 profile을 여는 작업은 lock으로 직렬화한다. 세션이 없거나 만료되면 `sync`는 `login_required`/`session_expired`를 저장하고 창을 반복해서 열지 않는다. 학교 SQLite는 기존 메일 DB와 분리된 `local-bridge/data/portal-notices.db`이며 `portal_notices`, `portal_notice_attachments`, `portal_notice_ai`, `portal_notice_calendar_candidates`, `portal_sync_state`, `portal_sync_runs` 테이블을 사용한다. 웹의 **학교 공지** 탭은 저장된 결과만 읽고, **공지 동기화**를 눌렀을 때만 `POST /portal/sync`를 호출한다. 관련 Bridge endpoint는 `GET /portal/status`, `GET /portal/notices`, `GET /portal/notices/<notice-id>`, `POST /portal/sync`, `POST /portal/login`, `POST /portal/notices/<notice-id>/analyze`, `POST /portal/notices/<notice-id>/candidate`다. `/portal/status`에는 최근 동기화 실행 10건의 결과와 오류 코드가 함께 포함된다.
+`login` 명령 또는 UI의 **로그인 창 열기**만 headed 브라우저 창을 열고, 일반 `sync` 수집은 같은 profile을 headless로 재사용한다. 동시에 같은 profile을 여는 작업은 lock으로 직렬화한다. 로그인 창을 사용자가 닫으면 `login_cancelled`로 즉시 job을 정리해 다시 로그인할 수 있다. 세션이 없거나 만료되면 `sync`는 `login_required`/`session_expired`를 저장하고 창을 반복해서 열지 않는다. 학교 SQLite는 기존 메일 DB와 분리된 `local-bridge/data/portal-notices.db`이며 `portal_notices`, `portal_notice_attachments`, `portal_notice_ai`, `portal_notice_calendar_candidates`, `portal_sync_state`, `portal_sync_runs` 테이블을 사용한다. 웹의 **학교 공지** 탭은 저장된 결과만 읽고, **공지 동기화**를 눌렀을 때만 `POST /portal/sync`를 호출한다. 관련 Bridge endpoint는 `GET /portal/status`, `GET /portal/notices`, `GET /portal/notices/<notice-id>`, `POST /portal/sync`, `POST /portal/login`, `POST /portal/open-url`, `POST /portal/notices/<notice-id>/analyze`, `POST /portal/notices/<notice-id>/candidate`다. `/portal/status`에는 최근 동기화 실행 10건의 결과와 오류 코드가 함께 포함된다.
 
 `npm run test:portal:e2e`는 현재 production UI와 실행 중인 Local Bridge를 대상으로 학교 공지 목록, 중복 notice ID, 동기화 이력, 제목 검색, 본문 검색을 확인한다. 첫 공지를 클릭하지 않으므로 읽음 상태는 변경하지 않는다. 이 smoke test는 로컬 Bridge token만 사용하며 학교 ID·비밀번호나 포털 session cookie를 읽지 않는다.
 

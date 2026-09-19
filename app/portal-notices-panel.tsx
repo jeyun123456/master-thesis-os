@@ -143,6 +143,7 @@ export function portalNoticeErrorMessage(error: unknown): string {
     bridge_offline: 'Local Bridge가 실행 중인지 확인해줘.',
     invalid_url: '기본 브라우저로 열 수 없는 URL이야.',
     default_browser_failed: '기본 브라우저를 열지 못했어. 기본 브라우저 설정을 확인해줘.',
+    login_cancelled: '로그인 창이 닫혀서 작업을 취소했어. 다시 로그인 창을 열어줘.',
     login_required: '먼저 로그인 창에서 학교 포털에 직접 로그인해줘.',
     session_expired: '학교 포털 세션이 만료됐어. 로그인 창을 다시 열어줘.',
     portal_unreachable: '학교 포털에 연결하지 못했어.',

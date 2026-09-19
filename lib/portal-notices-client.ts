@@ -127,6 +127,7 @@ export type PortalClientErrorCode =
   | 'server_error'
   | 'invalid_url'
   | 'default_browser_failed'
+  | 'login_cancelled'
   | 'login_required'
   | 'session_expired'
   | 'portal_unreachable'

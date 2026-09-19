@@ -37,13 +37,50 @@ class PortalParsingTests(unittest.TestCase):
     def test_opens_urls_with_the_operating_system_default_browser(self):
         url = 'https://sp.ritsumei.ac.jp/studentportal/s/r-information/a0/view'
         if os.name == 'nt':
-            with patch.object(portal_client.os, 'startfile', create=True) as startfile:
-                open_url_in_default_browser(url)
+            with patch('portal_client.find_system_default_browser_executable', return_value=None):
+                with patch.object(portal_client.os, 'startfile', create=True) as startfile:
+                    open_url_in_default_browser(url)
             startfile.assert_called_once_with(url)
         else:
             with patch('portal_client.subprocess.Popen') as popen:
                 open_url_in_default_browser(url)
             self.assertEqual(popen.call_args.args[0], ['xdg-open', url])
+
+    def test_opens_urls_with_the_default_chromium_browser_profile(self):
+        if os.name != 'nt':
+            self.skipTest('Windows default browser profile behavior')
+        url = 'https://sp.ritsumei.ac.jp/studentportal/s/r-information/a0/view'
+        profile_path = Path(tempfile.gettempdir()) / 'mto-profile'
+        executable = Path('C:/Program Files/Microsoft/Edge/Application/msedge.exe')
+        with patch('portal_client.find_system_default_browser_executable', return_value=executable):
+            with patch('portal_client.subprocess.Popen') as popen:
+                open_url_in_default_browser(url, profile_path)
+
+        arguments = popen.call_args.args[0]
+        self.assertEqual(arguments[0], str(executable))
+        self.assertEqual(arguments[1], f'--user-data-dir={profile_path.resolve(strict=False)}')
+        self.assertEqual(arguments[-2:], ['--new-tab', url])
+        self.assertFalse(popen.call_args.kwargs['shell'])
+
+    def test_login_window_close_finishes_the_job_immediately(self):
+        class FakePage:
+            url = 'https://login.microsoftonline.com/'
+
+        class FakeContext:
+            def __init__(self):
+                self.calls = 0
+
+            @property
+            def pages(self):
+                self.calls += 1
+                return [[FakePage()], []][min(self.calls - 1, 1)]
+
+        client = object.__new__(portal_client.PortalClient)
+        client.logger = portal_client.logging.getLogger('portal-login-test')
+        with patch('portal_client.time.sleep'):
+            with self.assertRaises(PortalError) as raised:
+                client._wait_for_login(FakeContext(), timeout_seconds=5)
+        self.assertEqual(raised.exception.code, 'login_cancelled')
 
     def test_maps_observed_portal_distribution_to_all_and_dm(self):
         self.assertEqual(classify_notice_type('全体'), 'ALL')
@@ -349,6 +386,32 @@ class PortalDatabaseTests(unittest.TestCase):
 
 
 class PortalProfileTests(unittest.TestCase):
+    def test_persistent_context_uses_the_system_default_chromium_browser(self):
+        class FakeChromium:
+            def __init__(self):
+                self.kwargs = None
+
+            def launch_persistent_context(self, *args, **kwargs):
+                self.kwargs = kwargs
+                return object()
+
+        class FakePlaywright:
+            def __init__(self):
+                self.chromium = FakeChromium()
+
+        with tempfile.TemporaryDirectory() as temp:
+            client = object.__new__(portal_client.PortalClient)
+            client.profile_path = Path(temp) / 'profile'
+            client.logger = portal_client.logging.getLogger('portal-launch-test')
+            playwright = FakePlaywright()
+            executable = Path('C:/Program Files/Microsoft/Edge/Application/msedge.exe')
+            with patch.dict(os.environ, {'RITSUMEI_BROWSER_CHANNEL': ''}, clear=False):
+                with patch('portal_client.find_system_default_browser_executable', return_value=executable):
+                    context = client._launch(playwright, headless=True)
+
+        self.assertIsNotNone(context)
+        self.assertEqual(playwright.chromium.kwargs['executable_path'], str(executable))
+
     def test_default_profile_uses_local_app_data(self):
         with tempfile.TemporaryDirectory() as temp:
             with patch.dict(

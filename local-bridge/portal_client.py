@@ -125,11 +125,12 @@ def resolve_profile_path(root: str | Path | None = None) -> Path:
 
 
 def browser_channel() -> str | None:
-    """Return the Playwright browser channel used for the dedicated profile.
+    """Return the explicitly configured Playwright browser channel.
 
-    Chrome is preferred for the real local workflow. ``chromium`` (or
-    ``bundled``) explicitly selects Playwright's bundled Chromium, which is
-    also the automatic fallback when the installed Chrome channel is absent.
+    When ``RITSUMEI_BROWSER_CHANNEL`` is unset, ``_launch`` first tries the
+    Windows default Chromium browser so the visible login window and the
+    headless sync context share the same persistent profile. Chrome remains
+    the fallback when that browser cannot be resolved.
     """
 
     configured = os.environ.get("RITSUMEI_BROWSER_CHANNEL", "chrome").strip().lower()
@@ -142,6 +143,49 @@ def browser_channel() -> str | None:
     raise ValueError(
         "RITSUMEI_BROWSER_CHANNEL must be chrome, msedge, chromium, bundled, or playwright"
     )
+
+
+def find_system_default_browser_executable() -> Path | None:
+    """Resolve the Windows default browser executable without reading credentials."""
+    if os.name != "nt":
+        return None
+    try:
+        import winreg
+
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice",
+        ) as user_choice:
+            prog_id, _ = winreg.QueryValueEx(user_choice, "ProgId")
+        with winreg.OpenKey(
+            winreg.HKEY_CLASSES_ROOT,
+            rf"{prog_id}\shell\open\command",
+        ) as command_key:
+            command, _ = winreg.QueryValueEx(command_key, None)
+    except (ImportError, OSError, TypeError, ValueError):
+        return None
+
+    command_text = str(command).strip()
+    quoted = re.match(r'^\s*"([^"]+)"', command_text)
+    executable_text = quoted.group(1) if quoted else (command_text.split(maxsplit=1) or [""])[0]
+    if not executable_text:
+        return None
+    executable = Path(os.path.expandvars(executable_text)).expanduser()
+    try:
+        return executable.resolve() if executable.is_file() else None
+    except OSError:
+        return None
+
+
+def _is_chromium_browser_executable(executable: Path | None) -> bool:
+    return bool(executable and executable.name.casefold() in {
+        "brave.exe",
+        "chrome.exe",
+        "chromium.exe",
+        "msedge.exe",
+        "opera.exe",
+        "vivaldi.exe",
+    })
 
 
 def profile_has_browser_state(profile_path: str | Path | None = None) -> bool:
@@ -203,13 +247,33 @@ def validate_external_url(value: object) -> str:
     return url
 
 
-def open_url_in_default_browser(url: object) -> None:
-    """Open an absolute portal or attachment URL through the OS default browser."""
+def open_url_in_default_browser(url: object, profile_path: str | Path | None = None) -> None:
+    """Open a portal or attachment URL through the OS default browser.
+
+    Chromium-based Windows browsers receive the same local persistent profile
+    used by Playwright, keeping manual login and portal sync in one session.
+    Other default browsers fall back to the OS URL association.
+    """
     safe_url = validate_external_url(url)
     try:
-        if os.name == "nt":
-            # ``startfile`` delegates to the Windows file/URL association,
-            # so this follows the user's configured default browser.
+        executable = find_system_default_browser_executable()
+        if os.name == "nt" and _is_chromium_browser_executable(executable):
+            profile = resolve_profile_path() if profile_path is None else Path(profile_path).expanduser().resolve(strict=False)
+            arguments = [str(executable), f"--user-data-dir={profile}", "--new-tab", safe_url]
+            options: dict[str, object] = {
+                "stdin": subprocess.DEVNULL,
+                "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL,
+                "shell": False,
+                "creationflags": (
+                    getattr(subprocess, "DETACHED_PROCESS", 0)
+                    | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                ),
+            }
+            subprocess.Popen(arguments, **options)
+        elif os.name == "nt":
+            # ``startfile`` delegates to the Windows file/URL association for
+            # non-Chromium browsers such as Firefox.
             os.startfile(safe_url)  # type: ignore[attr-defined]
         elif sys.platform == "darwin":
             subprocess.Popen(
@@ -485,10 +549,31 @@ class PortalClient:
             # if the dedicated profile has stale window-placement preferences.
             options["viewport"] = None
             options["args"] = ["--start-maximized", "--window-position=0,0"]
-        try:
-            preferred_channel = browser_channel()
-        except ValueError as exc:
-            raise _portal_error("portal_unreachable", str(exc), exc) from exc
+        configured_channel = os.environ.get("RITSUMEI_BROWSER_CHANNEL", "").strip().lower()
+        system_executable = None
+        if configured_channel in {"", "default", "system"}:
+            system_executable = find_system_default_browser_executable()
+            preferred_channel = None if _is_chromium_browser_executable(system_executable) else "chrome"
+        else:
+            try:
+                preferred_channel = browser_channel()
+            except ValueError as exc:
+                raise _portal_error("portal_unreachable", str(exc), exc) from exc
+
+        if system_executable is not None and _is_chromium_browser_executable(system_executable):
+            try:
+                self.logger.info("using system default browser executable=%s", system_executable)
+                return playwright.chromium.launch_persistent_context(
+                    str(self.profile_path),
+                    executable_path=str(system_executable),
+                    **options,
+                )
+            except Exception as exc:
+                self.logger.warning(
+                    "system default browser unavailable executable=%s; falling back to bundled Chromium (%s)",
+                    system_executable,
+                    type(exc).__name__,
+                )
 
         if preferred_channel is not None:
             try:
@@ -498,8 +583,8 @@ class PortalClient:
                     **options,
                 )
             except Exception as exc:
-                # A normal Windows install may not have Google Chrome. The
-                # same persistent profile can safely fall back to Playwright's
+                # The selected browser may be unavailable. The same
+                # persistent profile can safely fall back to Playwright's
                 # bundled Chromium without exposing a visible sync window.
                 self.logger.warning(
                     "preferred browser channel unavailable channel=%s; falling back to bundled Chromium (%s)",
@@ -542,9 +627,22 @@ class PortalClient:
     def _wait_for_login(self, context: Any, timeout_seconds: int) -> Any:
         deadline = time.monotonic() + max(1, timeout_seconds)
         saw_login = False
+        saw_page = False
         observed_paths: set[str] = set()
         while time.monotonic() < deadline:
-            for page in list(context.pages):
+            try:
+                pages = list(context.pages)
+            except Exception as exc:
+                self.logger.info("login context closed before authentication")
+                raise _portal_error("login_cancelled", "로그인 창이 닫혀서 작업을 취소했어.", exc) from exc
+            if not pages:
+                if saw_page:
+                    self.logger.info("login window closed before authentication")
+                    raise _portal_error("login_cancelled", "로그인 창이 닫혀서 작업을 취소했어.")
+                time.sleep(0.5)
+                continue
+            saw_page = True
+            for page in pages:
                 page_path = _safe_url_path(str(getattr(page, "url", "")))
                 if page_path not in observed_paths:
                     observed_paths.add(page_path)
@@ -594,7 +692,7 @@ class PortalClient:
     ) -> Iterator[tuple[Any, Any]]:
         # Normal collection reuses the persistent profile without opening a
         # visible browser window. The headed context is reserved for the
-        # explicit `login` command, so a sync does not keep popping Chrome.
+        # explicit `login` command, so a sync does not keep popping a browser.
         with self._persistent_context(playwright, headless=True) as context:
             page = self._page(context)
             if response_handler is not None:
@@ -868,6 +966,7 @@ __all__ = [
     "browser_channel",
     "classify_notice_type",
     "extract_labeled_value",
+    "find_system_default_browser_executable",
     "open_url_in_default_browser",
     "profile_session_state",
     "resolve_profile_path",

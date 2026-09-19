@@ -136,3 +136,10 @@
 .portal-notice-actions,.portal-notice-detail-actions{min-width:0;max-width:100%}
 @media(max-width:760px){.mail-analysis-candidate-actions{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.mail-analysis-candidate-actions .btn,.mail-analysis-candidate-actions .mini{width:100%}}
 .portal-notice-attachments button.portal-notice-attachment-link{display:flex;align-items:baseline;justify-content:space-between;gap:8px;width:100%;min-width:0;padding:0;border:0;background:transparent;color:var(--blue);text-align:left;font:inherit;cursor:pointer}.portal-notice-attachment-link span{min-width:0;overflow-wrap:anywhere}.portal-notice-attachment-link small{flex:0 0 auto;color:var(--muted);font-size:8px;white-space:nowrap}.portal-notice-attachment-link:hover:not(:disabled){text-decoration:underline}.portal-notice-attachment-link:disabled{cursor:wait;opacity:.65}
+.portal-notice-filters{display:flex;align-items:stretch;flex-wrap:wrap;min-width:0}
+.portal-notice-department-filter{flex:1 1 180px;min-width:0}
+.portal-notice-department-filter select{flex:1 1 auto;min-width:0}
+.portal-notice-filter-tools{display:flex;flex:1 1 260px;min-width:0}
+.portal-notice-search{flex:1 1 auto;min-width:0}
+.portal-notice-sort{flex:0 1 112px;min-width:0}
+.portal-notice-view-filters{flex:1 1 100%;min-width:0}
