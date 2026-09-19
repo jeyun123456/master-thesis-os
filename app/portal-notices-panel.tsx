@@ -475,13 +475,15 @@ export function PortalNoticesPanel() {
           <button className="btn primary" type="button" disabled={action !== 'idle' || aiAction !== 'idle'} onClick={() => void runPortalAction('sync')}>{actionLabel}</button>
         </div>
       </div>
-      <div className="portal-notices-meta">
-        <span>마지막 동기화: <b>{formatPortalSyncDate(status.lastSyncAt)}</b></span>
-        <span className={`portal-session-state ${needsLogin ? 'warning' : ''}`}>{portalNoticeStatusLabel(status.status, currentSessionState)}</span>
-      </div>
-      <div className="portal-notices-health">
-        <span>최근 결과: 신규 {status.newCount} · 수정 {status.updatedCount} · 상세 실패 {status.detailFailedCount}</span>
-        {status.lastError && <span className="portal-notices-last-error" title={status.lastError}>최근 오류: {status.lastError}</span>}
+      <div className="portal-notices-summary-status">
+        <div className="portal-notices-meta">
+          <span>마지막 동기화: <b>{formatPortalSyncDate(status.lastSyncAt)}</b></span>
+          <span className={`portal-session-state ${needsLogin ? 'warning' : ''}`}>{portalNoticeStatusLabel(status.status, currentSessionState)}</span>
+        </div>
+        <div className="portal-notices-health">
+          <span>최근 결과: 신규 {status.newCount} · 수정 {status.updatedCount} · 상세 실패 {status.detailFailedCount}</span>
+          {status.lastError && <span className="portal-notices-last-error" title={status.lastError}>최근 오류: {status.lastError}</span>}
+        </div>
       </div>
       <div className="portal-notice-kpis">
         <div><small>ALL</small><b>{status.counts.ALL}</b></div>
@@ -501,11 +503,11 @@ export function PortalNoticesPanel() {
           </div>)}
         </div>
       </details>}
-      <div className="portal-notice-department-summary">
-        <div className="portal-notice-department-summary-head">
-          <div><b>발신처·담당부서별</b><small>개인 발신자명이 아니라 포털의 担当部課 기준</small></div>
+      <details className="portal-notice-department-summary">
+        <summary className="portal-notice-department-summary-head">
+          <span className="portal-notice-department-summary-label"><b>발신처·담당부서별</b><small>개인 발신자명이 아니라 포털의 担当部課 기준</small></span>
           <span>{departmentSummaries.length}곳</span>
-        </div>
+        </summary>
         <div className="portal-notice-department-summary-grid">
           {departmentSummaries.slice(0, 8).map((department) => {
             const selected = departmentFilter === (department.value || '__unknown__');
@@ -524,7 +526,7 @@ export function PortalNoticesPanel() {
           })}
         </div>
         {departmentSummaries.length > 8 && <small className="portal-notice-department-summary-note">전체 담당부서는 아래 필터에서 선택할 수 있어.</small>}
-      </div>
+      </details>
     </div>
 
     {error !== null && <div className="error portal-notices-error">{portalNoticeErrorMessage(error)}</div>}
@@ -565,8 +567,8 @@ export function PortalNoticesPanel() {
         {loading ? <div className="empty compact-empty">저장된 학교 공지를 불러오는 중이야.</div> : visibleItems.length ? <div className="portal-notice-list">
           {visibleItems.map((notice) => <button className={`portal-notice-row ${selectedId === notice.noticeId ? 'selected' : ''} ${!notice.isRead ? 'unread' : ''} ${notice.isArchived ? 'archived' : ''}`} type="button" key={notice.noticeId} onClick={() => void openDetail(notice)} aria-expanded={selectedId === notice.noticeId}>
             <span className={`portal-notice-type ${notice.type === 'DM' ? 'dm' : ''}`}>{notice.type}</span>
-            <span className="portal-notice-main"><span className="portal-notice-title-line"><b>{notice.title || '(제목 없음)'}</b>{!notice.isRead && <i className="portal-notice-unread-dot" aria-label="읽지 않음" />}</span><small>{notice.department || '담당부서 미상'} · 게시 {formatPortalNoticeDate(notice.publishedAt)}</small></span>
-            <span className="portal-notice-extra">{notice.firstSeenAt === status.lastSyncAt && <em className="notice-new">신규</em>}{noticeUpdatedInSync(notice, status) && <em className="notice-updated">수정됨</em>}{notice.isImportant && <em className="user-important">내 중요</em>}{notice.importance && <em>{notice.importance}</em>}{notice.isArchived && <small>보관</small>}{portalNoticeDeadlineState(notice) === 'expired' && <em className="notice-expired">기한 종료</em>}{notice.deadline && portalNoticeDeadlineState(notice) !== 'expired' && <small>마감 {notice.deadline}</small>}</span>
+            <span className="portal-notice-main"><span className="portal-notice-title-line"><b title={notice.title || '(제목 없음)'}>{notice.title || '(제목 없음)'}</b>{!notice.isRead && <i className="portal-notice-unread-dot" aria-label="읽지 않음" />}</span><small>{notice.department || '담당부서 미상'} · 게시 {formatPortalNoticeDate(notice.publishedAt)}{notice.deadline ? ` · 마감 ${notice.deadline}` : ''}</small></span>
+            <span className="portal-notice-extra">{notice.firstSeenAt === status.lastSyncAt && <em className="notice-new">신규</em>}{noticeUpdatedInSync(notice, status) && <em className="notice-updated">수정됨</em>}{notice.isImportant && <em className="user-important">내 중요</em>}{notice.importance && <em>{notice.importance}</em>}{notice.isArchived && <small>보관</small>}{portalNoticeDeadlineState(notice) === 'expired' && <em className="notice-expired">기한 종료</em>}</span>
           </button>)}
         </div> : <div className="empty compact-empty">{searchQuery ? '검색 조건에 맞는 공지가 없어.' : `저장된 ${tab} 공지가 없어. 상단의 공지 동기화를 눌러줘.`}</div>}
       </div>
@@ -574,23 +576,24 @@ export function PortalNoticesPanel() {
       <div className="portal-notice-detail-pane">
         {detailLoading && <div className="card section portal-notice-detail portal-notice-detail-empty"><div className="empty compact-empty">공지 상세를 불러오는 중이야.</div></div>}
         {detail && !detailLoading && <article className="card section portal-notice-detail">
-          <div className="head"><div><span className={`portal-notice-type ${detail.type === 'DM' ? 'dm' : ''}`}>{detail.type}</span><h3>{detail.title || '(제목 없음)'}</h3></div><button className="mini" type="button" aria-label="공지 목록으로 돌아가기" onClick={() => { setSelectedId(null); setDetail(null); }}>← 목록</button></div>
+          <div className="head portal-notice-detail-head">
+            <div className="portal-notice-detail-title"><span className={`portal-notice-type ${detail.type === 'DM' ? 'dm' : ''}`}>{detail.type}</span><h3 title={detail.title || '(제목 없음)'}>{detail.title || '(제목 없음)'}</h3></div>
+            <button className="mini portal-notice-back-button" type="button" aria-label="공지 목록으로 돌아가기" onClick={() => { setSelectedId(null); setDetail(null); }}>← 목록</button>
+          </div>
+          <dl className="portal-notice-core-meta">
+            <div><dt>담당부서</dt><dd>{detail.department || '—'}</dd></div>
+            <div><dt>게시일</dt><dd>{formatPortalNoticeDate(detail.publishedAt)}</dd></div>
+            <div><dt>마감일</dt><dd>{detail.deadline || '—'}</dd></div>
+            <div><dt>기한 상태</dt><dd>{portalNoticeDeadlineState(detail) === 'expired' ? '기한 종료' : portalNoticeDeadlineState(detail) === 'upcoming' ? '기한 있음' : '기한 없음'}</dd></div>
+          </dl>
           <div className="portal-notice-detail-actions">
             <button className="mini" type="button" disabled={stateAction !== null} onClick={() => void changeNoticeState({ isRead: !detail.isRead })}>{detail.isRead ? '읽지 않음으로 표시' : '읽음 처리'}</button>
             <button className="mini" type="button" disabled={stateAction !== null} onClick={() => void changeNoticeState({ isImportant: !detail.isImportant })}>{detail.isImportant ? '중요 해제' : '중요 표시'}</button>
             <button className="mini" type="button" disabled={stateAction !== null} onClick={() => void changeNoticeState({ isArchived: !detail.isArchived })}>{detail.isArchived ? '보관 해제' : '보관'}</button>
+            <a className="mini portal-notice-source-button" href={detail.sourceUrl} target="_blank" rel="noreferrer">원문 열기 ↗</a>
           </div>
-          <dl className="portal-notice-detail-meta">
-            <div><dt>담당부서</dt><dd>{detail.department || '—'}</dd></div>
-            <div><dt>게시일</dt><dd>{formatPortalNoticeDate(detail.publishedAt)}</dd></div>
-            <div><dt>마감일</dt><dd>{detail.deadline || '—'}</dd></div>
-            <div><dt>공개 종료일</dt><dd>{formatPortalNoticeDate(detail.expiresAt)}</dd></div>
-            <div><dt>기한 상태</dt><dd>{portalNoticeDeadlineState(detail) === 'expired' ? '기한 종료' : portalNoticeDeadlineState(detail) === 'upcoming' ? '기한 있음' : '기한 없음'}</dd></div>
-            <div><dt>중요도</dt><dd>{detail.importance || '—'}</dd></div>
-            <div><dt>카테고리</dt><dd>{detail.category || '—'}</dd></div>
-            <div><dt>최근 수정</dt><dd>{formatPortalNoticeDate(detail.lastChangedAt || '')}</dd></div>
-            <div><dt>수정 횟수</dt><dd>{detail.changeCount}</dd></div>
-          </dl>
+          <div className="portal-notice-body">{detail.body ? detail.body.split(/\r?\n/).map((line, index) => <p key={`${index}-${line}`}>{line || '\u00a0'}</p>) : <span className="muted">저장된 본문이 없어.</span>}</div>
+          {detail.attachments.length > 0 && <div className="portal-notice-attachments"><b>첨부파일 metadata</b>{detail.attachments.map((attachment) => <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer">{attachment.filename || attachment.url}</a>)}</div>}
           <PortalNoticeAI
             ai={detail.ai}
             candidates={detail.calendarCandidates}
@@ -599,9 +602,17 @@ export function PortalNoticesPanel() {
             onAddCandidate={addPortalCandidate}
             onIgnoreCandidate={ignorePortalCandidate}
           />
-          <div className="portal-notice-body">{detail.body ? detail.body.split(/\r?\n/).map((line, index) => <p key={`${index}-${line}`}>{line || '\u00a0'}</p>) : <span className="muted">저장된 본문이 없어.</span>}</div>
-          {detail.attachments.length > 0 && <div className="portal-notice-attachments"><b>첨부파일 metadata</b>{detail.attachments.map((attachment) => <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer">{attachment.filename || attachment.url}</a>)}</div>}
-          <div className="portal-notice-source"><a href={detail.sourceUrl} target="_blank" rel="noreferrer">원문 열기 ↗</a><small>notice_id: {detail.noticeId}</small></div>
+          <details className="portal-notice-extra-details">
+            <summary>상세 정보</summary>
+            <dl className="portal-notice-detail-meta">
+              <div><dt>공개 종료일</dt><dd>{formatPortalNoticeDate(detail.expiresAt)}</dd></div>
+              <div><dt>중요도</dt><dd>{detail.importance || '—'}</dd></div>
+              <div><dt>카테고리</dt><dd>{detail.category || '—'}</dd></div>
+              <div><dt>최근 수정</dt><dd>{formatPortalNoticeDate(detail.lastChangedAt || '')}</dd></div>
+              <div><dt>수정 횟수</dt><dd>{detail.changeCount}</dd></div>
+            </dl>
+          </details>
+          <div className="portal-notice-source"><small>notice_id: {detail.noticeId}</small></div>
         </article>}
         {!detailLoading && !detail && <div className="card section portal-notice-detail portal-notice-detail-empty"><div className="empty compact-empty">{selectedId ? '공지 상세를 표시하지 못했어.' : '왼쪽 목록에서 공지를 선택해줘.'}</div></div>}
       </div>
