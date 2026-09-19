@@ -11,6 +11,8 @@ import json
 import logging
 import os
 import re
+import shutil
+import subprocess
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -56,6 +58,7 @@ ATTACHMENT_EXTENSIONS = (
     ".jpeg",
     ".png",
 )
+MAX_EXTERNAL_URL_LENGTH = 8192
 
 
 class PortalError(RuntimeError):
@@ -181,6 +184,83 @@ def _logger(profile_path: Path) -> logging.Logger:
 
 def _portal_error(code: str, message: str, cause: BaseException | None = None) -> PortalError:
     return PortalError(code, message, cause=cause)
+
+
+def validate_external_url(value: object) -> str:
+    """Return a safe absolute web URL for a local browser launch."""
+    if not isinstance(value, str):
+        raise _portal_error("invalid_url", "브라우저로 열 URL이 올바르지 않아.")
+    url = value.strip()
+    parsed = urlsplit(url)
+    if (
+        not url
+        or len(url) > MAX_EXTERNAL_URL_LENGTH
+        or parsed.scheme.lower() not in {"http", "https"}
+        or not parsed.netloc
+        or any(ord(character) < 0x20 or ord(character) == 0x7F or character.isspace() for character in url)
+    ):
+        raise _portal_error("invalid_url", "http 또는 https URL만 Chrome으로 열 수 있어.")
+    return url
+
+
+def find_chrome_executable() -> Path:
+    """Find the installed Google Chrome executable without using credentials."""
+    configured = os.environ.get("RITSUMEI_CHROME_PATH", "").strip()
+    candidates: list[Path] = []
+    if configured:
+        candidates.append(Path(configured).expanduser())
+
+    local_app_data = os.environ.get("LOCALAPPDATA", "").strip()
+    program_files = os.environ.get("PROGRAMFILES", "").strip()
+    program_files_x86 = os.environ.get("PROGRAMFILES(X86)", "").strip()
+    for root in (local_app_data, program_files, program_files_x86):
+        if root:
+            candidates.append(Path(root) / "Google" / "Chrome" / "Application" / "chrome.exe")
+
+    for command in ("chrome.exe", "chrome", "google-chrome", "google-chrome-stable"):
+        resolved = shutil.which(command)
+        if resolved:
+            candidates.append(Path(resolved))
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = os.path.normcase(str(candidate))
+        if key in seen:
+            continue
+        seen.add(key)
+        if candidate.is_file():
+            return candidate.resolve()
+    raise _portal_error("chrome_not_found", "Google Chrome을 찾지 못했어.")
+
+
+def open_url_in_chrome(url: object, profile_path: str | Path | None = None) -> None:
+    """Open an absolute portal or attachment URL in the saved Chrome profile."""
+    safe_url = validate_external_url(url)
+    executable = find_chrome_executable()
+    profile = resolve_profile_path() if profile_path is None else Path(profile_path).expanduser().resolve(strict=False)
+    arguments = [
+        str(executable),
+        f"--user-data-dir={profile}",
+        "--new-tab",
+        safe_url,
+    ]
+    options: dict[str, object] = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "shell": False,
+    }
+    if os.name == "nt":
+        options["creationflags"] = (
+            getattr(subprocess, "DETACHED_PROCESS", 0)
+            | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        )
+    else:
+        options["start_new_session"] = True
+    try:
+        subprocess.Popen(arguments, **options)
+    except OSError as exc:
+        raise _portal_error("chrome_not_found", "Google Chrome을 실행하지 못했어.", exc) from exc
 
 
 def _safe_url_path(url: str) -> str:
@@ -820,6 +900,9 @@ __all__ = [
     "browser_channel",
     "classify_notice_type",
     "extract_labeled_value",
+    "find_chrome_executable",
+    "open_url_in_chrome",
     "profile_session_state",
     "resolve_profile_path",
+    "validate_external_url",
 ]

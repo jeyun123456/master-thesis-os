@@ -8,6 +8,7 @@ import {
   getPortalNotice,
   getPortalNotices,
   getPortalStatus,
+  openPortalUrl,
   PortalNoticesClientError,
   readPortalBridgeToken,
   startPortalLogin,
@@ -140,6 +141,8 @@ export function portalNoticeErrorMessage(error: unknown): string {
   const messages: Record<string, string> = {
     bridge_auth: 'Settings에서 Local Bridge token을 확인해줘.',
     bridge_offline: 'Local Bridge가 실행 중인지 확인해줘.',
+    invalid_url: 'Chrome으로 열 수 없는 URL이야.',
+    chrome_not_found: 'Google Chrome을 찾지 못했어. Chrome 설치 상태를 확인해줘.',
     login_required: '먼저 로그인 창에서 학교 포털에 직접 로그인해줘.',
     session_expired: '학교 포털 세션이 만료됐어. 로그인 창을 다시 열어줘.',
     portal_unreachable: '학교 포털에 연결하지 못했어.',
@@ -226,6 +229,7 @@ export function PortalNoticesPanel() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [stateAction, setStateAction] = useState<string | null>(null);
+  const [externalAction, setExternalAction] = useState<string | null>(null);
   const [action, setAction] = useState<'idle' | 'sync' | 'login'>('idle');
   const [aiAction, setAiAction] = useState<'idle' | 'analyze'>('idle');
   const [error, setError] = useState<unknown>(null);
@@ -459,6 +463,19 @@ export function PortalNoticesPanel() {
     }
   }
 
+  async function openNoticeUrl(url: string, actionId: string) {
+    if (externalAction) return;
+    setExternalAction(actionId);
+    setError(null);
+    try {
+      await openPortalUrl(url, readPortalBridgeToken());
+    } catch (nextError) {
+      setError(nextError);
+    } finally {
+      setExternalAction(null);
+    }
+  }
+
   const currentSessionState = sessionState(status);
   const needsLogin = currentSessionState === 'login_required' || currentSessionState === 'session_expired';
   const actionLabel = action === 'sync' ? '동기화 중…' : action === 'login' ? '로그인 창 여는 중…' : '공지 동기화';
@@ -590,10 +607,22 @@ export function PortalNoticesPanel() {
             <button className="mini" type="button" disabled={stateAction !== null} onClick={() => void changeNoticeState({ isRead: !detail.isRead })}>{detail.isRead ? '읽지 않음으로 표시' : '읽음 처리'}</button>
             <button className="mini" type="button" disabled={stateAction !== null} onClick={() => void changeNoticeState({ isImportant: !detail.isImportant })}>{detail.isImportant ? '중요 해제' : '중요 표시'}</button>
             <button className="mini" type="button" disabled={stateAction !== null} onClick={() => void changeNoticeState({ isArchived: !detail.isArchived })}>{detail.isArchived ? '보관 해제' : '보관'}</button>
-            <a className="mini portal-notice-source-button" href={detail.sourceUrl} target="_blank" rel="noreferrer">원문 열기 ↗</a>
+            <button className="mini portal-notice-source-button" type="button" disabled={externalAction !== null} onClick={() => void openNoticeUrl(detail.sourceUrl, 'source')}>
+              {externalAction === 'source' ? 'Chrome 여는 중…' : '원문 열기 ↗'}
+            </button>
           </div>
           <div className="portal-notice-body">{detail.body ? detail.body.split(/\r?\n/).map((line, index) => <p key={`${index}-${line}`}>{line || '\u00a0'}</p>) : <span className="muted">저장된 본문이 없어.</span>}</div>
-          {detail.attachments.length > 0 && <div className="portal-notice-attachments"><b>첨부파일 metadata</b>{detail.attachments.map((attachment) => <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer">{attachment.filename || attachment.url}</a>)}</div>}
+          {detail.attachments.length > 0 && <div className="portal-notice-attachments"><b>첨부파일 metadata</b>{detail.attachments.map((attachment) => <button
+            className="portal-notice-attachment-link"
+            key={attachment.id}
+            type="button"
+            disabled={externalAction !== null}
+            title={attachment.url ? '저장된 첨부파일 URL을 Chrome에서 열기' : '직접 링크가 없어 포털 원문을 Chrome에서 열기'}
+            onClick={() => void openNoticeUrl(attachment.url || detail.sourceUrl, `attachment:${attachment.id}`)}
+          >
+            <span>{attachment.filename || attachment.url || '첨부파일'}</span>
+            <small>{externalAction === `attachment:${attachment.id}` ? 'Chrome 여는 중…' : attachment.url ? 'Chrome에서 열기' : '포털에서 열기'}</small>
+          </button>)}</div>}
           <PortalNoticeAI
             ai={detail.ai}
             candidates={detail.calendarCandidates}

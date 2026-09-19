@@ -14,12 +14,39 @@ from portal_client import (
     browser_channel,
     classify_notice_type,
     extract_labeled_value,
+    open_url_in_chrome,
     profile_session_state,
     resolve_profile_path,
+    validate_external_url,
 )
 
 
 class PortalParsingTests(unittest.TestCase):
+    def test_external_browser_urls_are_absolute_http_urls_only(self):
+        self.assertEqual(
+            validate_external_url('https://sp.ritsumei.ac.jp/studentportal/s/'),
+            'https://sp.ritsumei.ac.jp/studentportal/s/',
+        )
+        for value in ('', '/studentportal/s/', 'javascript:alert(1)', 'https://example.com/a b'):
+            with self.subTest(value=value):
+                with self.assertRaises(PortalError) as error:
+                    validate_external_url(value)
+                self.assertEqual(error.exception.code, 'invalid_url')
+
+    def test_opens_urls_with_the_saved_profile_in_chrome(self):
+        url = 'https://sp.ritsumei.ac.jp/studentportal/s/r-information/a0/view'
+        profile_path = Path(tempfile.gettempdir()) / 'mto-profile'
+        with patch('portal_client.find_chrome_executable', return_value=Path('/opt/google/chrome')) as find_chrome:
+            with patch('portal_client.subprocess.Popen') as popen:
+                open_url_in_chrome(url, profile_path)
+
+        find_chrome.assert_called_once()
+        arguments = popen.call_args.args[0]
+        self.assertEqual(arguments[0], str(Path('/opt/google/chrome')))
+        self.assertEqual(arguments[1], f'--user-data-dir={profile_path.resolve(strict=False)}')
+        self.assertEqual(arguments[-2:], ['--new-tab', url])
+        self.assertFalse(popen.call_args.kwargs['shell'])
+
     def test_maps_observed_portal_distribution_to_all_and_dm(self):
         self.assertEqual(classify_notice_type('全体'), 'ALL')
         self.assertEqual(classify_notice_type('個人'), 'DM')

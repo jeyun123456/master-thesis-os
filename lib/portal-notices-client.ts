@@ -125,6 +125,8 @@ export type PortalClientErrorCode =
   | 'bridge_auth'
   | 'malformed_response'
   | 'server_error'
+  | 'invalid_url'
+  | 'chrome_not_found'
   | 'login_required'
   | 'session_expired'
   | 'portal_unreachable'
@@ -444,6 +446,19 @@ export async function startPortalSync(token = readBridgeTokenFromStorage(), fetc
 
 export async function startPortalLogin(token = readBridgeTokenFromStorage(), fetchImpl: typeof fetch = fetch): Promise<void> {
   await requestBridge('/portal/login', token, 'POST', {}, fetchImpl);
+}
+
+export async function openPortalUrl(
+  url: string,
+  token = readBridgeTokenFromStorage(),
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  const normalizedUrl = url.trim();
+  if (!normalizedUrl) throw new PortalNoticesClientError('invalid_url', '브라우저로 열 URL이 없어.');
+  const raw = await requestBridge('/portal/open-url', token, 'POST', { url: normalizedUrl }, fetchImpl);
+  if (!isRecord(raw) || raw.ok !== true || raw.source !== 'chrome') {
+    throw new PortalNoticesClientError('malformed_response', 'Chrome 열기 응답 형식을 확인해줘.');
+  }
 }
 
 export async function startPortalNoticeAnalysis(

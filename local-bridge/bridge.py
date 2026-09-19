@@ -661,6 +661,28 @@ class Handler(BaseHTTPRequestHandler):
             if not start_portal_login_job():
                 return self.json_out(409, {'ok': False, 'source': 'sqlite', 'error': 'portal_job_already_running'})
             return self.json_out(202, {'ok': True, 'source': 'sqlite', 'status': 'running', 'jobKind': 'login'})
+        if path == '/portal/open-url':
+            url = body.get('url') if body is not None else None
+            if not isinstance(url, str) or not url.strip():
+                return self.json_out(400, {
+                    'ok': False,
+                    'source': 'chrome',
+                    'errorCode': 'invalid_url',
+                    'error': '브라우저로 열 URL이 필요해.',
+                })
+            try:
+                from portal_client import PortalError, open_url_in_chrome, resolve_profile_path
+
+                open_url_in_chrome(url, resolve_profile_path(ROOT))
+            except PortalError as exc:
+                status = 400 if exc.code == 'invalid_url' else 503
+                return self.json_out(status, {
+                    'ok': False,
+                    'source': 'chrome',
+                    'errorCode': exc.code,
+                    'error': exc.message,
+                })
+            return self.json_out(200, {'ok': True, 'source': 'chrome'})
         prefix = '/portal/notices/'
         if body is not None and path.startswith(prefix) and path.endswith('/analyze'):
             notice_id = unquote(path[len(prefix):-len('/analyze')]).strip()
@@ -725,7 +747,7 @@ class Handler(BaseHTTPRequestHandler):
         allowed = (
             '/open', '/open-folder', '/launch', '/mail/recent', '/mail/folders',
             '/mail/message', '/mail/open', '/mail/sync', '/mail/analysis/candidate', '/mail/task',
-            '/portal/sync', '/portal/login',
+            '/portal/sync', '/portal/login', '/portal/open-url',
         )
         is_portal_state = path.startswith('/portal/notices/') and path.endswith('/state')
         is_portal_analyze = path.startswith('/portal/notices/') and path.endswith('/analyze')
