@@ -9,7 +9,7 @@ type RecordValue = Record<string, unknown>;
 type BridgeRequestInit = RequestInit & { targetAddressSpace?: 'loopback' };
 
 const REQUEST_TIMEOUT_MS = 10_000;
-const PORTAL_LOGIN_URL = 'https://sp.ritsumei.ac.jp/studentportal';
+export const PORTAL_ENTRY_URL = 'https://sp.ritsumei.ac.jp/studentportal';
 
 export interface PortalNoticeAttachment {
   id: string;
@@ -447,10 +447,10 @@ export async function startPortalSync(token = readBridgeTokenFromStorage(), fetc
 }
 
 export async function startPortalLogin(token = readBridgeTokenFromStorage(), fetchImpl: typeof fetch = fetch): Promise<void> {
-  // Login is intentionally opened through the same OS-default-browser path
-  // as notice attachments/source links. It must not start a Playwright job;
-  // closing the browser window therefore cannot leave a stale login job.
-  await openPortalUrl(PORTAL_LOGIN_URL, token, fetchImpl);
+  // The sync login must use the same headed persistent profile that the
+  // hidden sync job reuses. The normal-browser path remains available through
+  // openPortalUrl for source/attachment and general portal viewing.
+  await requestBridge('/portal/login', token, 'POST', {}, fetchImpl);
 }
 
 export async function openPortalUrl(

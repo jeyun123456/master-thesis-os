@@ -92,14 +92,14 @@ describe('portal notice AI client', () => {
     );
   });
 
-  it('opens portal login through the default browser without starting a job', async () => {
-    const fetchImpl = fetchResponse({ ok: true, source: 'default_browser' });
+  it('starts portal login through the persistent-profile bridge job', async () => {
+    const fetchImpl = fetchResponse({ ok: true, source: 'sqlite', status: 'running', jobKind: 'login' }, 202);
     await startPortalLogin('token', fetchImpl);
     expect(fetchImpl).toHaveBeenCalledWith(
-      'http://127.0.0.1:38471/portal/open-url',
+      'http://127.0.0.1:38471/portal/login',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ token: 'token', url: 'https://sp.ritsumei.ac.jp/studentportal' }),
+        body: JSON.stringify({ token: 'token' }),
       }),
     );
   });

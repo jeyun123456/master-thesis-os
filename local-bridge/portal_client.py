@@ -250,9 +250,10 @@ def validate_external_url(value: object) -> str:
 def open_url_in_default_browser(url: object, profile_path: str | Path | None = None) -> None:
     """Open a portal or attachment URL through the OS default browser.
 
-    Chromium-based Windows browsers receive the same local persistent profile
-    used by Playwright, keeping manual login and portal sync in one session.
-    Other default browsers fall back to the OS URL association.
+    With no profile argument this uses the normal OS URL association, so the
+    opened browser session is intentionally separate from the Playwright sync
+    profile. The optional profile argument is retained for explicit local
+    callers that need a Chromium profile.
     """
     safe_url = validate_external_url(url)
     try:

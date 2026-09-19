@@ -9,6 +9,7 @@ import {
   getPortalNotices,
   getPortalStatus,
   openPortalUrl,
+  PORTAL_ENTRY_URL,
   PortalNoticesClientError,
   readPortalBridgeToken,
   startPortalLogin,
@@ -144,8 +145,8 @@ export function portalNoticeErrorMessage(error: unknown): string {
     invalid_url: '기본 브라우저로 열 수 없는 URL이야.',
     default_browser_failed: '기본 브라우저를 열지 못했어. 기본 브라우저 설정을 확인해줘.',
     login_cancelled: '로그인 창이 닫혀서 작업을 취소했어. 다시 로그인 창을 열어줘.',
-    login_required: '먼저 로그인 창에서 학교 포털에 직접 로그인해줘.',
-    session_expired: '학교 포털 세션이 만료됐어. 로그인 창을 다시 열어줘.',
+    login_required: '동기화용 로그인 창에서 학교 포털에 직접 로그인해줘.',
+    session_expired: '동기화용 학교 포털 세션이 만료됐어. 다시 로그인해줘.',
     portal_unreachable: '학교 포털에 연결하지 못했어.',
     parsing_failed: '공지 페이지 구조를 해석하지 못했어. portal-debug.log를 확인해줘.',
     notice_detail_failed: '일부 공지 상세를 읽지 못했어. 목록은 계속 저장돼.',
@@ -323,19 +324,16 @@ export function PortalNoticesPanel() {
     setError(null);
     try {
       const token = readPortalBridgeToken();
-      if (kind === 'sync') {
-        await startPortalSync(token);
-        const nextStatus = await waitForJob();
-        if (nextStatus.status === 'failed' || nextStatus.jobErrorCode) {
-          throw new PortalNoticesClientError(
-            nextStatus.jobErrorCode || nextStatus.lastErrorCode || 'portal_unreachable',
-            nextStatus.jobError || nextStatus.lastError || '학교 포털 작업이 실패했어.',
-          );
-        }
-        await loadStored();
-      } else {
-        await startPortalLogin(token);
+      if (kind === 'sync') await startPortalSync(token);
+      else await startPortalLogin(token);
+      const nextStatus = await waitForJob();
+      if (nextStatus.status === 'failed' || nextStatus.jobErrorCode) {
+        throw new PortalNoticesClientError(
+          nextStatus.jobErrorCode || nextStatus.lastErrorCode || 'portal_unreachable',
+          nextStatus.jobError || nextStatus.lastError || '학교 포털 작업이 실패했어.',
+        );
       }
+      await loadStored();
     } catch (nextError) {
       setError(nextError);
     } finally {
@@ -483,7 +481,8 @@ export function PortalNoticesPanel() {
   const currentSessionState = sessionState(status);
   const needsLogin = currentSessionState === 'login_required' || currentSessionState === 'session_expired';
   const actionLabel = action === 'sync' ? '동기화 중…' : '공지 동기화';
-  const loginActionLabel = action === 'login' ? '기본 브라우저 여는 중…' : '기본 브라우저로 로그인';
+  const loginActionLabel = action === 'login' ? '동기화 로그인 중…' : '동기화용 로그인';
+  const portalOpenLabel = externalAction === 'portal-home' ? '기본 브라우저 여는 중…' : '학교 포털 열기';
 
   return <div className="portal-notices-panel">
     <div className="card section portal-notices-summary">
@@ -493,7 +492,8 @@ export function PortalNoticesPanel() {
           <small>RITSUMEIKAN STUDENT PORTAL · 저장된 공지만 표시</small>
         </div>
         <div className="portal-notice-actions">
-          {needsLogin && <button className="btn" type="button" disabled={action !== 'idle'} onClick={() => void runPortalAction('login')}>{loginActionLabel}</button>}
+          {needsLogin && <button className="btn" type="button" title="공지 동기화에 사용하는 persistent profile에서 직접 로그인해." disabled={action !== 'idle'} onClick={() => void runPortalAction('login')}>{loginActionLabel}</button>}
+          <button className="btn" type="button" title="일반 브라우저로 포털을 열어. 공지 동기화 세션과는 별도야." disabled={action !== 'idle' || externalAction !== null} onClick={() => void openNoticeUrl(PORTAL_ENTRY_URL, 'portal-home')}>{portalOpenLabel}</button>
           <button className="btn primary" type="button" disabled={action !== 'idle' || aiAction !== 'idle'} onClick={() => void runPortalAction('sync')}>{actionLabel}</button>
         </div>
       </div>
