@@ -35,7 +35,9 @@ const INITIAL_STATUS: PortalSyncStatus = {
 
 const PORTAL_JOB_TIMEOUT_MS = 15 * 60_000;
 
-export type PortalNoticeViewFilter = 'all' | 'unread' | 'important' | 'archived';
+export type PortalNoticeViewFilter = 'all' | 'unread' | 'important' | 'archived' | 'deadline' | 'expired';
+export type PortalNoticeSort = 'published_desc' | 'deadline_asc' | 'title_asc';
+export type PortalNoticeDeadlineState = 'none' | 'upcoming' | 'expired';
 
 type PortalNoticeDepartmentSummary = PortalNoticeDepartment & {
   unreadCount: number;
@@ -48,14 +50,72 @@ export function filterPortalNotices(
   type: PortalNoticeType,
   viewFilter: PortalNoticeViewFilter = 'all',
   department = '',
+  query = '',
 ): PortalNoticeSummary[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
   return items.filter((item) => {
     if (item.type !== type) return false;
     if (department === '__unknown__' ? item.department.trim() !== '' : department && item.department !== department) return false;
-    if (viewFilter === 'unread') return !item.isRead;
-    if (viewFilter === 'important') return item.isImportant;
-    if (viewFilter === 'archived') return item.isArchived;
+    if (viewFilter === 'unread' && item.isRead) return false;
+    if (viewFilter === 'important' && !item.isImportant) return false;
+    if (viewFilter === 'archived' && !item.isArchived) return false;
+    if (viewFilter === 'deadline' && !item.deadline.trim() && !item.expiresAt.trim()) return false;
+    if (viewFilter === 'expired' && portalNoticeDeadlineState(item) !== 'expired') return false;
+    if (normalizedQuery) {
+      const haystack = [
+        item.noticeId,
+        item.title,
+        item.department,
+        item.category,
+        item.importance,
+        item.deadline,
+        item.expiresAt,
+        item.searchText || '',
+      ].join('\n').toLocaleLowerCase();
+      if (!haystack.includes(normalizedQuery)) return false;
+    }
     return true;
+  });
+}
+
+function portalNoticeDateValue(value: string): number | null {
+  const text = value.trim();
+  if (!text) return null;
+  const parsed = new Date(text.replaceAll('/', '-'));
+  if (!Number.isNaN(parsed.getTime())) return parsed.getTime();
+  const match = text.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?/);
+  if (!match) return null;
+  const fallback = new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    match[4] ? Number(match[4]) : 23,
+    match[5] ? Number(match[5]) : 59,
+    match[4] ? 0 : 59,
+  );
+  return Number.isNaN(fallback.getTime()) ? null : fallback.getTime();
+}
+
+export function portalNoticeDeadlineState(
+  notice: Pick<PortalNoticeSummary, 'deadline' | 'expiresAt'>,
+  now = Date.now(),
+): PortalNoticeDeadlineState {
+  const dates = [notice.deadline, notice.expiresAt]
+    .map(portalNoticeDateValue)
+    .filter((value): value is number => value !== null);
+  if (!dates.length) return 'none';
+  return Math.min(...dates) < now ? 'expired' : 'upcoming';
+}
+
+export function sortPortalNotices(items: PortalNoticeSummary[], sort: PortalNoticeSort): PortalNoticeSummary[] {
+  return [...items].sort((left, right) => {
+    if (sort === 'title_asc') return left.title.localeCompare(right.title, 'ja');
+    if (sort === 'deadline_asc') {
+      const leftDate = [left.deadline, left.expiresAt].map(portalNoticeDateValue).find((value) => value !== null) ?? Number.POSITIVE_INFINITY;
+      const rightDate = [right.deadline, right.expiresAt].map(portalNoticeDateValue).find((value) => value !== null) ?? Number.POSITIVE_INFINITY;
+      return leftDate - rightDate || right.publishedAt.localeCompare(left.publishedAt);
+    }
+    return right.publishedAt.localeCompare(left.publishedAt) || right.syncedAt.localeCompare(left.syncedAt);
   });
 }
 
@@ -84,6 +144,12 @@ export function portalNoticeErrorMessage(error: unknown): string {
     portal_job_already_running: '학교 포털 작업이 이미 진행 중이야.',
   };
   return messages[error.code] || error.message || '학교 공지 요청을 처리하지 못했어.';
+}
+
+export function portalSyncRunStatusLabel(status: 'running' | 'completed' | 'failed'): string {
+  if (status === 'running') return '진행 중';
+  if (status === 'failed') return '실패';
+  return '완료';
 }
 
 function dateParts(value: string): Record<string, string> | null {
@@ -139,6 +205,8 @@ export function PortalNoticesPanel() {
   const [tab, setTab] = useState<PortalNoticeType>('ALL');
   const [viewFilter, setViewFilter] = useState<PortalNoticeViewFilter>('all');
   const [departmentFilter, setDepartmentFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sort, setSort] = useState<PortalNoticeSort>('published_desc');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<PortalNotice | null>(null);
   const [loading, setLoading] = useState(true);
@@ -174,8 +242,8 @@ export function PortalNoticesPanel() {
   }, [loadStored]);
 
   const visibleItems = useMemo(
-    () => filterPortalNotices(items, tab, viewFilter, departmentFilter),
-    [items, tab, viewFilter, departmentFilter],
+    () => sortPortalNotices(filterPortalNotices(items, tab, viewFilter, departmentFilter, searchQuery), sort),
+    [items, tab, viewFilter, departmentFilter, searchQuery, sort],
   );
 
   const visibleUnreadCount = useMemo(
@@ -333,6 +401,16 @@ export function PortalNoticesPanel() {
         <div><small>이번 수정</small><b>{status.updatedCount}</b></div>
         <div><small>상세 실패</small><b>{status.detailFailedCount}</b></div>
       </div>
+      {status.history && status.history.length > 0 && <details className="portal-sync-history">
+        <summary>최근 동기화 이력 ({status.history.length})</summary>
+        <div className="portal-sync-history-list">
+          {status.history.slice(0, 5).map((run) => <div className="portal-sync-history-row" key={run.syncId}>
+            <div><b>{formatPortalSyncDate(run.startedAt)}</b><small>{portalSyncRunStatusLabel(run.status)}</small></div>
+            <span>신규 {run.newCount} · 수정 {run.updatedCount} · 상세 {run.detailCount} · 실패 {run.detailFailedCount}</span>
+            {run.error && <small className="portal-sync-history-error" title={run.error}>{run.errorCode || '오류'}: {run.error}</small>}
+          </div>)}
+        </div>
+      </details>}
       <div className="portal-notice-department-summary">
         <div className="portal-notice-department-summary-head">
           <div><b>발신처·담당부서별</b><small>개인 발신자명이 아니라 포털의 担当部課 기준</small></div>
@@ -376,17 +454,31 @@ export function PortalNoticesPanel() {
               {departments.filter((department) => department.counts[tab] > 0).map((department) => <option key={department.value || '__unknown__'} value={department.value || '__unknown__'}>{department.name} ({department.counts[tab]})</option>)}
             </select>
           </label>
+          <div className="portal-notice-filter-tools">
+            <label className="portal-notice-search">
+              <span className="sr-only">공지 검색</span>
+              <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="제목·본문·담당부서 검색" aria-label="공지 제목, 본문, 담당부서 검색" />
+            </label>
+            <label className="portal-notice-sort">
+              <span className="sr-only">공지 정렬</span>
+              <select value={sort} onChange={(event) => setSort(event.target.value as PortalNoticeSort)} aria-label="공지 정렬">
+                <option value="published_desc">최신 게시순</option>
+                <option value="deadline_asc">마감 임박순</option>
+                <option value="title_asc">제목순</option>
+              </select>
+            </label>
+          </div>
           <div className="portal-notice-view-filters" role="tablist" aria-label="학교 공지 상태">
-            {([['all', '전체'], ['unread', '미읽음'], ['important', '중요'], ['archived', '보관']] as [PortalNoticeViewFilter, string][]).map(([filter, label]) => <button key={filter} className={viewFilter === filter ? 'active' : ''} type="button" role="tab" aria-selected={viewFilter === filter} onClick={() => setViewFilter(filter)}>{label}</button>)}
+            {([['all', '전체'], ['unread', '미읽음'], ['important', '중요'], ['archived', '보관'], ['deadline', '마감 있음'], ['expired', '기한 종료']] as [PortalNoticeViewFilter, string][]).map(([filter, label]) => <button key={filter} className={viewFilter === filter ? 'active' : ''} type="button" role="tab" aria-selected={viewFilter === filter} onClick={() => setViewFilter(filter)}>{label}</button>)}
           </div>
         </div>
         {loading ? <div className="empty compact-empty">저장된 학교 공지를 불러오는 중이야.</div> : visibleItems.length ? <div className="portal-notice-list">
           {visibleItems.map((notice) => <button className={`portal-notice-row ${selectedId === notice.noticeId ? 'selected' : ''} ${!notice.isRead ? 'unread' : ''} ${notice.isArchived ? 'archived' : ''}`} type="button" key={notice.noticeId} onClick={() => void openDetail(notice)} aria-expanded={selectedId === notice.noticeId}>
             <span className={`portal-notice-type ${notice.type === 'DM' ? 'dm' : ''}`}>{notice.type}</span>
             <span className="portal-notice-main"><span className="portal-notice-title-line"><b>{notice.title || '(제목 없음)'}</b>{!notice.isRead && <i className="portal-notice-unread-dot" aria-label="읽지 않음" />}</span><small>{notice.department || '담당부서 미상'} · 게시 {formatPortalNoticeDate(notice.publishedAt)}</small></span>
-            <span className="portal-notice-extra">{noticeUpdatedInSync(notice, status) && <em className="notice-updated">수정됨</em>}{notice.isImportant && <em className="user-important">내 중요</em>}{notice.importance && <em>{notice.importance}</em>}{notice.isArchived && <small>보관</small>}{notice.deadline && <small>마감 {notice.deadline}</small>}</span>
+            <span className="portal-notice-extra">{notice.firstSeenAt === status.lastSyncAt && <em className="notice-new">신규</em>}{noticeUpdatedInSync(notice, status) && <em className="notice-updated">수정됨</em>}{notice.isImportant && <em className="user-important">내 중요</em>}{notice.importance && <em>{notice.importance}</em>}{notice.isArchived && <small>보관</small>}{portalNoticeDeadlineState(notice) === 'expired' && <em className="notice-expired">기한 종료</em>}{notice.deadline && portalNoticeDeadlineState(notice) !== 'expired' && <small>마감 {notice.deadline}</small>}</span>
           </button>)}
-        </div> : <div className="empty compact-empty">저장된 {tab} 공지가 없어. 상단의 공지 동기화를 눌러줘.</div>}
+        </div> : <div className="empty compact-empty">{searchQuery ? '검색 조건에 맞는 공지가 없어.' : `저장된 ${tab} 공지가 없어. 상단의 공지 동기화를 눌러줘.`}</div>}
       </div>
 
       <div className="portal-notice-detail-pane">
@@ -403,6 +495,7 @@ export function PortalNoticesPanel() {
             <div><dt>게시일</dt><dd>{formatPortalNoticeDate(detail.publishedAt)}</dd></div>
             <div><dt>마감일</dt><dd>{detail.deadline || '—'}</dd></div>
             <div><dt>공개 종료일</dt><dd>{formatPortalNoticeDate(detail.expiresAt)}</dd></div>
+            <div><dt>기한 상태</dt><dd>{portalNoticeDeadlineState(detail) === 'expired' ? '기한 종료' : portalNoticeDeadlineState(detail) === 'upcoming' ? '기한 있음' : '기한 없음'}</dd></div>
             <div><dt>중요도</dt><dd>{detail.importance || '—'}</dd></div>
             <div><dt>카테고리</dt><dd>{detail.category || '—'}</dd></div>
             <div><dt>최근 수정</dt><dd>{formatPortalNoticeDate(detail.lastChangedAt || '')}</dd></div>

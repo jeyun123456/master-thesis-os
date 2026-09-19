@@ -111,6 +111,8 @@ class PortalDatabaseTests(unittest.TestCase):
         self.assertEqual(stored['body'], '본문\n두 번째 줄')
         self.assertEqual(stored['attachments'][0]['filename'], 'guide.pdf')
         self.assertEqual(portal_db.notice_ids_needing_detail(['I-0000000001'], self.path), set())
+        listed = portal_db.list_notices(self.path)
+        self.assertEqual(listed[0]['searchText'], '본문\n두 번째 줄')
 
         cleared_deadline = {**self.summary, 'deadline': ''}
         portal_db.upsert_notice_summary(cleared_deadline, '2026-09-18T14:30:00Z', self.path)
@@ -140,6 +142,9 @@ class PortalDatabaseTests(unittest.TestCase):
         self.assertEqual(status['storedCount'], 2)
         self.assertEqual(status['counts'], {'ALL': 1, 'DM': 1})
         self.assertEqual(status['updatedCount'], 3)
+        self.assertEqual(len(status['history']), 1)
+        self.assertEqual(status['history'][0]['status'], 'completed')
+        self.assertEqual(status['history'][0]['totalCount'], 2)
 
     def test_interrupted_sync_state_can_be_recovered(self):
         portal_db.begin_sync(self.path)
@@ -150,6 +155,8 @@ class PortalDatabaseTests(unittest.TestCase):
         recovered = portal_db.sync_status(self.path)
         self.assertEqual(recovered['status'], 'failed')
         self.assertEqual(recovered['lastErrorCode'], portal_db.SYNC_INTERRUPTED_CODE)
+        self.assertEqual(recovered['history'][0]['status'], 'failed')
+        self.assertEqual(recovered['history'][0]['errorCode'], portal_db.SYNC_INTERRUPTED_CODE)
         self.assertFalse(portal_db.recover_interrupted_sync(self.path))
 
     def test_hashes_detect_detail_and_summary_changes(self):

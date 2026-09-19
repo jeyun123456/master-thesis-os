@@ -94,6 +94,23 @@ CREATE TABLE IF NOT EXISTS portal_sync_state (
     updated_count INTEGER NOT NULL DEFAULT 0,
     detail_failed_count INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS portal_sync_runs (
+    sync_id TEXT PRIMARY KEY,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    status TEXT NOT NULL CHECK(status IN ('running', 'completed', 'failed')),
+    total_count INTEGER NOT NULL DEFAULT 0,
+    new_count INTEGER NOT NULL DEFAULT 0,
+    updated_count INTEGER NOT NULL DEFAULT 0,
+    detail_count INTEGER NOT NULL DEFAULT 0,
+    detail_failed_count INTEGER NOT NULL DEFAULT 0,
+    error_code TEXT,
+    error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_portal_sync_runs_started
+    ON portal_sync_runs(started_at DESC);
 """
 
 
@@ -274,6 +291,10 @@ def _notice_payload(
     }
     if include_body:
         payload["body"] = str(row["body"] or "")
+    else:
+        # Keep the rendered list fields separate while allowing the local UI
+        # to search notice bodies without fetching every detail again.
+        payload["searchText"] = str(row["body"] or "")
     return payload
 
 
@@ -749,7 +770,11 @@ def update_notice_state(
         connection.close()
 
 
-def begin_sync(path: str | Path | None = None) -> None:
+def begin_sync(
+    path: str | Path | None = None,
+    started_at: str | None = None,
+) -> None:
+    observed_at = _text(started_at) or now_iso()
     connection = _connect(path)
     try:
         connection.execute(
@@ -761,6 +786,13 @@ def begin_sync(path: str | Path | None = None) -> None:
              WHERE source = ?
             """,
             (SOURCE,),
+        )
+        connection.execute(
+            """
+            INSERT INTO portal_sync_runs(sync_id, started_at, status)
+            VALUES (?, ?, 'running')
+            """,
+            (f"sync:{observed_at}", observed_at),
         )
         connection.commit()
     finally:
@@ -777,6 +809,7 @@ def recover_interrupted_sync(path: str | Path | None = None) -> bool:
     """
     connection = _connect(path)
     try:
+        recovered_at = now_iso()
         cursor = connection.execute(
             """
             UPDATE portal_sync_state
@@ -786,10 +819,28 @@ def recover_interrupted_sync(path: str | Path | None = None) -> bool:
              WHERE source = ? AND status = 'running'
             """,
             (
-                now_iso(),
+                recovered_at,
                 SYNC_INTERRUPTED_CODE,
                 "이전 학교 공지 동기화가 정상적으로 끝나지 않아 중단 상태로 정리했어.",
                 SOURCE,
+            ),
+        )
+        connection.execute(
+            """
+            UPDATE portal_sync_runs
+               SET status = 'failed', finished_at = ?, error_code = ?, error = ?
+             WHERE sync_id = (
+                 SELECT sync_id
+                   FROM portal_sync_runs
+                  WHERE status = 'running'
+                  ORDER BY started_at DESC
+                  LIMIT 1
+             )
+            """,
+            (
+                recovered_at,
+                SYNC_INTERRUPTED_CODE,
+                "이전 학교 공지 동기화가 정상적으로 끝나지 않아 중단 상태로 정리했어.",
             ),
         )
         connection.commit()
@@ -804,6 +855,7 @@ def finish_sync(
     total_count: int,
     new_count: int,
     updated_count: int = 0,
+    detail_count: int = 0,
     detail_failed_count: int,
     error_code: str | None = None,
     error: str | None = None,
@@ -811,6 +863,7 @@ def finish_sync(
 ) -> None:
     connection = _connect(path)
     try:
+        finished_at = now_iso()
         connection.execute(
             """
             UPDATE portal_sync_state
@@ -830,6 +883,31 @@ def finish_sync(
                 SOURCE,
             ),
         )
+        connection.execute(
+            """
+            UPDATE portal_sync_runs
+               SET status = 'completed', finished_at = ?, total_count = ?,
+                   new_count = ?, updated_count = ?, detail_count = ?,
+                   detail_failed_count = ?, error_code = ?, error = ?
+             WHERE sync_id = (
+                 SELECT sync_id
+                   FROM portal_sync_runs
+                  WHERE status = 'running'
+                  ORDER BY started_at DESC
+                  LIMIT 1
+             )
+            """,
+            (
+                finished_at,
+                max(0, int(total_count)),
+                max(0, int(new_count)),
+                max(0, int(updated_count)),
+                max(0, int(detail_count)),
+                max(0, int(detail_failed_count)),
+                _text(error_code) or None,
+                _text(error) or None,
+            ),
+        )
         connection.commit()
     finally:
         connection.close()
@@ -844,6 +922,7 @@ def fail_sync(
 ) -> None:
     connection = _connect(path)
     try:
+        finished_at = now_iso()
         connection.execute(
             """
             UPDATE portal_sync_state
@@ -851,6 +930,20 @@ def fail_sync(
              WHERE source = ?
             """,
             (_text(last_sync_at), _text(error_code), _text(error)[:1000], SOURCE),
+        )
+        connection.execute(
+            """
+            UPDATE portal_sync_runs
+               SET status = 'failed', finished_at = ?, error_code = ?, error = ?
+             WHERE sync_id = (
+                 SELECT sync_id
+                   FROM portal_sync_runs
+                  WHERE status = 'running'
+                  ORDER BY started_at DESC
+                  LIMIT 1
+             )
+            """,
+            (finished_at, _text(error_code), _text(error)[:1000]),
         )
         connection.commit()
     finally:
@@ -883,6 +976,31 @@ def sync_status(path: str | Path | None = None) -> dict[str, object]:
             "newCount": int(row["new_count"]) if row else 0,
             "updatedCount": int(row["updated_count"]) if row else 0,
             "detailFailedCount": int(row["detail_failed_count"]) if row else 0,
+            "history": [
+                {
+                    "syncId": str(run["sync_id"]),
+                    "startedAt": str(run["started_at"] or ""),
+                    "finishedAt": str(run["finished_at"] or "") or None,
+                    "status": str(run["status"]),
+                    "totalCount": int(run["total_count"] or 0),
+                    "newCount": int(run["new_count"] or 0),
+                    "updatedCount": int(run["updated_count"] or 0),
+                    "detailCount": int(run["detail_count"] or 0),
+                    "detailFailedCount": int(run["detail_failed_count"] or 0),
+                    "errorCode": str(run["error_code"] or "") or None,
+                    "error": str(run["error"] or "") or None,
+                }
+                for run in connection.execute(
+                    """
+                    SELECT sync_id, started_at, finished_at, status,
+                           total_count, new_count, updated_count, detail_count,
+                           detail_failed_count, error_code, error
+                      FROM portal_sync_runs
+                     ORDER BY started_at DESC
+                     LIMIT 10
+                    """
+                ).fetchall()
+            ],
         }
         if row and row["last_error_code"]:
             result["lastErrorCode"] = str(row["last_error_code"])

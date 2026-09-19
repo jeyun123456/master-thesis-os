@@ -48,6 +48,8 @@ export interface PortalNoticeSummary {
   readAt: string | null;
   stateUpdatedAt: string;
   attachments: PortalNoticeAttachment[];
+  /** Full body text kept only for local list searching; detail rendering uses `body`. */
+  searchText?: string;
 }
 
 export interface PortalNotice extends PortalNoticeSummary {
@@ -71,6 +73,21 @@ export interface PortalSyncStatus {
   jobKind?: 'sync' | 'login';
   jobError?: string;
   jobErrorCode?: string;
+  history?: PortalSyncRun[];
+}
+
+export interface PortalSyncRun {
+  syncId: string;
+  startedAt: string;
+  finishedAt: string | null;
+  status: 'running' | 'completed' | 'failed';
+  totalCount: number;
+  newCount: number;
+  updatedCount: number;
+  detailCount: number;
+  detailFailedCount: number;
+  errorCode: string | null;
+  error: string | null;
 }
 
 export type PortalClientErrorCode =
@@ -211,6 +228,7 @@ function normalizeNotice(raw: unknown, includeBody: boolean): PortalNoticeSummar
     readAt: typeof value.readAt === 'string' ? value.readAt : null,
     stateUpdatedAt: textValue(value.stateUpdatedAt),
     attachments: Array.isArray(value.attachments) ? value.attachments.map(normalizeAttachment) : [],
+    searchText: textValue(value.searchText),
   };
   if (includeBody) return { ...base, body: textValue(value.body) };
   return base;
@@ -237,6 +255,24 @@ function normalizeDepartment(raw: unknown): PortalNoticeDepartment {
   };
 }
 
+function normalizePortalSyncRun(raw: unknown): PortalSyncRun {
+  const value = isRecord(raw) ? raw : {};
+  const status = value.status === 'running' || value.status === 'failed' ? value.status : 'completed';
+  return {
+    syncId: textValue(value.syncId),
+    startedAt: textValue(value.startedAt),
+    finishedAt: typeof value.finishedAt === 'string' ? value.finishedAt : null,
+    status,
+    totalCount: numberValue(value.totalCount),
+    newCount: numberValue(value.newCount),
+    updatedCount: numberValue(value.updatedCount),
+    detailCount: numberValue(value.detailCount),
+    detailFailedCount: numberValue(value.detailFailedCount),
+    errorCode: typeof value.errorCode === 'string' ? value.errorCode : null,
+    error: typeof value.error === 'string' ? value.error : null,
+  };
+}
+
 export function normalizePortalSyncStatus(raw: unknown): PortalSyncStatus {
   if (!isRecord(raw)) throw new PortalNoticesClientError('malformed_response', '학교 공지 동기화 상태 응답 형식을 확인해줘.');
   const counts = isRecord(raw.counts) ? raw.counts : {};
@@ -258,6 +294,7 @@ export function normalizePortalSyncStatus(raw: unknown): PortalSyncStatus {
     ...(raw.jobKind === 'sync' || raw.jobKind === 'login' ? { jobKind: raw.jobKind } : {}),
     ...(textValue(raw.jobError) ? { jobError: textValue(raw.jobError) } : {}),
     ...(textValue(raw.jobErrorCode) ? { jobErrorCode: textValue(raw.jobErrorCode) } : {}),
+    ...(Array.isArray(raw.history) ? { history: raw.history.map(normalizePortalSyncRun) } : {}),
   };
   return result;
 }

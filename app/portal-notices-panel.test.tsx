@@ -3,8 +3,10 @@ import {
   filterPortalNotices,
   formatPortalNoticeDate,
   formatPortalSyncDate,
+  portalNoticeDeadlineState,
   portalNoticeErrorMessage,
   portalNoticeStatusLabel,
+  sortPortalNotices,
 } from './portal-notices-panel';
 import { PortalNoticesClientError, type PortalNoticeSummary } from '../lib/portal-notices-client';
 
@@ -65,5 +67,29 @@ describe('학교 공지 panel helpers', () => {
     expect(filterPortalNotices(items, 'DM', 'archived').map((item) => item.noticeId)).toEqual(['dm-archived']);
     expect(filterPortalNotices(items, 'ALL', 'all', '経済学部事務室').map((item) => item.noticeId)).toEqual(['all-important']);
     expect(filterPortalNotices(items, 'DM', 'all', '__unknown__').map((item) => item.noticeId)).toEqual(['dm-archived']);
+  });
+
+  it('searches notice body text and combines it with deadline filters', () => {
+    const items = [
+      notice({ noticeId: 'body-match', searchText: '交換留学の説明会は九月末です', deadline: '2099/09/30' }),
+      notice({ noticeId: 'expired', searchText: '交換留学の過去案内', deadline: '2020/09/30' }),
+      notice({ noticeId: 'no-deadline', searchText: '別の案内' }),
+    ];
+    expect(filterPortalNotices(items, 'ALL', 'all', '', '交換留学').map((item) => item.noticeId)).toEqual(['body-match', 'expired']);
+    expect(filterPortalNotices(items, 'ALL', 'deadline', '', '交換留学').map((item) => item.noticeId)).toEqual(['body-match', 'expired']);
+    expect(filterPortalNotices(items, 'ALL', 'expired').map((item) => item.noticeId)).toEqual(['expired']);
+    expect(portalNoticeDeadlineState(items[0], new Date('2026-09-19T00:00:00Z').getTime())).toBe('upcoming');
+    expect(portalNoticeDeadlineState(items[1], new Date('2026-09-19T00:00:00Z').getTime())).toBe('expired');
+  });
+
+  it('sorts notices by title and nearest deadline without mutating the source list', () => {
+    const items = [
+      notice({ noticeId: 'later', title: 'Z 제목', deadline: '2099/10/01' }),
+      notice({ noticeId: 'soon', title: 'A 제목', deadline: '2099/09/20' }),
+      notice({ noticeId: 'none', title: 'B 제목', deadline: '' }),
+    ];
+    expect(sortPortalNotices(items, 'deadline_asc').map((item) => item.noticeId)).toEqual(['soon', 'later', 'none']);
+    expect(sortPortalNotices(items, 'title_asc').map((item) => item.noticeId)).toEqual(['soon', 'none', 'later']);
+    expect(items.map((item) => item.noticeId)).toEqual(['later', 'soon', 'none']);
   });
 });

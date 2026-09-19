@@ -44,7 +44,7 @@ def sync_portal(
         # reported a running sync. Clear that stale lifecycle state before
         # starting the next explicit sync.
         portal_db.recover_interrupted_sync(resolved_db)
-        portal_db.begin_sync(resolved_db)
+        portal_db.begin_sync(resolved_db, started_at)
         summaries = _list_for_sync(client)
         summary_by_id = {summary.notice_id: summary for summary in summaries}
         summary_ids = list(summary_by_id)
@@ -99,6 +99,7 @@ def sync_portal(
             total_count=len(summary_by_id),
             new_count=len(set(summary_ids) - existing_ids),
             updated_count=updated_count,
+            detail_count=len(detail_targets),
             detail_failed_count=detail_failed,
             error_code=finish_error_code,
             error=finish_error,
