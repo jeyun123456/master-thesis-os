@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import portal_db
 import portal_cli
+import portal_client
 from portal_client import (
     NoticeSummary,
     PortalError,
@@ -14,7 +15,7 @@ from portal_client import (
     browser_channel,
     classify_notice_type,
     extract_labeled_value,
-    open_url_in_chrome,
+    open_url_in_default_browser,
     profile_session_state,
     resolve_profile_path,
     validate_external_url,
@@ -33,19 +34,16 @@ class PortalParsingTests(unittest.TestCase):
                     validate_external_url(value)
                 self.assertEqual(error.exception.code, 'invalid_url')
 
-    def test_opens_urls_with_the_saved_profile_in_chrome(self):
+    def test_opens_urls_with_the_operating_system_default_browser(self):
         url = 'https://sp.ritsumei.ac.jp/studentportal/s/r-information/a0/view'
-        profile_path = Path(tempfile.gettempdir()) / 'mto-profile'
-        with patch('portal_client.find_chrome_executable', return_value=Path('/opt/google/chrome')) as find_chrome:
+        if os.name == 'nt':
+            with patch.object(portal_client.os, 'startfile', create=True) as startfile:
+                open_url_in_default_browser(url)
+            startfile.assert_called_once_with(url)
+        else:
             with patch('portal_client.subprocess.Popen') as popen:
-                open_url_in_chrome(url, profile_path)
-
-        find_chrome.assert_called_once()
-        arguments = popen.call_args.args[0]
-        self.assertEqual(arguments[0], str(Path('/opt/google/chrome')))
-        self.assertEqual(arguments[1], f'--user-data-dir={profile_path.resolve(strict=False)}')
-        self.assertEqual(arguments[-2:], ['--new-tab', url])
-        self.assertFalse(popen.call_args.kwargs['shell'])
+                open_url_in_default_browser(url)
+            self.assertEqual(popen.call_args.args[0], ['xdg-open', url])
 
     def test_maps_observed_portal_distribution_to_all_and_dm(self):
         self.assertEqual(classify_notice_type('全体'), 'ALL')

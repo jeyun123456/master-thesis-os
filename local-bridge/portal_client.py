@@ -11,8 +11,8 @@ import json
 import logging
 import os
 import re
-import shutil
 import subprocess
+import sys
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -199,68 +199,36 @@ def validate_external_url(value: object) -> str:
         or not parsed.netloc
         or any(ord(character) < 0x20 or ord(character) == 0x7F or character.isspace() for character in url)
     ):
-        raise _portal_error("invalid_url", "http 또는 https URL만 Chrome으로 열 수 있어.")
+        raise _portal_error("invalid_url", "http 또는 https URL만 기본 브라우저로 열 수 있어.")
     return url
 
 
-def find_chrome_executable() -> Path:
-    """Find the installed Google Chrome executable without using credentials."""
-    configured = os.environ.get("RITSUMEI_CHROME_PATH", "").strip()
-    candidates: list[Path] = []
-    if configured:
-        candidates.append(Path(configured).expanduser())
-
-    local_app_data = os.environ.get("LOCALAPPDATA", "").strip()
-    program_files = os.environ.get("PROGRAMFILES", "").strip()
-    program_files_x86 = os.environ.get("PROGRAMFILES(X86)", "").strip()
-    for root in (local_app_data, program_files, program_files_x86):
-        if root:
-            candidates.append(Path(root) / "Google" / "Chrome" / "Application" / "chrome.exe")
-
-    for command in ("chrome.exe", "chrome", "google-chrome", "google-chrome-stable"):
-        resolved = shutil.which(command)
-        if resolved:
-            candidates.append(Path(resolved))
-
-    seen: set[str] = set()
-    for candidate in candidates:
-        key = os.path.normcase(str(candidate))
-        if key in seen:
-            continue
-        seen.add(key)
-        if candidate.is_file():
-            return candidate.resolve()
-    raise _portal_error("chrome_not_found", "Google Chrome을 찾지 못했어.")
-
-
-def open_url_in_chrome(url: object, profile_path: str | Path | None = None) -> None:
-    """Open an absolute portal or attachment URL in the saved Chrome profile."""
+def open_url_in_default_browser(url: object) -> None:
+    """Open an absolute portal or attachment URL through the OS default browser."""
     safe_url = validate_external_url(url)
-    executable = find_chrome_executable()
-    profile = resolve_profile_path() if profile_path is None else Path(profile_path).expanduser().resolve(strict=False)
-    arguments = [
-        str(executable),
-        f"--user-data-dir={profile}",
-        "--new-tab",
-        safe_url,
-    ]
-    options: dict[str, object] = {
-        "stdin": subprocess.DEVNULL,
-        "stdout": subprocess.DEVNULL,
-        "stderr": subprocess.DEVNULL,
-        "shell": False,
-    }
-    if os.name == "nt":
-        options["creationflags"] = (
-            getattr(subprocess, "DETACHED_PROCESS", 0)
-            | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        )
-    else:
-        options["start_new_session"] = True
     try:
-        subprocess.Popen(arguments, **options)
+        if os.name == "nt":
+            # ``startfile`` delegates to the Windows file/URL association,
+            # so this follows the user's configured default browser.
+            os.startfile(safe_url)  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.Popen(
+                ["open", safe_url],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        else:
+            subprocess.Popen(
+                ["xdg-open", safe_url],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
     except OSError as exc:
-        raise _portal_error("chrome_not_found", "Google Chrome을 실행하지 못했어.", exc) from exc
+        raise _portal_error("default_browser_failed", "기본 브라우저를 실행하지 못했어.", exc) from exc
 
 
 def _safe_url_path(url: str) -> str:
@@ -900,8 +868,7 @@ __all__ = [
     "browser_channel",
     "classify_notice_type",
     "extract_labeled_value",
-    "find_chrome_executable",
-    "open_url_in_chrome",
+    "open_url_in_default_browser",
     "profile_session_state",
     "resolve_profile_path",
     "validate_external_url",

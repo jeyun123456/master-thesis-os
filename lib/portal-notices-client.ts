@@ -126,7 +126,7 @@ export type PortalClientErrorCode =
   | 'malformed_response'
   | 'server_error'
   | 'invalid_url'
-  | 'chrome_not_found'
+  | 'default_browser_failed'
   | 'login_required'
   | 'session_expired'
   | 'portal_unreachable'
@@ -456,8 +456,8 @@ export async function openPortalUrl(
   const normalizedUrl = url.trim();
   if (!normalizedUrl) throw new PortalNoticesClientError('invalid_url', '브라우저로 열 URL이 없어.');
   const raw = await requestBridge('/portal/open-url', token, 'POST', { url: normalizedUrl }, fetchImpl);
-  if (!isRecord(raw) || raw.ok !== true || raw.source !== 'chrome') {
-    throw new PortalNoticesClientError('malformed_response', 'Chrome 열기 응답 형식을 확인해줘.');
+  if (!isRecord(raw) || raw.ok !== true || raw.source !== 'default_browser') {
+    throw new PortalNoticesClientError('malformed_response', '기본 브라우저 열기 응답 형식을 확인해줘.');
   }
 }
 

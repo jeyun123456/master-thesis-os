@@ -666,23 +666,23 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(url, str) or not url.strip():
                 return self.json_out(400, {
                     'ok': False,
-                    'source': 'chrome',
+                    'source': 'default_browser',
                     'errorCode': 'invalid_url',
                     'error': '브라우저로 열 URL이 필요해.',
                 })
             try:
-                from portal_client import PortalError, open_url_in_chrome, resolve_profile_path
+                from portal_client import PortalError, open_url_in_default_browser
 
-                open_url_in_chrome(url, resolve_profile_path(ROOT))
+                open_url_in_default_browser(url)
             except PortalError as exc:
                 status = 400 if exc.code == 'invalid_url' else 503
                 return self.json_out(status, {
                     'ok': False,
-                    'source': 'chrome',
+                    'source': 'default_browser',
                     'errorCode': exc.code,
                     'error': exc.message,
                 })
-            return self.json_out(200, {'ok': True, 'source': 'chrome'})
+            return self.json_out(200, {'ok': True, 'source': 'default_browser'})
         prefix = '/portal/notices/'
         if body is not None and path.startswith(prefix) and path.endswith('/analyze'):
             notice_id = unquote(path[len(prefix):-len('/analyze')]).strip()

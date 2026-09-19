@@ -79,8 +79,8 @@ describe('portal notice AI client', () => {
     );
   });
 
-  it('opens portal URLs through the Chrome bridge endpoint', async () => {
-    const fetchImpl = fetchResponse({ ok: true, source: 'chrome' });
+  it('opens portal URLs through the default browser bridge endpoint', async () => {
+    const fetchImpl = fetchResponse({ ok: true, source: 'default_browser' });
     await openPortalUrl(' https://sp.ritsumei.ac.jp/studentportal/s/ ', 'token', fetchImpl);
     expect(fetchImpl).toHaveBeenCalledWith(
       'http://127.0.0.1:38471/portal/open-url',

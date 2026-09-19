@@ -141,8 +141,8 @@ export function portalNoticeErrorMessage(error: unknown): string {
   const messages: Record<string, string> = {
     bridge_auth: 'Settings에서 Local Bridge token을 확인해줘.',
     bridge_offline: 'Local Bridge가 실행 중인지 확인해줘.',
-    invalid_url: 'Chrome으로 열 수 없는 URL이야.',
-    chrome_not_found: 'Google Chrome을 찾지 못했어. Chrome 설치 상태를 확인해줘.',
+    invalid_url: '기본 브라우저로 열 수 없는 URL이야.',
+    default_browser_failed: '기본 브라우저를 열지 못했어. 기본 브라우저 설정을 확인해줘.',
     login_required: '먼저 로그인 창에서 학교 포털에 직접 로그인해줘.',
     session_expired: '학교 포털 세션이 만료됐어. 로그인 창을 다시 열어줘.',
     portal_unreachable: '학교 포털에 연결하지 못했어.',
@@ -608,7 +608,7 @@ export function PortalNoticesPanel() {
             <button className="mini" type="button" disabled={stateAction !== null} onClick={() => void changeNoticeState({ isImportant: !detail.isImportant })}>{detail.isImportant ? '중요 해제' : '중요 표시'}</button>
             <button className="mini" type="button" disabled={stateAction !== null} onClick={() => void changeNoticeState({ isArchived: !detail.isArchived })}>{detail.isArchived ? '보관 해제' : '보관'}</button>
             <button className="mini portal-notice-source-button" type="button" disabled={externalAction !== null} onClick={() => void openNoticeUrl(detail.sourceUrl, 'source')}>
-              {externalAction === 'source' ? 'Chrome 여는 중…' : '원문 열기 ↗'}
+              {externalAction === 'source' ? '기본 브라우저 여는 중…' : '원문 열기 ↗'}
             </button>
           </div>
           <div className="portal-notice-body">{detail.body ? detail.body.split(/\r?\n/).map((line, index) => <p key={`${index}-${line}`}>{line || '\u00a0'}</p>) : <span className="muted">저장된 본문이 없어.</span>}</div>
@@ -617,11 +617,11 @@ export function PortalNoticesPanel() {
             key={attachment.id}
             type="button"
             disabled={externalAction !== null}
-            title={attachment.url ? '저장된 첨부파일 URL을 Chrome에서 열기' : '직접 링크가 없어 포털 원문을 Chrome에서 열기'}
+            title={attachment.url ? '저장된 첨부파일 URL을 기본 브라우저에서 열기' : '직접 링크가 없어 포털 원문을 기본 브라우저에서 열기'}
             onClick={() => void openNoticeUrl(attachment.url || detail.sourceUrl, `attachment:${attachment.id}`)}
           >
             <span>{attachment.filename || attachment.url || '첨부파일'}</span>
-            <small>{externalAction === `attachment:${attachment.id}` ? 'Chrome 여는 중…' : attachment.url ? 'Chrome에서 열기' : '포털에서 열기'}</small>
+            <small>{externalAction === `attachment:${attachment.id}` ? '기본 브라우저 여는 중…' : attachment.url ? '기본 브라우저에서 열기' : '포털에서 열기'}</small>
           </button>)}</div>}
           <PortalNoticeAI
             ai={detail.ai}
