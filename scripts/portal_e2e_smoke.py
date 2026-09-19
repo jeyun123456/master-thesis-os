@@ -13,10 +13,16 @@ import sys
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 
 
 PRODUCTION_URL = "https://master-thesis-os.vercel.app/"
 PRODUCTION_ORIGIN = "https://master-thesis-os.vercel.app"
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
 def config_path() -> Path:
@@ -94,10 +100,45 @@ def run() -> dict[str, object]:
         context = browser.new_context(locale="ko-KR", viewport={"width": 1440, "height": 1100})
         page = context.new_page()
         try:
+            # Headless Chrome blocks a public HTTPS page's direct request to a
+            # loopback address before the Local Bridge can answer it. Route
+            # only the browser-side portal calls through the same live Bridge
+            # API checked above; this keeps the test production-UI based while
+            # avoiding a security flag or a fake notice fixture.
+            def route_bridge_request(route, request) -> None:
+                parsed = urlsplit(request.url)
+                cors_headers = {
+                    "Access-Control-Allow-Origin": PRODUCTION_ORIGIN,
+                    "Access-Control-Allow-Headers": "Content-Type, X-Bridge-Token",
+                    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                    "Access-Control-Allow-Private-Network": "true",
+                }
+                if request.method == "OPTIONS":
+                    route.fulfill(status=204, headers=cors_headers)
+                    return
+                if not parsed.path.startswith("/portal/"):
+                    route.abort()
+                    return
+                require(request.headers.get("x-bridge-token") == token, "production UI did not send the configured Local Bridge token")
+                path = parsed.path + (f"?{parsed.query}" if parsed.query else "")
+                payload = bridge_json(path, token, port)
+                route.fulfill(
+                    status=200,
+                    headers=cors_headers,
+                    content_type="application/json; charset=utf-8",
+                    body=json.dumps(payload, ensure_ascii=False),
+                )
+
+            page.route(f"http://127.0.0.1:{port}/**", route_bridge_request)
             page.goto(PRODUCTION_URL, wait_until="domcontentloaded", timeout=30_000)
             page.evaluate("(token) => localStorage.setItem('thesisBridgeToken', token)", token)
             page.reload(wait_until="domcontentloaded", timeout=30_000)
-            page.get_by_role("heading", name="학교 공지").wait_for(timeout=20_000)
+            # The app opens on the home page. Navigate through the same
+            # sidebar control a user would use before asserting portal UI.
+            # The desktop navigation order is fixed in the app and the portal
+            # entry is the eighth button (the mobile copy is outside nav.nav).
+            page.locator("nav.nav button").nth(7).click(timeout=10_000)
+            page.get_by_role("heading", name="학교 공지").first.wait_for(timeout=20_000)
             search = page.get_by_label("공지 제목, 본문, 담당부서 검색")
             search.wait_for(timeout=10_000)
             rows = page.locator(".portal-notice-row")
