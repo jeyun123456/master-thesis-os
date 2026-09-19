@@ -323,16 +323,19 @@ export function PortalNoticesPanel() {
     setError(null);
     try {
       const token = readPortalBridgeToken();
-      if (kind === 'sync') await startPortalSync(token);
-      else await startPortalLogin(token);
-      const nextStatus = await waitForJob();
-      if (nextStatus.status === 'failed' || nextStatus.jobErrorCode) {
-        throw new PortalNoticesClientError(
-          nextStatus.jobErrorCode || nextStatus.lastErrorCode || 'portal_unreachable',
-          nextStatus.jobError || nextStatus.lastError || '학교 포털 작업이 실패했어.',
-        );
+      if (kind === 'sync') {
+        await startPortalSync(token);
+        const nextStatus = await waitForJob();
+        if (nextStatus.status === 'failed' || nextStatus.jobErrorCode) {
+          throw new PortalNoticesClientError(
+            nextStatus.jobErrorCode || nextStatus.lastErrorCode || 'portal_unreachable',
+            nextStatus.jobError || nextStatus.lastError || '학교 포털 작업이 실패했어.',
+          );
+        }
+        await loadStored();
+      } else {
+        await startPortalLogin(token);
       }
-      await loadStored();
     } catch (nextError) {
       setError(nextError);
     } finally {
@@ -479,7 +482,8 @@ export function PortalNoticesPanel() {
 
   const currentSessionState = sessionState(status);
   const needsLogin = currentSessionState === 'login_required' || currentSessionState === 'session_expired';
-  const actionLabel = action === 'sync' ? '동기화 중…' : action === 'login' ? '로그인 창 여는 중…' : '공지 동기화';
+  const actionLabel = action === 'sync' ? '동기화 중…' : '공지 동기화';
+  const loginActionLabel = action === 'login' ? '기본 브라우저 여는 중…' : '기본 브라우저로 로그인';
 
   return <div className="portal-notices-panel">
     <div className="card section portal-notices-summary">
@@ -489,7 +493,7 @@ export function PortalNoticesPanel() {
           <small>RITSUMEIKAN STUDENT PORTAL · 저장된 공지만 표시</small>
         </div>
         <div className="portal-notice-actions">
-          {needsLogin && <button className="btn" type="button" disabled={action !== 'idle'} onClick={() => void runPortalAction('login')}>로그인 창 열기</button>}
+          {needsLogin && <button className="btn" type="button" disabled={action !== 'idle'} onClick={() => void runPortalAction('login')}>{loginActionLabel}</button>}
           <button className="btn primary" type="button" disabled={action !== 'idle' || aiAction !== 'idle'} onClick={() => void runPortalAction('sync')}>{actionLabel}</button>
         </div>
       </div>

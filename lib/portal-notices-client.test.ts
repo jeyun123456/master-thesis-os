@@ -3,6 +3,7 @@ import {
   getPortalNotice,
   openPortalUrl,
   startPortalNoticeAnalysis,
+  startPortalLogin,
   updatePortalNoticeCandidate,
 } from './portal-notices-client';
 
@@ -87,6 +88,18 @@ describe('portal notice AI client', () => {
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ token: 'token', url: 'https://sp.ritsumei.ac.jp/studentportal/s/' }),
+      }),
+    );
+  });
+
+  it('opens portal login through the default browser without starting a job', async () => {
+    const fetchImpl = fetchResponse({ ok: true, source: 'default_browser' });
+    await startPortalLogin('token', fetchImpl);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://127.0.0.1:38471/portal/open-url',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ token: 'token', url: 'https://sp.ritsumei.ac.jp/studentportal' }),
       }),
     );
   });
