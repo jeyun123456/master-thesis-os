@@ -45,6 +45,7 @@ except ConfigError as exc:
 
 import mail_cli
 import mail_db
+import portal_db
 from shortcut_launcher import launch_shortcut, normalize_shortcut_request
 
 mail_cli.load_local_env((bridge_config.root, bridge_config.root / 'master-thesis-os'))
@@ -67,10 +68,28 @@ def _resolve_bridge_db_path():
 
 DB_PATH = _resolve_bridge_db_path()
 
+
+def _resolve_portal_db_path():
+    if os.environ.get('PORTAL_NOTICES_DB_PATH', '').strip():
+        return portal_db.resolve_db_path()
+    for root in (bridge_config.root, bridge_config.root / 'master-thesis-os'):
+        source_directory = root / 'local-bridge'
+        if (source_directory / 'portal_db.py').is_file():
+            return (source_directory / 'data' / 'portal-notices.db').resolve(strict=False)
+    return portal_db.resolve_db_path()
+
+
+PORTAL_DB_PATH = _resolve_portal_db_path()
+
 MAIL_JOB_LOCK = threading.Lock()
 MAIL_JOB_THREAD: threading.Thread | None = None
 MAIL_JOB_KIND: str | None = None
 MAIL_JOB_ERROR: str | None = None
+PORTAL_JOB_LOCK = threading.Lock()
+PORTAL_JOB_THREAD: threading.Thread | None = None
+PORTAL_JOB_KIND: str | None = None
+PORTAL_JOB_ERROR: str | None = None
+PORTAL_JOB_ERROR_CODE: str | None = None
 
 
 def launch(path: Path):
@@ -148,6 +167,71 @@ def start_reanalyze_job(mail_id: str) -> bool:
         MAIL_JOB_KIND = 'reanalyze'
         MAIL_JOB_THREAD = threading.Thread(target=_run_reanalyze_job, args=(mail_id,), name='mail-reanalyze', daemon=True)
         MAIL_JOB_THREAD.start()
+        return True
+
+
+def _portal_job_active() -> bool:
+    return PORTAL_JOB_THREAD is not None and PORTAL_JOB_THREAD.is_alive()
+
+
+def _remember_portal_job_end(error: str | None = None, error_code: str | None = None) -> None:
+    global PORTAL_JOB_THREAD, PORTAL_JOB_KIND, PORTAL_JOB_ERROR, PORTAL_JOB_ERROR_CODE
+    with PORTAL_JOB_LOCK:
+        PORTAL_JOB_THREAD = None
+        PORTAL_JOB_KIND = None
+        PORTAL_JOB_ERROR = error
+        PORTAL_JOB_ERROR_CODE = error_code
+
+
+def _run_portal_sync_job() -> None:
+    try:
+        from portal_cli import sync_portal
+
+        sync_portal(ROOT, PORTAL_DB_PATH)
+    except Exception as exc:
+        code = getattr(exc, 'code', 'parsing_failed')
+        message = getattr(exc, 'message', '학교 공지 동기화가 중단되었어.')
+        _remember_portal_job_end(message, code)
+    else:
+        _remember_portal_job_end()
+
+
+def _run_portal_login_job() -> None:
+    try:
+        from portal_cli import login_portal
+
+        login_portal(ROOT)
+    except Exception as exc:
+        code = getattr(exc, 'code', 'portal_unreachable')
+        message = getattr(exc, 'message', '학교 포털 로그인 창을 처리하지 못했어.')
+        _remember_portal_job_end(message, code)
+    else:
+        _remember_portal_job_end()
+
+
+def start_portal_sync_job() -> bool:
+    global PORTAL_JOB_THREAD, PORTAL_JOB_KIND, PORTAL_JOB_ERROR, PORTAL_JOB_ERROR_CODE
+    with PORTAL_JOB_LOCK:
+        if _portal_job_active():
+            return False
+        PORTAL_JOB_ERROR = None
+        PORTAL_JOB_ERROR_CODE = None
+        PORTAL_JOB_KIND = 'sync'
+        PORTAL_JOB_THREAD = threading.Thread(target=_run_portal_sync_job, name='portal-sync', daemon=True)
+        PORTAL_JOB_THREAD.start()
+        return True
+
+
+def start_portal_login_job() -> bool:
+    global PORTAL_JOB_THREAD, PORTAL_JOB_KIND, PORTAL_JOB_ERROR, PORTAL_JOB_ERROR_CODE
+    with PORTAL_JOB_LOCK:
+        if _portal_job_active():
+            return False
+        PORTAL_JOB_ERROR = None
+        PORTAL_JOB_ERROR_CODE = None
+        PORTAL_JOB_KIND = 'login'
+        PORTAL_JOB_THREAD = threading.Thread(target=_run_portal_login_job, name='portal-login', daemon=True)
+        PORTAL_JOB_THREAD.start()
         return True
 
 
@@ -245,6 +329,74 @@ class Handler(BaseHTTPRequestHandler):
             **({'jobError': job_error} if job_error else {}),
         }
 
+    def _portal_status(self):
+        try:
+            from portal_client import profile_session_state, resolve_profile_path
+
+            session_state = profile_session_state(resolve_profile_path(ROOT))
+        except Exception:
+            session_state = 'unknown'
+        with PORTAL_JOB_LOCK:
+            active = _portal_job_active()
+            job_kind = PORTAL_JOB_KIND
+            job_error = PORTAL_JOB_ERROR
+            job_error_code = PORTAL_JOB_ERROR_CODE
+        if not active and job_kind is None:
+            # A Bridge restart loses the in-memory worker flag while SQLite
+            # may still contain the previous run's `running` state. Recover
+            # that stale state before exposing status to the UI.
+            portal_db.recover_interrupted_sync(PORTAL_DB_PATH)
+        status = portal_db.sync_status(PORTAL_DB_PATH)
+        persisted_error_code = status.get('lastErrorCode')
+        effective_error_code = job_error_code or persisted_error_code
+        if effective_error_code in {'login_required', 'session_expired'}:
+            session_state = effective_error_code
+        return {
+            'ok': True,
+            **status,
+            'source': 'sqlite',
+            'session': {'state': session_state},
+            'jobRunning': active,
+            **({'jobKind': job_kind} if job_kind else {}),
+            **({'jobError': job_error} if job_error else {}),
+            **({'jobErrorCode': job_error_code} if job_error_code else {}),
+        }
+
+    def _portal_notices_response(self):
+        query = self._query()
+        type_values = query.get('type', [])
+        notice_type = type_values[0].strip().upper() if type_values else None
+        if notice_type == '':
+            notice_type = None
+        if notice_type is not None and notice_type not in portal_db.NOTICE_TYPES:
+            return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'unsupported portal notice type'})
+        department_values = query.get('department', [])
+        department = department_values[0].strip() if department_values else None
+        if department == '':
+            department = None
+        limit = max(1, min(500, _safe_query_int(query, 'limit', 100)))
+        items = portal_db.list_notices(
+            PORTAL_DB_PATH,
+            notice_type=notice_type,
+            department=department,
+            limit=limit,
+        )
+        return self.json_out(200, {
+            'ok': True,
+            'source': 'sqlite',
+            'items': items,
+            'departments': portal_db.notice_departments(PORTAL_DB_PATH),
+            'sync': self._portal_status(),
+        })
+
+    def _single_portal_notice_response(self, notice_id: str):
+        if not notice_id or len(notice_id) > 512:
+            return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'notice not found'})
+        item = portal_db.get_notice(notice_id, PORTAL_DB_PATH)
+        if item is None:
+            return self.json_out(404, {'ok': False, 'source': 'sqlite', 'error': 'notice not found'})
+        return self.json_out(200, {'ok': True, 'source': 'sqlite', 'item': item})
+
     def _analysis_response(self):
         query = self._query()
         folder_values = query.get('folder', [])
@@ -285,6 +437,28 @@ class Handler(BaseHTTPRequestHandler):
         path = self._path()
         if path == '/health':
             return self.json_out(200, {'ok': True})
+        if path == '/portal/status':
+            if not self._header_authenticated():
+                return
+            try:
+                return self.json_out(200, self._portal_status())
+            except portal_db.PortalDatabaseError:
+                return self.json_out(503, {'ok': False, 'source': 'sqlite', 'error': 'database_error'})
+        if path == '/portal/notices':
+            if not self._header_authenticated():
+                return
+            try:
+                return self._portal_notices_response()
+            except portal_db.PortalDatabaseError:
+                return self.json_out(503, {'ok': False, 'source': 'sqlite', 'error': 'database_error'})
+        if path.startswith('/portal/notices/'):
+            if not self._header_authenticated():
+                return
+            notice_id = unquote(path[len('/portal/notices/'):])
+            try:
+                return self._single_portal_notice_response(notice_id)
+            except portal_db.PortalDatabaseError:
+                return self.json_out(503, {'ok': False, 'source': 'sqlite', 'error': 'database_error'})
         if path == '/mail/sync-status':
             if not self._header_authenticated():
                 return
@@ -427,13 +601,53 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_out(202, {'ok': True, 'source': 'sqlite', 'status': 'queued', 'mailId': mail_id})
         return None
 
+    def _portal_post(self, path: str, body: dict[str, object] | None = None):
+        if path == '/portal/sync':
+            if not start_portal_sync_job():
+                return self.json_out(409, {'ok': False, 'source': 'sqlite', 'error': 'sync_already_running'})
+            return self.json_out(202, {'ok': True, 'source': 'sqlite', 'status': 'running', 'jobKind': 'sync'})
+        if path == '/portal/login':
+            if not start_portal_login_job():
+                return self.json_out(409, {'ok': False, 'source': 'sqlite', 'error': 'portal_job_already_running'})
+            return self.json_out(202, {'ok': True, 'source': 'sqlite', 'status': 'running', 'jobKind': 'login'})
+        prefix = '/portal/notices/'
+        if body is not None and path.startswith(prefix) and path.endswith('/state'):
+            notice_id = unquote(path[len(prefix):-len('/state')]).strip()
+            if not notice_id or len(notice_id) > 512:
+                return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'notice not found'})
+            state_fields = {
+                'isRead': 'is_read',
+                'isImportant': 'is_important',
+                'isArchived': 'is_archived',
+            }
+            provided = {key: body.get(key) for key in state_fields if key in body}
+            if not provided or any(not isinstance(value, bool) for value in provided.values()):
+                return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'invalid notice state'})
+            try:
+                item = portal_db.update_notice_state(
+                    notice_id,
+                    **{
+                        state_fields[key]: value
+                        for key, value in provided.items()
+                    },
+                    path=PORTAL_DB_PATH,
+                )
+            except portal_db.PortalDatabaseError as exc:
+                if 'not found' in str(exc):
+                    return self.json_out(404, {'ok': False, 'source': 'sqlite', 'error': 'notice not found'})
+                raise
+            return self.json_out(200, {'ok': True, 'source': 'sqlite', 'item': item})
+        return None
+
     def do_POST(self):
         path = self._path()
         allowed = (
             '/open', '/open-folder', '/launch', '/mail/recent', '/mail/folders',
             '/mail/message', '/mail/open', '/mail/sync', '/mail/analysis/candidate', '/mail/task',
+            '/portal/sync', '/portal/login',
         )
-        if path not in allowed and not (path.startswith('/mail/analysis/') and path.endswith('/reanalyze')):
+        is_portal_state = path.startswith('/portal/notices/') and path.endswith('/state')
+        if path not in allowed and not is_portal_state and not (path.startswith('/mail/analysis/') and path.endswith('/reanalyze')):
             return self.json_out(404, {'error': 'not found'})
         if not self._origin_allowed():
             return
@@ -443,6 +657,9 @@ class Handler(BaseHTTPRequestHandler):
         if not token_matches(body.get('token', ''), TOKEN):
             return self.json_out(403, {'error': 'invalid token'})
         try:
+            portal_response = self._portal_post(path, body)
+            if portal_response is not None:
+                return portal_response
             analysis_response = self._analysis_post(path, body)
             if analysis_response is not None:
                 return analysis_response
@@ -464,6 +681,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_out(exc.http_status, {'ok': False, 'source': 'thunderbird', 'error': exc.code})
         except mail_db.MailDatabaseError:
             return self.json_out(503, {'ok': False, 'source': 'sqlite', 'error': 'database_unavailable'})
+        except portal_db.PortalDatabaseError:
+            return self.json_out(503, {'ok': False, 'source': 'sqlite', 'error': 'database_error'})
         except Exception:
             if path.startswith(MAIL_PATH_PREFIX):
                 return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'request_failed'})

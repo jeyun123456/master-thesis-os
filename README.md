@@ -252,6 +252,30 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. 새 메일 분석 UI는 `GET /mail/sync-status`, `GET /mail/analysis`, `GET /mail/analysis/<mail-id>`, `GET /mail/planning`, `POST /mail/sync`, `POST /mail/analysis/<mail-id>/reanalyze`, `POST /mail/analysis/candidate`, `POST /mail/task`를 사용한다. `/mail/sync`는 background job으로 `mail_cli.py`를 실행하고, 상태는 `mail-analysis.db`에서 polling한다. 기존 `POST /mail/recent`, `/mail/message`, `/mail/open`은 Thunderbird 열기·호환용으로 남아 있지만 새 동기화 UI의 수집 경로가 아니다. 메일 endpoint는 경로·본문·제목·발신자·token을 로그에 남기지 않는다. Settings의 token은 `보기/숨기기`와 `복사`로 관리할 수 있고, Local Bridge tray와 Wallpaper Companion tray의 **Bridge token 보기/복사**에서도 로컬 config 값을 확인·복사할 수 있다. token을 HTTP endpoint나 원격 페이지에 자동 노출하지는 않는다. 실제 `config.json`은 git에서 제외된다.
 
+## RITSUMEIKAN 학교 공지
+
+학교 공지 PoC는 사용자가 직접 로그인한 RITSUMEIKAN STUDENT PORTAL 세션만 재사용한다. Playwright persistent profile은 Windows에서 `%LOCALAPPDATA%\MasterThesisOSWallpaper\data\ritsumei-browser-profile\`에 두며, 저장소와 release 폴더 밖에서만 유지한다. 학교 ID·비밀번호는 코드·DB·로그에 저장하지 않는다. 목록은 포털의 Salesforce Aura JSON/XHR 응답에서 읽고, 상세 본문과 첨부파일 metadata는 상세 DOM에서 읽는다. 첨부파일 자체는 다운로드하지 않는다.
+
+Orca 내부 브라우저의 로그인 profile과 이 Local Bridge의 Playwright profile은 브라우저 저장소가 서로 다르므로 cookie를 복사하지 않는다. Orca는 포털 구조·live 동작 확인에 사용하고, 실제 Local Bridge 수집은 위 persistent profile에서 명시적 `login` 후 실행한다.
+
+처음 한 번 Playwright를 설치하면 기본적으로 설치된 Chrome channel을 사용한다. Chrome이 없으면 Playwright bundled Chromium으로 자동 fallback하며, `RITSUMEI_BROWSER_CHANNEL=chromium`으로 이를 명시할 수도 있다. `RITSUMEI_BROWSER_PROFILE_DIR`를 지정하면 persistent profile 위치를 명시적으로 바꿀 수 있다.
+
+```powershell
+python -m pip install -r local-bridge/requirements.txt
+python -m playwright install chromium
+python local-bridge/portal_cli.py login
+python local-bridge/portal_cli.py sync
+python local-bridge/portal_cli.py status
+python local-bridge/portal_cli.py notices --type ALL
+python local-bridge/portal_cli.py notices --type DM
+```
+
+`login` 명령 또는 UI의 **로그인 창 열기**만 headed 브라우저 창을 열고, 일반 `sync` 수집은 같은 profile을 headless로 재사용한다. 동시에 같은 profile을 여는 작업은 lock으로 직렬화한다. 세션이 없거나 만료되면 `sync`는 `login_required`/`session_expired`를 저장하고 창을 반복해서 열지 않는다. 학교 SQLite는 기존 메일 DB와 분리된 `local-bridge/data/portal-notices.db`이며 `portal_notices`, `portal_notice_attachments`, `portal_sync_state` 테이블을 사용한다. 웹의 **학교 공지** 탭은 저장된 결과만 읽고, **공지 동기화**를 눌렀을 때만 `POST /portal/sync`를 호출한다. 관련 Bridge endpoint는 `GET /portal/status`, `GET /portal/notices`, `GET /portal/notices/<notice-id>`, `POST /portal/sync`, `POST /portal/login`이다.
+
+학교 공지의 사용자 상태는 `portal_notice_user_state`에 원문과 분리해 저장한다. 화면에서는 포털의 `担当部課`를 `발신처·담당부서` 기준으로 집계·필터링하고, 상위 담당부서별 ALL/DM·미읽음·중요 수를 요약해 보여준다. 공지를 열면 읽음 처리하며 중요·보관 상태를 로컬에서 관리한다. `POST /portal/notices/<notice-id>/state`가 상태 변경 endpoint다. 목록·상세 조회는 자동 동기화하지 않는다.
+
+공지 metadata hash가 달라지면 해당 상세를 즉시 다시 읽고, 본문만 바뀌는 경우는 7일 주기 상세 재검증에서 content hash로 감지한다. 즉시 전체 상세를 다시 확인하려면 `python local-bridge/portal_cli.py sync --refresh-details`를 사용한다. `/portal/status`와 UI에는 최근 동기화의 신규·수정·상세 실패 건수가 표시된다. CLI 중단이나 Bridge 재시작으로 SQLite에 `running`만 남으면 다음 상태 조회 또는 동기화에서 `sync_interrupted`로 정리하고 재시도할 수 있다.
+
 ## 학교 메일 AI 분석
 
 Codex CLI를 Luna Max로 사용할 때는 먼저 Codex CLI 인증을 완료한다.
@@ -301,7 +325,7 @@ Calendar 후보는 사용자가 제목·날짜·시간을 확인·수정한 뒤 
 
 Windows에서 `local-bridge/start_bridge.bat`을 실행하면 설정을 확인한 뒤 브리지를 계속 실행한다. 브리지가 일시적인 오류로 종료되면 3초 후 자동으로 재시작하지만, `config.json` 영구 설정 오류는 exit code 78로 식별해 재시작하지 않는다. 콘솔 없이 실행하려면 `start_bridge_hidden.vbs`를 사용한다. 시스템 트레이 아이콘과 상태 확인·종료 메뉴를 쓰려면 `start_bridge_tray.vbs`를 사용한다. Local Bridge tray 또는 Wallpaper Companion tray의 **Bridge token 복사**를 누른 뒤 Production Settings의 **붙여넣기**와 **저장**을 누르면 토큰을 설정할 수 있다. 브라우저 보안상 트레이가 웹페이지에 token을 자동 주입하지는 않는다. 트레이에서 상태 확인을 누르면 공용 또는 override config의 `port`를 사용하며, 생략 시 `38471`을 사용한다. 잘못된 port는 트레이에 설정 오류로 표시된다. 설정 오류 balloon이 표시되면 `config.json`을 수정한 뒤 트레이 실행기를 다시 시작한다. Windows 로그인 때마다 트레이 실행기를 자동 시작하려면 해당 VBS 파일의 바로가기를 `Win+R` → `shell:startup` 폴더에 넣는다. 일반 브라우저 개발 시에는 `start_bridge.bat`을 사용하고, 중지는 콘솔 창에서 `Ctrl+C` 또는 창 닫기로 수행한다.
 
-Wallpaper Companion의 설치된 `app\bridge-runtime`은 release 시점의 브리지 사본이다. 브리지 모듈을 추가·변경한 뒤에는 `experiments/wallpaper-host-poc/scripts/Install-WallpaperHost.ps1`로 Companion을 다시 설치하거나, 기존 브리지 프로세스를 종료하고 `local-bridge/start_bridge.bat`을 다시 실행해야 한다. `/health`가 응답하더라도 구버전 사본이면 새 메일 endpoint가 404가 될 수 있다.
+Wallpaper Companion의 설치된 `app\bridge-runtime`은 release 시점의 브리지 사본이다. 브리지 모듈을 추가·변경한 뒤에는 `experiments/wallpaper-host-poc/scripts/Install-WallpaperHost.ps1`로 Companion을 다시 설치하거나, 기존 브리지 프로세스를 종료하고 `local-bridge/start_bridge.bat`을 다시 실행해야 한다. `/health`가 응답하더라도 구버전 사본이면 새 메일·학교 공지 endpoint가 404가 될 수 있다.
 
 ## Sucrose 설정
 

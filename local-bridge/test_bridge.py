@@ -268,6 +268,25 @@ class BridgeConfigurationTests(unittest.TestCase):
         self.assertIn('"mail_cli.py"', manager)
         self.assertIn("'mail_cli.py'", publisher)
 
+    def test_companion_runtime_packaging_includes_portal_reader(self):
+        manager = (
+            Path(__file__).parents[1]
+            / 'experiments'
+            / 'wallpaper-host-poc'
+            / 'BridgeProcessManager.cs'
+        ).read_text(encoding='utf-8')
+        publisher = (
+            Path(__file__).parents[1]
+            / 'experiments'
+            / 'wallpaper-host-poc'
+            / 'scripts'
+            / 'Publish-Release.ps1'
+        ).read_text(encoding='utf-8-sig')
+        for bridge_file in ('portal_db.py', 'portal_client.py', 'portal_cli.py'):
+            with self.subTest(bridge_file=bridge_file):
+                self.assertIn(f'"{bridge_file}"', manager)
+                self.assertIn(f"'{bridge_file}'", publisher)
+
     def test_accepts_exact_production_and_explicit_local_origins(self):
         self.assertTrue(valid_origins({PRODUCTION_ORIGIN, 'http://localhost:3000', 'http://127.0.0.1:3001'}))
 
