@@ -361,54 +361,59 @@ export function PortalNoticesPanel() {
 
     {error !== null && <div className="error portal-notices-error">{portalNoticeErrorMessage(error)}</div>}
 
-    <div className="card section portal-notices-list-card">
-      <div className="portal-notice-toolbar">
-        <div className="tabs" role="tablist" aria-label="학교 공지 유형">
-          {(['ALL', 'DM'] as PortalNoticeType[]).map((type) => <button key={type} className={tab === type ? 'active' : ''} type="button" role="tab" aria-selected={tab === type} onClick={() => setTab(type)}>{type} <span>{status.counts[type]}</span></button>)}
+    <div className={`portal-notice-master-detail ${selectedId ? 'has-selection' : ''}`}>
+      <div className="card section portal-notices-list-card">
+        <div className="portal-notice-toolbar">
+          <div className="tabs" role="tablist" aria-label="학교 공지 유형">
+            {(['ALL', 'DM'] as PortalNoticeType[]).map((type) => <button key={type} className={tab === type ? 'active' : ''} type="button" role="tab" aria-selected={tab === type} onClick={() => setTab(type)}>{type} <span>{status.counts[type]}</span></button>)}
+          </div>
+          <small>{loading ? '불러오는 중…' : `${visibleItems.length}건 표시 · 미읽음 ${visibleUnreadCount}건`}</small>
         </div>
-        <small>{loading ? '불러오는 중…' : `${visibleItems.length}건 표시 · 미읽음 ${visibleUnreadCount}건`}</small>
-      </div>
-      <div className="portal-notice-filters">
-        <label className="portal-notice-department-filter">발신자/담당부서
-          <select value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)}>
-            <option value="">전체 담당부서</option>
-            {departments.filter((department) => department.counts[tab] > 0).map((department) => <option key={department.value || '__unknown__'} value={department.value || '__unknown__'}>{department.name} ({department.counts[tab]})</option>)}
-          </select>
-        </label>
-        <div className="portal-notice-view-filters" role="tablist" aria-label="학교 공지 상태">
-          {([['all', '전체'], ['unread', '미읽음'], ['important', '중요'], ['archived', '보관']] as [PortalNoticeViewFilter, string][]).map(([filter, label]) => <button key={filter} className={viewFilter === filter ? 'active' : ''} type="button" role="tab" aria-selected={viewFilter === filter} onClick={() => setViewFilter(filter)}>{label}</button>)}
+        <div className="portal-notice-filters">
+          <label className="portal-notice-department-filter">발신자/담당부서
+            <select value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)}>
+              <option value="">전체 담당부서</option>
+              {departments.filter((department) => department.counts[tab] > 0).map((department) => <option key={department.value || '__unknown__'} value={department.value || '__unknown__'}>{department.name} ({department.counts[tab]})</option>)}
+            </select>
+          </label>
+          <div className="portal-notice-view-filters" role="tablist" aria-label="학교 공지 상태">
+            {([['all', '전체'], ['unread', '미읽음'], ['important', '중요'], ['archived', '보관']] as [PortalNoticeViewFilter, string][]).map(([filter, label]) => <button key={filter} className={viewFilter === filter ? 'active' : ''} type="button" role="tab" aria-selected={viewFilter === filter} onClick={() => setViewFilter(filter)}>{label}</button>)}
+          </div>
         </div>
+        {loading ? <div className="empty compact-empty">저장된 학교 공지를 불러오는 중이야.</div> : visibleItems.length ? <div className="portal-notice-list">
+          {visibleItems.map((notice) => <button className={`portal-notice-row ${selectedId === notice.noticeId ? 'selected' : ''} ${!notice.isRead ? 'unread' : ''} ${notice.isArchived ? 'archived' : ''}`} type="button" key={notice.noticeId} onClick={() => void openDetail(notice)} aria-expanded={selectedId === notice.noticeId}>
+            <span className={`portal-notice-type ${notice.type === 'DM' ? 'dm' : ''}`}>{notice.type}</span>
+            <span className="portal-notice-main"><span className="portal-notice-title-line"><b>{notice.title || '(제목 없음)'}</b>{!notice.isRead && <i className="portal-notice-unread-dot" aria-label="읽지 않음" />}</span><small>{notice.department || '담당부서 미상'} · 게시 {formatPortalNoticeDate(notice.publishedAt)}</small></span>
+            <span className="portal-notice-extra">{noticeUpdatedInSync(notice, status) && <em className="notice-updated">수정됨</em>}{notice.isImportant && <em className="user-important">내 중요</em>}{notice.importance && <em>{notice.importance}</em>}{notice.isArchived && <small>보관</small>}{notice.deadline && <small>마감 {notice.deadline}</small>}</span>
+          </button>)}
+        </div> : <div className="empty compact-empty">저장된 {tab} 공지가 없어. 상단의 공지 동기화를 눌러줘.</div>}
       </div>
-      {loading ? <div className="empty compact-empty">저장된 학교 공지를 불러오는 중이야.</div> : visibleItems.length ? <div className="portal-notice-list">
-        {visibleItems.map((notice) => <button className={`portal-notice-row ${selectedId === notice.noticeId ? 'selected' : ''} ${!notice.isRead ? 'unread' : ''} ${notice.isArchived ? 'archived' : ''}`} type="button" key={notice.noticeId} onClick={() => void openDetail(notice)} aria-expanded={selectedId === notice.noticeId}>
-          <span className={`portal-notice-type ${notice.type === 'DM' ? 'dm' : ''}`}>{notice.type}</span>
-          <span className="portal-notice-main"><span className="portal-notice-title-line"><b>{notice.title || '(제목 없음)'}</b>{!notice.isRead && <i className="portal-notice-unread-dot" aria-label="읽지 않음" />}</span><small>{notice.department || '담당부서 미상'} · 게시 {formatPortalNoticeDate(notice.publishedAt)}</small></span>
-          <span className="portal-notice-extra">{noticeUpdatedInSync(notice, status) && <em className="notice-updated">수정됨</em>}{notice.isImportant && <em className="user-important">내 중요</em>}{notice.importance && <em>{notice.importance}</em>}{notice.isArchived && <small>보관</small>}{notice.deadline && <small>마감 {notice.deadline}</small>}</span>
-        </button>)}
-      </div> : <div className="empty compact-empty">저장된 {tab} 공지가 없어. 상단의 공지 동기화를 눌러줘.</div>}
-    </div>
 
-    {detailLoading && <div className="card section portal-notice-detail"><div className="empty compact-empty">공지 상세를 불러오는 중이야.</div></div>}
-    {detail && !detailLoading && <article className="card section portal-notice-detail">
-      <div className="head"><div><span className={`portal-notice-type ${detail.type === 'DM' ? 'dm' : ''}`}>{detail.type}</span><h3>{detail.title || '(제목 없음)'}</h3></div><button className="mini" type="button" onClick={() => { setSelectedId(null); setDetail(null); }}>닫기</button></div>
-      <div className="portal-notice-detail-actions">
-        <button className="mini" type="button" disabled={stateAction !== null} onClick={() => void changeNoticeState({ isRead: !detail.isRead })}>{detail.isRead ? '읽지 않음으로 표시' : '읽음 처리'}</button>
-        <button className="mini" type="button" disabled={stateAction !== null} onClick={() => void changeNoticeState({ isImportant: !detail.isImportant })}>{detail.isImportant ? '중요 해제' : '중요 표시'}</button>
-        <button className="mini" type="button" disabled={stateAction !== null} onClick={() => void changeNoticeState({ isArchived: !detail.isArchived })}>{detail.isArchived ? '보관 해제' : '보관'}</button>
+      <div className="portal-notice-detail-pane">
+        {detailLoading && <div className="card section portal-notice-detail portal-notice-detail-empty"><div className="empty compact-empty">공지 상세를 불러오는 중이야.</div></div>}
+        {detail && !detailLoading && <article className="card section portal-notice-detail">
+          <div className="head"><div><span className={`portal-notice-type ${detail.type === 'DM' ? 'dm' : ''}`}>{detail.type}</span><h3>{detail.title || '(제목 없음)'}</h3></div><button className="mini" type="button" aria-label="공지 목록으로 돌아가기" onClick={() => { setSelectedId(null); setDetail(null); }}>← 목록</button></div>
+          <div className="portal-notice-detail-actions">
+            <button className="mini" type="button" disabled={stateAction !== null} onClick={() => void changeNoticeState({ isRead: !detail.isRead })}>{detail.isRead ? '읽지 않음으로 표시' : '읽음 처리'}</button>
+            <button className="mini" type="button" disabled={stateAction !== null} onClick={() => void changeNoticeState({ isImportant: !detail.isImportant })}>{detail.isImportant ? '중요 해제' : '중요 표시'}</button>
+            <button className="mini" type="button" disabled={stateAction !== null} onClick={() => void changeNoticeState({ isArchived: !detail.isArchived })}>{detail.isArchived ? '보관 해제' : '보관'}</button>
+          </div>
+          <dl className="portal-notice-detail-meta">
+            <div><dt>담당부서</dt><dd>{detail.department || '—'}</dd></div>
+            <div><dt>게시일</dt><dd>{formatPortalNoticeDate(detail.publishedAt)}</dd></div>
+            <div><dt>마감일</dt><dd>{detail.deadline || '—'}</dd></div>
+            <div><dt>공개 종료일</dt><dd>{formatPortalNoticeDate(detail.expiresAt)}</dd></div>
+            <div><dt>중요도</dt><dd>{detail.importance || '—'}</dd></div>
+            <div><dt>카테고리</dt><dd>{detail.category || '—'}</dd></div>
+            <div><dt>최근 수정</dt><dd>{formatPortalNoticeDate(detail.lastChangedAt || '')}</dd></div>
+            <div><dt>수정 횟수</dt><dd>{detail.changeCount}</dd></div>
+          </dl>
+          <div className="portal-notice-body">{detail.body ? detail.body.split(/\r?\n/).map((line, index) => <p key={`${index}-${line}`}>{line || '\u00a0'}</p>) : <span className="muted">저장된 본문이 없어.</span>}</div>
+          {detail.attachments.length > 0 && <div className="portal-notice-attachments"><b>첨부파일 metadata</b>{detail.attachments.map((attachment) => <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer">{attachment.filename || attachment.url}</a>)}</div>}
+          <div className="portal-notice-source"><a href={detail.sourceUrl} target="_blank" rel="noreferrer">원문 열기 ↗</a><small>notice_id: {detail.noticeId}</small></div>
+        </article>}
+        {!detailLoading && !detail && <div className="card section portal-notice-detail portal-notice-detail-empty"><div className="empty compact-empty">{selectedId ? '공지 상세를 표시하지 못했어.' : '왼쪽 목록에서 공지를 선택해줘.'}</div></div>}
       </div>
-      <dl className="portal-notice-detail-meta">
-        <div><dt>담당부서</dt><dd>{detail.department || '—'}</dd></div>
-        <div><dt>게시일</dt><dd>{formatPortalNoticeDate(detail.publishedAt)}</dd></div>
-        <div><dt>마감일</dt><dd>{detail.deadline || '—'}</dd></div>
-        <div><dt>공개 종료일</dt><dd>{formatPortalNoticeDate(detail.expiresAt)}</dd></div>
-        <div><dt>중요도</dt><dd>{detail.importance || '—'}</dd></div>
-        <div><dt>카테고리</dt><dd>{detail.category || '—'}</dd></div>
-        <div><dt>최근 수정</dt><dd>{formatPortalNoticeDate(detail.lastChangedAt || '')}</dd></div>
-        <div><dt>수정 횟수</dt><dd>{detail.changeCount}</dd></div>
-      </dl>
-      <div className="portal-notice-body">{detail.body ? detail.body.split(/\r?\n/).map((line, index) => <p key={`${index}-${line}`}>{line || '\u00a0'}</p>) : <span className="muted">저장된 본문이 없어.</span>}</div>
-      {detail.attachments.length > 0 && <div className="portal-notice-attachments"><b>첨부파일 metadata</b>{detail.attachments.map((attachment) => <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer">{attachment.filename || attachment.url}</a>)}</div>}
-      <div className="portal-notice-source"><a href={detail.sourceUrl} target="_blank" rel="noreferrer">원문 열기 ↗</a><small>notice_id: {detail.noticeId}</small></div>
-    </article>}
+    </div>
   </div>;
 }
