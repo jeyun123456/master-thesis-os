@@ -133,6 +133,7 @@ def run() -> dict[str, object]:
             page.goto(PRODUCTION_URL, wait_until="domcontentloaded", timeout=30_000)
             page.evaluate("(token) => localStorage.setItem('thesisBridgeToken', token)", token)
             page.reload(wait_until="domcontentloaded", timeout=30_000)
+            page.wait_for_load_state("networkidle", timeout=30_000)
             # The app opens on the home page. Navigate through the same
             # sidebar control a user would use before asserting portal UI.
             # The desktop navigation order is fixed in the app and the portal
