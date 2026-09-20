@@ -22,7 +22,7 @@ import type { MailTask } from '../lib/mail-planning';
 type MailActionStatus = 'loading' | 'ready' | 'empty' | 'error';
 export const MAIL_ACTION_SOURCE_FOLDER: ThunderbirdAnalysisFolderId = 'school-work';
 
-export function MailActionCandidates() {
+export function MailActionCandidates({ compact = false }: { compact?: boolean } = {}) {
   const [status, setStatus] = useState<MailActionStatus>('loading');
   const [errorCode, setErrorCode] = useState<ThunderbirdMailErrorCode | null>(null);
   const [candidates, setCandidates] = useState<MailActionCandidate[]>([]);
@@ -79,13 +79,15 @@ export function MailActionCandidates() {
     }
   }
 
-  return <section className="card section mail-action-card">
+  const visibleCandidates = compact ? candidates.slice(0, 3) : candidates;
+
+  return <section className={`card section mail-action-card${compact ? ' home-attention-card mail-action-card-compact' : ''}`}>
     <div className="head"><h3>메일에서 확인 필요</h3><span>{mailActionStatusLabel(status, candidates.length)}</span></div>
     <div className="muted"><small>Mail candidate · Calendar 일정과 별도</small></div>
     {status === 'loading' && <div className="microsoft-mail-state">메일에서 행동 후보를 찾는 중이야…</div>}
     {status === 'empty' && <div className="empty compact-empty">현재 메일에서 확인할 중요 작업이 없어.</div>}
     {status === 'error' && <div className="microsoft-mail-error-wrap"><div className="error microsoft-mail-error">{mailActionErrorMessage(errorCode)}</div><button className="mini" onClick={() => void loadCandidates()} type="button">다시 시도</button></div>}
-    {status === 'ready' && <div className="mail-action-list">{candidates.map((candidate) => <MailActionRow candidate={candidate} isOpening={openingMailId === candidate.id} key={candidate.id} onDismiss={dismissCandidate} onOpen={handleOpenCandidate} />)}</div>}
+    {status === 'ready' && <div className="mail-action-list">{visibleCandidates.map((candidate) => <MailActionRow candidate={candidate} isOpening={openingMailId === candidate.id} key={candidate.id} onDismiss={dismissCandidate} onOpen={handleOpenCandidate} />)}{compact && candidates.length > visibleCandidates.length && <div className="home-attention-more">+{candidates.length - visibleCandidates.length}건 더 있음 · 메일 탭에서 전체 보기</div>}</div>}
     {openError && <div className="error school-mail-open-error">{thunderbirdMailErrorMessage(openError)}</div>}
     {status !== 'loading' && status !== 'error' && <div className="toolbar mail-action-actions"><button className="mini" onClick={() => void loadCandidates()} type="button">새로고침</button></div>}
   </section>;

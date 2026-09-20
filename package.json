@@ -10,6 +10,7 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
+    "test": "vitest run",
     "lint": "tsc --noEmit",
     "test:bridge": "python -m unittest discover -s local-bridge -p test_*.py",
     "test:portal:e2e": "python scripts/portal_e2e_smoke.py",

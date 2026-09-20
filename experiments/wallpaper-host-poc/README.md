@@ -6,7 +6,7 @@ Windows 10/11 companion for the production Master Thesis OS page:
 
 Current version: **0.6.1**
 
-The companion uses one WPF host and one WebView2 instance. In Wallpaper state, only that host HWND is attached to the selected WorkerW, behind normal desktop icons. In Open state, the same host is a normal top-level window so Windows, WebView2, and Korean/Japanese native IME input continue to work normally.
+The companion uses one WPF host and one WebView2 instance. In Wallpaper state, only that host HWND is attached to the selected WorkerW, behind normal desktop icons, and the WebView shows the glanceable `/wallpaper` route. In Open state, the same host is a normal top-level window showing the production dashboard root, so Windows, WebView2, and Korean/Japanese native IME input continue to work normally.
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the runtime boundaries and maintainer invariants.
 
@@ -57,7 +57,7 @@ Manual fallback paths remain available through the tray, `Ctrl + Alt + W`, doubl
 
 ## States and input
 
-Return from Open to Wallpaper with `Esc`, the tray, or `Ctrl + Alt + W`. When auto-return is enabled, focus loss returns to Wallpaper after about 1.5 seconds; returning focus to the companion during that delay cancels the return. Windows IME helper windows are deferred so candidate/composition UI is not treated as a normal application switch.
+Return from Open to Wallpaper with `Esc`, the tray, or `Ctrl + Alt + W`. These transitions reuse the same WebView2 and only navigate when the target route differs; they do not create a second window, process, or browser instance. When auto-return is enabled, focus loss returns to Wallpaper after about 1.5 seconds; returning focus to the companion during that delay cancels the return. Windows IME helper windows are deferred so candidate/composition UI is not treated as a normal application switch.
 
 Keyboard input always follows the normal Windows/WPF/WebView2 path. This project does not synthesize keyboard input, forward keyboard through RawInput, post keyboard messages, implement a custom composer, or force browser/DOM focus in a loop. The only permitted synthetic input is the one captured mouse left-click replay described above.
 

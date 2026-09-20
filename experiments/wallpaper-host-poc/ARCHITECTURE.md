@@ -8,8 +8,8 @@ There is exactly one process, one WPF host HWND, and one WebView2 instance. A si
 
 | State | Host HWND | WebView2 input |
 | --- | --- | --- |
-| Wallpaper | child of the selected WorkerW | inactive; no focus forcing |
-| Open | ordinary top-level window on the selected display | normal Windows/WPF/WebView2 path |
+| Wallpaper | child of the selected WorkerW | inactive; no focus forcing; `/wallpaper` route |
+| Open | ordinary top-level window on the selected display | normal Windows/WPF/WebView2 path; production root route |
 
 Explorer's `SHELLDLL_DefView` and `SysListView32` windows belong to Explorer. They are never re-parented, hidden, resized, or otherwise manipulated by this application. They are used only while discovering a WorkerW and while checking whether a desktop click is on an icon.
 
@@ -21,9 +21,11 @@ If attachment or target-display resolution fails, the application remains a norm
 
 ## Open and return flow
 
-Open can be requested by the tray, the Ctrl+Alt+W registered hotkey, a second launch signal, or click-to-interact. The existing host is detached, its normal top-level styles are restored, and it is placed on the selected display.
+Open can be requested by the tray, the Ctrl+Alt+W registered hotkey, a second launch signal, or click-to-interact. The existing host is detached, its normal top-level styles are restored, and it is placed on the selected display. The same WebView2 navigates from `/wallpaper` to the production root only when the state changes; no WebView2 instance or process is added.
 
-`Esc` and the normal return commands attach that same HWND back to WorkerW. When enabled, losing foreground focus in Open state starts a roughly 1.5 second timer. The timer cancels when this application becomes active again and defers for common Windows IME helper processes so candidate/composition UI is not mistaken for an application switch.
+`Esc` and the normal return commands attach that same HWND back to WorkerW and navigate the same WebView2 to `/wallpaper`. When enabled, losing foreground focus in Open state starts a roughly 1.5 second timer. The timer cancels when this application becomes active again and defers for common Windows IME helper processes so candidate/composition UI is not mistaken for an application switch.
+
+The route transition is conditional: an already-correct URI is not reloaded. A navigation exception is logged while the current HWND/attachment state is preserved, so a wallpaper route failure does not terminate the companion.
 
 ## Click-to-interact
 

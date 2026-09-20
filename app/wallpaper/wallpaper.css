@@ -1,0 +1,289 @@
+.wallpaper-view {
+  --wallpaper-image: none;
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  isolation: isolate;
+  background: #1f2c39;
+  color: #e8eff4;
+}
+
+.wallpaper-visual,
+.wallpaper-visual::before,
+.wallpaper-visual::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.wallpaper-visual {
+  z-index: -3;
+  background-image:
+    linear-gradient(120deg, rgba(33, 49, 64, .78), rgba(83, 112, 137, .28) 48%, rgba(20, 31, 43, .76)),
+    var(--wallpaper-image),
+    radial-gradient(circle at 18% 22%, rgba(153, 186, 209, .32), transparent 27%),
+    linear-gradient(135deg, #273b4c 0%, #6b8598 48%, #1d2b39 100%);
+  background-position: center;
+  background-size: cover;
+}
+
+.wallpaper-visual::before {
+  content: "";
+  z-index: -2;
+  opacity: .24;
+  background:
+    radial-gradient(ellipse at 17% 75%, rgba(181, 206, 216, .22), transparent 34%),
+    radial-gradient(ellipse at 58% 20%, rgba(212, 224, 231, .14), transparent 30%);
+  filter: blur(1px);
+}
+
+.wallpaper-visual::after {
+  content: "";
+  z-index: -1;
+  opacity: .11;
+  background-image: linear-gradient(rgba(236, 244, 248, .28) 1px, transparent 1px), linear-gradient(90deg, rgba(236, 244, 248, .22) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: linear-gradient(120deg, #000, transparent 62%);
+}
+
+.wallpaper-rail {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+  width: min(360px, 38vw);
+  min-width: 280px;
+  flex-direction: column;
+  gap: 0;
+  overflow-y: auto;
+  padding: clamp(24px, 5vh, 54px) clamp(22px, 3vw, 42px) clamp(22px, 4vh, 42px);
+  border-left: 1px solid rgba(225, 237, 244, .2);
+  background: rgba(38, 50, 62, .84);
+  box-shadow: -18px 0 50px rgba(13, 22, 31, .16);
+  backdrop-filter: blur(16px) saturate(112%);
+}
+
+.wallpaper-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid rgba(225, 237, 244, .16);
+}
+
+.wallpaper-brand-mark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid rgba(206, 226, 238, .32);
+  border-radius: 9px;
+  background: rgba(111, 145, 169, .28);
+  color: #dce9f1;
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.wallpaper-brand strong,
+.wallpaper-brand small {
+  display: block;
+}
+
+.wallpaper-brand strong {
+  color: #eef5f8;
+  font-size: 14px;
+  letter-spacing: -.015em;
+}
+
+.wallpaper-brand small,
+.wallpaper-detail,
+.wallpaper-footer,
+.wallpaper-status,
+.wallpaper-research-meta {
+  color: rgba(219, 231, 237, .68);
+  font-size: 10px;
+}
+
+.wallpaper-brand small {
+  margin-top: 4px;
+  font-family: var(--mono);
+  letter-spacing: .055em;
+}
+
+.wallpaper-clock {
+  padding: clamp(27px, 5vh, 50px) 0 clamp(21px, 4vh, 38px);
+}
+
+.wallpaper-clock time {
+  display: block;
+  color: #f3f8fa;
+  font-size: clamp(32px, 4.6vw, 52px);
+  font-weight: 560;
+  letter-spacing: -.06em;
+  line-height: 1;
+}
+
+.wallpaper-clock span {
+  display: block;
+  margin-top: 9px;
+  color: rgba(219, 231, 237, .75);
+  font-size: 12px;
+}
+
+.wallpaper-section {
+  padding: 18px 0;
+  border-top: 1px solid rgba(225, 237, 244, .14);
+}
+
+.wallpaper-current {
+  position: relative;
+  overflow: hidden;
+}
+
+.wallpaper-current::after {
+  position: absolute;
+  right: -48px;
+  bottom: -56px;
+  width: 160px;
+  height: 160px;
+  border: 1px solid rgba(160, 193, 211, .13);
+  border-radius: 50%;
+  content: "";
+  box-shadow: 0 0 0 18px rgba(160, 193, 211, .035), 0 0 0 38px rgba(160, 193, 211, .02);
+}
+
+.wallpaper-label {
+  margin-bottom: 11px;
+  color: #a8c5d6;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .14em;
+}
+
+.wallpaper-section h1 {
+  max-width: 17ch;
+  margin: 0;
+  color: #f2f7f9;
+  font-size: clamp(20px, 2vw, 27px);
+  font-weight: 650;
+  letter-spacing: -.04em;
+  line-height: 1.18;
+}
+
+.wallpaper-section p {
+  max-width: 32ch;
+  margin: 10px 0 0;
+  color: rgba(225, 237, 243, .78);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.wallpaper-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.wallpaper-status i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #9bc3a8;
+  box-shadow: 0 0 0 4px rgba(155, 195, 168, .12);
+}
+
+.wallpaper-next-title {
+  display: block;
+  overflow: hidden;
+  color: #eef5f7;
+  font-size: 16px;
+  font-weight: 620;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wallpaper-detail {
+  display: block;
+  margin-top: 6px;
+  line-height: 1.45;
+}
+
+.wallpaper-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.wallpaper-task {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+}
+
+.wallpaper-task > span {
+  flex: 0 0 auto;
+  color: #9fbfd0;
+  font-size: 15px;
+  line-height: 1.1;
+}
+
+.wallpaper-task strong {
+  min-width: 0;
+  color: rgba(239, 246, 248, .9);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.wallpaper-trend .research-mini-trend {
+  margin: -3px 0 0;
+}
+
+.wallpaper-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: auto;
+  padding-top: 20px;
+  font-family: var(--mono);
+  line-height: 1.4;
+}
+
+@media (max-width: 900px) {
+  .wallpaper-rail {
+    width: min(340px, 44vw);
+    min-width: 270px;
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+}
+
+@media (max-width: 640px) {
+  .wallpaper-rail {
+    width: min(320px, 52vw);
+    min-width: 250px;
+    padding: 22px 18px;
+  }
+
+  .wallpaper-clock {
+    padding-top: 27px;
+    padding-bottom: 25px;
+  }
+
+  .wallpaper-section {
+    padding: 15px 0;
+  }
+
+  .wallpaper-section h1 {
+    font-size: 20px;
+  }
+
+  .wallpaper-task strong,
+  .wallpaper-section p {
+    font-size: 12px;
+  }
+}

@@ -117,7 +117,9 @@ public partial class MainWindow
             return;
         }
 
-        Browser.Source = _contentUri;
+        Browser.Source = _wallpaperAttachment?.IsAttached == true
+            ? WallpaperRouteFor(_contentUri)
+            : _contentUri;
     }
 
     private string GetSelectedDisplayDeviceName()

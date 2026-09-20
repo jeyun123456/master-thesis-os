@@ -126,7 +126,7 @@ public partial class MainWindow : Window
 
             Browser.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
 
-            Browser.CoreWebView2.Navigate(_contentUri.AbsoluteUri);
+            NavigateToModeRoute(_wallpaperAttachment?.IsAttached == true);
 
             // Only the ordinary top-level window gets startup focus.
             if (!_wallpaperRequested)
@@ -182,6 +182,7 @@ public partial class MainWindow : Window
 
         if (!_wallpaperAttachment.IsAttached)
         {
+            NavigateToModeRoute(wallpaper: false);
             return true;
         }
 
@@ -198,6 +199,7 @@ public partial class MainWindow : Window
         // Interactive mode uses the normal top-level WebView2 input path.
         // Do not call MoveFocus or install DOM focus probes: repeatedly
         // forcing focus breaks IME composition.
+        NavigateToModeRoute(wallpaper: false);
         _ = NativeMethods.SetForegroundWindow(_hostHwnd);
         _ = Activate();
         _ = Browser.Focus();
@@ -238,6 +240,7 @@ public partial class MainWindow : Window
 
         if (_wallpaperAttachment.IsAttached)
         {
+            NavigateToModeRoute(wallpaper: true);
             return true;
         }
 
@@ -257,6 +260,7 @@ public partial class MainWindow : Window
             _ = NativeMethods.SetForegroundWindow(progman);
         }
 
+        NavigateToModeRoute(wallpaper: true);
         Title = "Master Thesis OS - Wallpaper";
         _trayIcon?.RefreshState();
         return true;
@@ -273,6 +277,49 @@ public partial class MainWindow : Window
             ? EnterInteractiveMode()
             : ReturnToWallpaperMode();
     }
+
+    private void NavigateToModeRoute(bool wallpaper)
+    {
+        if (Browser.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        var target = wallpaper ? WallpaperRouteFor(_contentUri) : _contentUri;
+        var current = Browser.CoreWebView2.Source;
+        if (Uri.TryCreate(current, UriKind.Absolute, out var currentUri) &&
+            string.Equals(
+                NormalizeRoute(currentUri),
+                NormalizeRoute(target),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            Browser.CoreWebView2.Navigate(target.AbsoluteUri);
+        }
+        catch (Exception ex)
+        {
+            // A route transition must not tear down the existing host. The
+            // current attachment/input state remains the safe source of truth.
+            AppLog.Error($"Could not navigate WebView2 to {(wallpaper ? "Wallpaper" : "Open")} route.", ex);
+        }
+    }
+
+    private static Uri WallpaperRouteFor(Uri baseUri)
+    {
+        var builder = new UriBuilder(baseUri)
+        {
+            Path = "/wallpaper",
+            Query = string.Empty,
+            Fragment = string.Empty,
+        };
+        return builder.Uri;
+    }
+
+    private static string NormalizeRoute(Uri uri) => uri.AbsoluteUri.TrimEnd('/');
 
     private void MainWindow_Closed(object? sender, EventArgs e)
     {
@@ -293,10 +340,11 @@ public partial class MainWindow : Window
         if (!e.IsSuccess)
         {
             Title = $"Master Thesis OS - Navigation failed ({e.WebErrorStatus})";
+            AppLog.Warn($"WebView2 navigation failed: {e.WebErrorStatus}.");
             return;
         }
 
-        if (!_wallpaperRequested)
+        if (_wallpaperAttachment?.IsAttached != true)
         {
             Title = "Master Thesis OS";
             return;
