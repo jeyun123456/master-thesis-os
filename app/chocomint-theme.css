@@ -2422,3 +2422,210 @@ html .shell .section {
     width: auto;
   }
 }
+
+/* Mail screen: flat rows with compact, shared status and action styling. */
+.mail-panel .mail-analysis-sync-summary {
+  border-color: var(--line);
+  border-radius: 10px;
+  background: var(--panel-elevated);
+  box-shadow: none;
+}
+
+.mail-panel .mail-folder-tabs {
+  gap: 3px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--panel-subtle);
+}
+
+.mail-panel .mail-folder-tab {
+  border-radius: 7px;
+}
+
+.mail-panel .mail-folder-tab.active,
+.mail-panel .mail-filter-button.active {
+  background: var(--panel-elevated);
+  color: var(--green);
+  box-shadow: 0 1px 3px rgba(47, 39, 31, .08);
+}
+
+.mail-panel .mail-list-controls {
+  gap: 7px;
+}
+
+.mail-panel .mail-search-field input,
+.mail-panel .mail-sort-control select {
+  min-height: 32px;
+  border-color: var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel-elevated);
+}
+
+.mail-panel .mail-filter-control {
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--panel-subtle);
+}
+
+.mail-panel .mail-filter-button {
+  border-radius: 7px;
+}
+
+.mail-panel .school-mail-item {
+  overflow: visible;
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.mail-panel .school-mail-item:last-child {
+  border-bottom: 0;
+}
+
+.mail-panel .school-mail-triage-row {
+  align-items: center;
+  gap: 12px;
+}
+
+.mail-panel .school-mail-triage-row > .microsoft-mail-row {
+  padding: 10px 0 8px;
+  border: 0;
+  background: transparent;
+}
+
+.mail-panel .microsoft-mail-row.unread {
+  margin: 0;
+  padding-right: 0;
+  padding-left: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.mail-panel .microsoft-mail-row.school-mail-priority-important,
+.mail-panel .microsoft-mail-row.school-mail-priority-critical {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.mail-panel .microsoft-mail-dot {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.mail-panel .microsoft-mail-unread-label {
+  display: none;
+}
+
+.mail-panel .microsoft-mail-main b {
+  font-weight: 550;
+}
+
+.mail-panel .microsoft-mail-row.unread .microsoft-mail-main b {
+  font-weight: 800;
+}
+
+.mail-panel .microsoft-mail-row.unread .microsoft-mail-main > small:first-of-type {
+  font-weight: 600;
+}
+
+.mail-panel .school-mail-priority-label,
+.mail-panel .microsoft-mail-row.school-mail-priority-normal .microsoft-mail-main b::before {
+  display: inline-flex;
+  min-width: 37px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  margin-right: 6px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+  vertical-align: 1px;
+}
+
+.mail-panel .microsoft-mail-row.school-mail-priority-normal .microsoft-mail-main b::before {
+  content: "기본";
+  border-color: var(--line);
+  background: var(--panel-subtle);
+  color: var(--text-soft);
+}
+
+.mail-panel .school-mail-priority-label.important {
+  background: #e8f1e9;
+  color: #3f715e;
+}
+
+.mail-panel .school-mail-priority-label.critical {
+  background: #f8e8e5;
+  color: #a54f49;
+}
+
+.mail-panel .school-mail-inline-actions {
+  align-self: center;
+  gap: 6px;
+  padding: 0;
+}
+
+.mail-panel .school-mail-inline-actions button {
+  min-height: 30px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel-elevated);
+  color: var(--text-soft);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.mail-panel .school-mail-inline-actions button:hover:not(:disabled) {
+  border-color: #b8cfbd;
+  background: #f3f8f2;
+  color: var(--blue-strong);
+}
+
+.mail-panel .school-mail-ai-summary {
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 0 0 10px;
+  border: 0;
+  background: transparent;
+  line-height: 1.45;
+}
+
+.mail-panel .school-mail-ai-summary b {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #e8f1e9;
+  color: #3f715e;
+  font-size: 8px;
+  line-height: 1.2;
+}
+
+.mail-panel .school-mail-ai-summary span {
+  -webkit-line-clamp: 2;
+}
+
+@media (max-width: 760px) {
+  .mail-panel .school-mail-triage-row {
+    gap: 0;
+  }
+
+  .mail-panel .school-mail-inline-actions {
+    justify-content: flex-end;
+    padding: 0 0 8px;
+  }
+
+  .mail-panel .school-mail-ai-summary {
+    padding: 0 0 10px;
+  }
+}
