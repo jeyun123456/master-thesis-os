@@ -16,6 +16,8 @@ import {
   type ResearchProject,
 } from '@/lib/projects';
 import { getProjectWorkspace, ProjectWorkspaceError, updateProjectMetadata, type ProjectWorkspace, type ProjectWorkspaceItem, type RecentProjectFile } from '@/lib/project-workspace-client';
+import { loadCachedPlannerTasks, filterDeletedPlannerTasks, saveCachedPlannerTasks, type PlannerTask } from '@/lib/planner-tasks';
+import { syncInboxPlannerTasks } from '@/lib/planner-tasks-client';
 
 type ResearchResultsChoice = { key: string; label: string; path: string; type: 'standard' | 'dashboard' };
 
@@ -44,6 +46,9 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
   const [workspaceState, setWorkspaceState] = useState<'idle' | 'loading' | 'ready' | 'offline' | 'unknown' | 'outdated' | 'auth' | 'error'>('idle');
   const [workspaceMessage, setWorkspaceMessage] = useState('');
   const [resultChoice, setResultChoice] = useState('');
+  const [plannerTasks, setPlannerTasks] = useState<PlannerTask[]>([]);
+  const [plannerTasksLoading, setPlannerTasksLoading] = useState(false);
+  const [plannerTasksError, setPlannerTasksError] = useState('');
   const selectedBase = projects.find((project) => project.id === selectedId) || null;
   const localManifest = selectedBase && workspace && workspace.projectId === selectedBase.id && workspace.manifestText
     ? parseProjectManifest(workspace.manifestText, selectedBase.sourcePath)
@@ -77,6 +82,29 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
         setWorkspaceMessage(error instanceof Error ? error.message : 'Local Bridge 작업 폴더를 읽지 못했어.');
         setWorkspaceState(error instanceof ProjectWorkspaceError ? error.state : 'error');
       }
+    });
+    return () => { active = false; };
+  }, [selectedBase?.id]);
+
+  useEffect(() => {
+    if (!selectedBase) {
+      setPlannerTasks([]);
+      return;
+    }
+    let active = true;
+    setPlannerTasks(loadCachedPlannerTasks().filter((task) => task.projectId === selectedBase.id));
+    setPlannerTasksLoading(true);
+    setPlannerTasksError('');
+    void syncInboxPlannerTasks().then((store) => {
+      if (!active) return;
+      const tasks = filterDeletedPlannerTasks(store.tasks, store.deletedTaskIds);
+      saveCachedPlannerTasks(tasks);
+      setPlannerTasks(tasks.filter((task) => task.projectId === selectedBase.id));
+      setPlannerTasksLoading(false);
+    }).catch((error) => {
+      if (!active) return;
+      setPlannerTasksError(error instanceof Error ? error.message : 'Planner 작업을 읽지 못했어.');
+      setPlannerTasksLoading(false);
     });
     return () => { active = false; };
   }, [selectedBase?.id]);
@@ -195,7 +223,14 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
 
       <div className="grid2 section-gap">
         <ProjectSection title="연구 질문" items={selected.questions} empty="등록된 연구 질문이 없어." numbered={false} />
-        <ProjectSection title="다음 작업" items={selected.nextTasks} empty="등록된 다음 작업이 없어." numbered />
+        <section className="card section"><div className="head"><h3>다음 작업</h3><span>{plannerTasks.length ? `${plannerTasks.length}개` : '없음'}</span></div>
+          {plannerTasksError && <div className="muted" role="status">Planner 연결을 확인할 수 없어. {plannerTasksError}</div>}
+          {plannerTasksLoading && !plannerTasks.length ? <div className="empty compact-empty">Planner 작업을 불러오는 중…</div>
+            : plannerTasks.length ? <div className="project-task-list">{[...plannerTasks].sort((a, b) => Number(a.status === 'done') - Number(b.status === 'done') || Date.parse(b.createdAt) - Date.parse(a.createdAt)).map((task) => <div className={`project-task-row${task.status === 'done' ? ' done' : ''}`} key={task.id}>
+              <span className="project-task-check" aria-label={task.status === 'done' ? '완료' : '미완료'}>{task.status === 'done' ? '✓' : '○'}</span>
+              <div><b>{task.status === 'done' ? <s>{task.title}</s> : task.title}</b>{task.description && <small>{task.description}</small>}</div>
+            </div>)}</div> : <div className="empty compact-empty">Inbox에서 이 프로젝트를 지정한 할 일이 없어.</div>}
+        </section>
       </div>
       <section className="card section section-gap research-favorites">
         <div className="head"><h3>주요 파일</h3><span>즐겨찾기 {keyFiles.length}개</span></div>

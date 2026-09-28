@@ -266,7 +266,6 @@ function ProjectTaskRoute({ entry, projects, busy, onAdd }: {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
-  const task = entry.ai?.nextAction || entry.ai?.title || entry.rawText;
   const matches = projects.filter((project) => `${project.title} ${project.id}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
 
   useEffect(() => {
@@ -302,9 +301,8 @@ function ProjectTaskRoute({ entry, projects, busy, onAdd }: {
       <input className="inbox-project-search" type="search" autoFocus aria-label="프로젝트 검색" placeholder="프로젝트 검색" value={query} onChange={(event) => setQuery(event.target.value)} />
       <div className="inbox-project-options">
         {matches.length ? matches.map((project) => {
-          const alreadyAdded = project.nextTasks.includes(task);
-          return <button key={project.id} type="button" disabled={busy || alreadyAdded} onClick={() => { onAdd(project.id); closeMenu(); }}>
-            <span>{project.title}</span><small>{alreadyAdded ? '이미 추가됨' : '다음 작업에 추가'}</small>
+          return <button key={project.id} type="button" disabled={busy} onClick={() => { onAdd(project.id); closeMenu(); }}>
+            <span>{project.title}</span><small>다음 작업에 연결</small>
           </button>;
         }) : <div className="inbox-project-no-results">일치하는 프로젝트가 없어.</div>}
       </div>

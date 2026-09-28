@@ -28,8 +28,8 @@ import { getEnabledShortcuts, getHomeShortcuts, loadShortcutState, shortcuts, ty
 import { applyInboxSuggestions, createInboxEntry, INBOX_AI_BATCH_SIZE, loadInboxEntries, mergeInboxEntries, saveInboxEntries, type InboxEntry } from '@/lib/inbox';
 import { organizeInboxEntries } from '@/lib/inbox-ai-client';
 import { deletePersistedInboxEntry, InboxPersistenceError, loadPersistedInbox, savePersistedInbox } from '@/lib/inbox-persistence-client';
-import { getProjectWorkspace, updateProjectMetadata } from '@/lib/project-workspace-client';
-import { addPlannerTask } from '@/lib/planner-tasks-client';
+import { addPlannerTask, syncInboxPlannerTasks, updatePlannerTaskProject } from '@/lib/planner-tasks-client';
+import { plannerTaskFromInboxEntry } from '@/lib/planner-tasks';
 import { calendarInputForInboxEntry } from '@/lib/inbox-calendar';
 import { addCalendarEvent } from '@/lib/calendar-client';
 import type { InboxStorageStatus } from '@/app/inbox-panel';
@@ -425,19 +425,10 @@ export default function Page() {
         const entry = next.find((value) => value.id === suggestion.entryId);
         if (!entry?.ai) continue;
         if (entry.ai.category === 'todo') {
-          const timestamp = entry.ai.processedAt || new Date().toISOString();
+          const plannerTask = plannerTaskFromInboxEntry(entry);
+          if (!plannerTask) continue;
           try {
-            await addPlannerTask({
-              id: `inbox:${entry.id}`,
-              title: entry.ai.nextAction || entry.ai.title || entry.rawText.slice(0, 1200),
-              description: entry.ai.summary || entry.rawText,
-              dueDate: entry.ai.dueDate,
-              sourceInboxId: entry.id,
-              status: 'pending',
-              createdAt: entry.createdAt,
-              updatedAt: timestamp,
-              completedAt: null,
-            });
+            await addPlannerTask(plannerTask);
             plannerCount += 1;
           } catch (error) {
             routeErrors.push(`${entry.ai.title || '할 일'} → Planner: ${error instanceof Error ? error.message : '저장 실패'}`);
@@ -513,15 +504,12 @@ export default function Page() {
     if (!entry?.ai || entry.ai.category !== 'todo') return;
     setProjectTaskSavingId(entryId);
     try {
-      const title = entry.ai.nextAction || entry.ai.title || entry.rawText;
       const project = projects.find((value) => value.id === projectId);
       if (!project) throw new Error('선택한 프로젝트를 찾지 못했어.');
-      const workspace = await getProjectWorkspace(projectId);
-      if (!workspace.manifestSha) throw new Error('프로젝트 project.md 정보를 불러오지 못했어.');
-      const result = await updateProjectMetadata(projectId, 'next_task_add', title, workspace.manifestSha);
-      const updatedProject = parseProjectManifest(result.manifestText, project.sourcePath);
-      setProjects((current) => current.map((value) => value.id === projectId ? { ...value, ...updatedProject, sourceSha: value.sourceSha } : value));
-      pop(result.added ? '프로젝트의 다음 작업에 추가했어.' : '이미 프로젝트에 있는 작업이야.');
+      const taskId = `inbox:${entryId}`;
+      await syncInboxPlannerTasks();
+      await updatePlannerTaskProject(taskId, projectId);
+      pop(`Planner와 ${project.title} 다음 작업에 연결했어.`);
     } catch (error) {
       pop(error instanceof Error ? error.message : '프로젝트에 추가하지 못했어. Inbox 원문은 유지돼.');
     } finally {
@@ -609,7 +597,7 @@ export default function Page() {
         /></section>}
         {page === 'mail' && <section className="page active"><MailPanel /></section>}
         {page === 'portal' && <section className="page active"><PortalNoticesPanel /></section>}
-        {page === 'planner' && <section className="page active"><PlannerPanel /></section>}
+        {page === 'planner' && <section className="page active"><PlannerPanel projects={projects} /></section>}
         {page === 'inbox' && <section className="page active"><InboxPanel
           entries={inboxEntries}
           loaded={inboxLoaded}

@@ -7,7 +7,7 @@ import subprocess
 import sys
 import tempfile
 import threading
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -92,6 +92,11 @@ def _valid_iso_timestamp(value: object) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _timestamp_value(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
 
 
 def _explicit_full_year_dates(raw_text: str) -> set[str]:
@@ -185,9 +190,9 @@ def _normalize_inbox_entry(raw: object) -> dict[str, object]:
     }
 
 
-def _read_inbox_entries_unlocked() -> list[dict[str, object]]:
+def _read_inbox_store_unlocked() -> tuple[list[dict[str, object]], set[str]]:
     if not INBOX_DATA_PATH.exists():
-        return []
+        return [], set()
     if INBOX_DATA_PATH.stat().st_size > MAX_INBOX_STORE_BYTES:
         raise ValueError('inbox store is too large')
     with INBOX_DATA_PATH.open('r', encoding='utf-8') as file:
@@ -196,16 +201,23 @@ def _read_inbox_entries_unlocked() -> list[dict[str, object]]:
         raise ValueError('invalid inbox store')
     if len(payload['entries']) > MAX_INBOX_ENTRIES:
         raise ValueError('too many inbox entries')
+    raw_deleted_ids = payload.get('deletedEntryIds', [])
+    if not isinstance(raw_deleted_ids, list) or any(not isinstance(value, str) or not value or len(value) > 256 for value in raw_deleted_ids):
+        raise ValueError('invalid deleted inbox entry ids')
     entries = [_normalize_inbox_entry(raw) for raw in payload['entries']]
     ids = [entry['id'] for entry in entries]
     if len(ids) != len(set(ids)):
         raise ValueError('duplicate inbox entry id')
-    return entries
+    return entries, set(raw_deleted_ids)
 
 
-def _atomic_write_inbox_entries(entries: list[dict[str, object]]) -> None:
+def _read_inbox_entries_unlocked() -> list[dict[str, object]]:
+    return _read_inbox_store_unlocked()[0]
+
+
+def _atomic_write_inbox_entries(entries: list[dict[str, object]], deleted_entry_ids: set[str] | None = None) -> None:
     INBOX_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps({'version': 1, 'entries': entries}, ensure_ascii=False, indent=2) + '\n'
+    payload = json.dumps({'version': 1, 'entries': entries, 'deletedEntryIds': sorted(deleted_entry_ids or set())}, ensure_ascii=False, indent=2) + '\n'
     if len(payload.encode('utf-8')) > MAX_INBOX_STORE_BYTES:
         raise ValueError('inbox store is too large')
     temporary_path: Path | None = None
@@ -234,11 +246,13 @@ def _merge_and_save_inbox_entries(raw_entries: object) -> list[dict[str, object]
 
     with INBOX_STORE_LOCK:
         try:
-            existing = _read_inbox_entries_unlocked()
+            existing, deleted_entry_ids = _read_inbox_store_unlocked()
         except (OSError, ValueError) as exc:
             raise OSError('inbox store could not be read') from exc
         merged = {entry['id']: entry for entry in existing}
         for entry in incoming:
+            if entry['id'] in deleted_entry_ids:
+                continue
             previous = merged.get(entry['id'])
             if previous is None:
                 merged[entry['id']] = entry
@@ -264,27 +278,40 @@ def _merge_and_save_inbox_entries(raw_entries: object) -> list[dict[str, object]
         result = sorted(merged.values(), key=lambda entry: str(entry['createdAt']), reverse=True)
         if len(result) > MAX_INBOX_ENTRIES:
             raise ValueError('too many inbox entries')
-        _atomic_write_inbox_entries(result)
+        _atomic_write_inbox_entries(result, deleted_entry_ids)
         return result
 
 
-def _delete_inbox_entry(entry_id: object) -> list[dict[str, object]]:
+def _delete_inbox_entry(entry_id: object) -> tuple[list[dict[str, object]], list[str]]:
     if not isinstance(entry_id, str) or not entry_id.strip() or len(entry_id) > 256:
         raise ValueError('invalid inbox entry id')
     with INBOX_STORE_LOCK:
         try:
-            existing = _read_inbox_entries_unlocked()
+            existing, deleted_entry_ids = _read_inbox_store_unlocked()
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             raise OSError('inbox store could not be read') from exc
         result = [entry for entry in existing if entry['id'] != entry_id]
-        if len(result) == len(existing):
-            return existing
         for entry in result:
             ai = entry['ai']
             if isinstance(ai, dict):
                 ai['relatedEntryIds'] = [value for value in ai['relatedEntryIds'] if value != entry_id]
-        _atomic_write_inbox_entries(result)
-        return result
+        deleted_entry_ids.add(entry_id)
+        deleted_task_ids: list[str] = []
+        with PLANNER_TASKS_STORE_LOCK:
+            try:
+                tasks, deleted_task_ids_set = _read_planner_store_unlocked()
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                raise OSError('planner task store could not be read') from exc
+            kept: list[dict[str, object]] = []
+            for task in tasks:
+                if task.get('inboxItemId') == entry_id:
+                    deleted_task_ids.append(str(task['id']))
+                    deleted_task_ids_set.add(str(task['id']))
+                else:
+                    kept.append(task)
+            _atomic_write_planner_tasks(kept, deleted_task_ids_set)
+        _atomic_write_inbox_entries(result, deleted_entry_ids)
+        return result, deleted_task_ids
 
 
 def _normalize_planner_task(raw: object) -> dict[str, object]:
@@ -314,9 +341,13 @@ def _normalize_planner_task(raw: object) -> dict[str, object]:
     completed_at = raw.get('completedAt')
     if completed_at is not None and not _valid_iso_timestamp(completed_at):
         raise ValueError('invalid planner completion timestamp')
-    source_inbox_id = raw.get('sourceInboxId')
-    if source_inbox_id is not None and (not isinstance(source_inbox_id, str) or len(source_inbox_id) > 256):
+    inbox_item_id = raw.get('inboxItemId', raw.get('sourceInboxId'))
+    if inbox_item_id is not None and (not isinstance(inbox_item_id, str) or not inbox_item_id.strip() or len(inbox_item_id) > 256):
         raise ValueError('invalid planner Inbox source')
+    project_id = raw.get('projectId')
+    if project_id is not None and (not isinstance(project_id, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', project_id)):
+        raise ValueError('invalid planner project id')
+    source = 'inbox' if inbox_item_id else 'manual'
     description = raw.get('description', '')
     if not isinstance(description, str) or len(description) > 1200:
         raise ValueError('invalid planner task description')
@@ -325,37 +356,39 @@ def _normalize_planner_task(raw: object) -> dict[str, object]:
     if status == 'pending':
         completed_at = None
     return {
-        'id': task_id.strip(),
-        'title': title.strip(),
-        'description': description,
-        'dueDate': due_date,
-        'sourceInboxId': source_inbox_id,
-        'status': status,
-        'createdAt': created_at,
-        'updatedAt': updated_at,
-        'completedAt': completed_at,
+        'id': task_id.strip(), 'title': title.strip(), 'description': description,
+        'dueDate': due_date, 'source': source, 'inboxItemId': inbox_item_id,
+        'projectId': project_id, 'status': status, 'createdAt': created_at,
+        'updatedAt': updated_at, 'completedAt': completed_at,
     }
 
 
-def _read_planner_tasks_unlocked() -> list[dict[str, object]]:
+def _read_planner_store_unlocked() -> tuple[list[dict[str, object]], set[str]]:
     if not PLANNER_TASKS_DATA_PATH.exists():
-        return []
+        return [], set()
     if PLANNER_TASKS_DATA_PATH.stat().st_size > MAX_PLANNER_BODY_BYTES:
         raise ValueError('planner task store is too large')
     with PLANNER_TASKS_DATA_PATH.open('r', encoding='utf-8') as file:
         payload = json.load(file)
     if not isinstance(payload, dict) or payload.get('version') != 1 or not isinstance(payload.get('tasks'), list):
         raise ValueError('invalid planner task store')
+    raw_deleted_ids = payload.get('deletedTaskIds', [])
+    if not isinstance(raw_deleted_ids, list) or any(not isinstance(value, str) or not value or len(value) > 256 for value in raw_deleted_ids):
+        raise ValueError('invalid deleted planner task ids')
     tasks = [_normalize_planner_task(raw) for raw in payload['tasks']]
     ids = [task['id'] for task in tasks]
     if len(ids) != len(set(ids)):
         raise ValueError('duplicate planner task id')
-    return tasks
+    return tasks, set(raw_deleted_ids)
 
 
-def _atomic_write_planner_tasks(tasks: list[dict[str, object]]) -> None:
+def _read_planner_tasks_unlocked() -> list[dict[str, object]]:
+    return _read_planner_store_unlocked()[0]
+
+
+def _atomic_write_planner_tasks(tasks: list[dict[str, object]], deleted_task_ids: set[str] | None = None) -> None:
     PLANNER_TASKS_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps({'version': 1, 'tasks': tasks}, ensure_ascii=False, indent=2) + '\n'
+    payload = json.dumps({'version': 1, 'tasks': tasks, 'deletedTaskIds': sorted(deleted_task_ids or set())}, ensure_ascii=False, indent=2) + '\n'
     if len(payload.encode('utf-8')) > MAX_PLANNER_BODY_BYTES:
         raise ValueError('planner task store is too large')
     temporary_path: Path | None = None
@@ -382,28 +415,107 @@ def _merge_and_save_planner_tasks(raw_tasks: object, single_task: object = None)
     incoming_ids = [task['id'] for task in incoming]
     if len(incoming_ids) != len(set(incoming_ids)):
         raise ValueError('duplicate planner task id')
-
     with PLANNER_TASKS_STORE_LOCK:
         try:
-            existing = _read_planner_tasks_unlocked()
+            existing, deleted_task_ids = _read_planner_store_unlocked()
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             raise OSError('planner task store could not be read') from exc
         merged = {task['id']: task for task in existing}
         for task in incoming:
+            if task['id'] in deleted_task_ids:
+                continue
             previous = merged.get(task['id'])
             if previous is None:
                 merged[task['id']] = task
-            elif single_task is None and str(task['updatedAt']) > str(previous['updatedAt']):
-                # Task edits can update completion state, but omitted IDs never delete Vault data.
+            elif single_task is None and _timestamp_value(str(task['updatedAt'])) > _timestamp_value(str(previous['updatedAt'])):
                 merged[task['id']] = {
-                    **previous,
-                    'status': task['status'],
-                    'updatedAt': task['updatedAt'],
+                    **previous, 'status': task['status'], 'updatedAt': task['updatedAt'],
                     'completedAt': task['completedAt'],
                 }
         result = sorted(merged.values(), key=lambda task: str(task['createdAt']), reverse=True)
-        _atomic_write_planner_tasks(result)
+        _atomic_write_planner_tasks(result, deleted_task_ids)
         return result
+
+
+def _sync_inbox_planner_tasks() -> tuple[list[dict[str, object]], set[str]]:
+    with INBOX_STORE_LOCK:
+        try:
+            entries = _read_inbox_entries_unlocked()
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            raise OSError('inbox store could not be read') from exc
+        with PLANNER_TASKS_STORE_LOCK:
+            try:
+                tasks, deleted_task_ids = _read_planner_store_unlocked()
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                raise OSError('planner task store could not be read') from exc
+            by_id = {str(task['id']): task for task in tasks}
+            for entry in entries:
+                ai = entry.get('ai')
+                if not isinstance(ai, dict) or ai.get('category') != 'todo':
+                    continue
+                inbox_id = str(entry['id'])
+                task_id = f'inbox:{inbox_id}'
+                if task_id in deleted_task_ids:
+                    continue
+                existing = by_id.get(task_id) or next((task for task in by_id.values() if task.get('inboxItemId') == inbox_id), None)
+                if existing is not None:
+                    if existing['id'] != task_id:
+                        deleted_task_ids.add(str(existing['id']))
+                        by_id.pop(str(existing['id']), None)
+                    canonical = {**existing, 'id': task_id, 'source': 'inbox', 'inboxItemId': inbox_id}
+                    by_id[task_id] = canonical
+                    continue
+                title = str(ai.get('nextAction') or ai.get('title') or entry.get('rawText', '')).strip()[:1200]
+                if not title:
+                    continue
+                created_at = str(entry.get('createdAt'))
+                updated_at = str(ai.get('processedAt') or created_at)
+                due_date = ai.get('dueDate')
+                task = _normalize_planner_task({
+                    'id': task_id, 'title': title,
+                    'description': str(ai.get('summary') or entry.get('rawText', ''))[:1200],
+                    'dueDate': due_date, 'source': 'inbox', 'inboxItemId': inbox_id,
+                    'projectId': None, 'status': 'pending', 'createdAt': created_at,
+                    'updatedAt': updated_at, 'completedAt': None,
+                })
+                by_id[task_id] = task
+            result = sorted(by_id.values(), key=lambda task: str(task['createdAt']), reverse=True)
+            _atomic_write_planner_tasks(result, deleted_task_ids)
+            return result, deleted_task_ids
+
+
+def _update_planner_task_project(task_id: object, project_id: object) -> tuple[list[dict[str, object]], set[str]]:
+    if not isinstance(task_id, str) or not task_id.strip() or len(task_id) > 256:
+        raise ValueError('invalid planner task id')
+    if not isinstance(project_id, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', project_id):
+        raise ValueError('invalid project id')
+    _project_manifest_path(project_id)
+    with PLANNER_TASKS_STORE_LOCK:
+        tasks, deleted_task_ids = _read_planner_store_unlocked()
+        updated_tasks: list[dict[str, object]] = []
+        found = False
+        for task in tasks:
+            if task['id'] == task_id:
+                if not task.get('inboxItemId'):
+                    raise ValueError('only Inbox tasks can be routed to a project')
+                task = {**task, 'projectId': project_id, 'updatedAt': datetime.now(timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')}
+                found = True
+            updated_tasks.append(task)
+        if not found:
+            raise FileNotFoundError('planner task not found')
+        _atomic_write_planner_tasks(updated_tasks, deleted_task_ids)
+        return updated_tasks, deleted_task_ids
+
+
+def _delete_planner_task(task_id: object) -> tuple[list[dict[str, object]], set[str]]:
+    if not isinstance(task_id, str) or not task_id.strip() or len(task_id) > 256:
+        raise ValueError('invalid planner task id')
+    with PLANNER_TASKS_STORE_LOCK:
+        tasks, deleted_task_ids = _read_planner_store_unlocked()
+        remaining = [task for task in tasks if task['id'] != task_id]
+        deleted_task_ids.add(task_id)
+        _atomic_write_planner_tasks(remaining, deleted_task_ids)
+        return remaining, deleted_task_ids
 
 
 class ProjectManifestConflict(Exception):
@@ -514,6 +626,18 @@ def _append_project_next_task(markdown: str, value: object) -> tuple[str, bool]:
     return f'{markdown}{separator}{newline}## 다음 작업{newline}{task_line}{newline}', True
 
 
+def _clear_project_next_tasks(markdown: str) -> str:
+    newline = '\r\n' if '\r\n' in markdown else '\n'
+    headings = list(re.finditer(r'^##[ \t]+다음 작업[ \t]*\r?$', markdown, flags=re.MULTILINE))
+    updated = markdown
+    for heading in reversed(headings):
+        section_start = heading.end()
+        following = re.search(r'^##[ \t]+', updated[section_start:], flags=re.MULTILINE)
+        section_end = section_start + following.start() if following else len(updated)
+        updated = updated[:section_start] + newline + updated[section_end:]
+    return updated
+
+
 def _update_project_metadata(body: dict[str, object]) -> dict[str, object]:
     project_id = body.get('projectId')
     operation = body.get('operation')
@@ -550,6 +674,8 @@ def _update_project_metadata(body: dict[str, object]) -> dict[str, object]:
             updated = _update_project_key_file(markdown, normalized_id, value, operation == 'favorite_add')
         elif operation == 'next_task_add':
             updated, task_added = _append_project_next_task(markdown, value)
+        elif operation == 'next_tasks_reset':
+            updated = _clear_project_next_tasks(markdown)
         else:
             raise ValueError('invalid project metadata operation')
         if updated == markdown:
@@ -1025,8 +1151,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _planner_tasks_response(self):
         with PLANNER_TASKS_STORE_LOCK:
-            tasks = _read_planner_tasks_unlocked()
-        return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'tasks': tasks})
+            tasks, deleted_task_ids = _read_planner_store_unlocked()
+        return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'tasks': tasks, 'deletedTaskIds': sorted(deleted_task_ids)})
 
     def _analysis_response(self):
         query = self._query()
@@ -1380,6 +1506,7 @@ class Handler(BaseHTTPRequestHandler):
             '/open', '/open-folder', '/launch', '/mail/recent', '/mail/folders',
             '/mail/message', '/mail/open', '/mail/sync', '/mail/analysis/candidate', '/mail/task',
             '/portal/sync', '/portal/login', '/portal/open-url', '/inbox', '/inbox/delete', '/inbox/organize', '/planner/tasks',
+            '/planner/tasks/sync-inbox', '/planner/tasks/update', '/planner/tasks/delete',
             '/projects/workspace', '/projects/update',
         )
         is_portal_state = path.startswith('/portal/notices/') and path.endswith('/state')
@@ -1389,7 +1516,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_out(404, {'error': 'not found'})
         if not self._origin_allowed():
             return
-        body_limit = MAX_INBOX_BODY_BYTES if path in {'/inbox', '/inbox/delete'} else MAX_PLANNER_BODY_BYTES if path == '/planner/tasks' else MAX_BODY_BYTES
+        body_limit = MAX_INBOX_BODY_BYTES if path in {'/inbox', '/inbox/delete'} else MAX_PLANNER_BODY_BYTES if path.startswith('/planner/tasks') else MAX_BODY_BYTES
         body = self._read_json_body(body_limit)
         if body is None:
             return
@@ -1400,9 +1527,18 @@ class Handler(BaseHTTPRequestHandler):
                 entries = _merge_and_save_inbox_entries(body.get('entries'))
                 return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'entries': entries})
             if path == '/inbox/delete':
-                entries = _delete_inbox_entry(body.get('entryId'))
-                return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'entries': entries})
-            if path == '/planner/tasks':
+                entries, deleted_task_ids = _delete_inbox_entry(body.get('entryId'))
+                return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'entries': entries, 'deletedTaskIds': deleted_task_ids})
+            if path == '/planner/tasks/sync-inbox':
+                tasks, deleted_task_ids = _sync_inbox_planner_tasks()
+                return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'tasks': tasks, 'deletedTaskIds': sorted(deleted_task_ids)})
+            if path == '/planner/tasks/update':
+                tasks, deleted_task_ids = _update_planner_task_project(body.get('taskId'), body.get('projectId'))
+                return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'tasks': tasks, 'deletedTaskIds': sorted(deleted_task_ids)})
+            if path == '/planner/tasks/delete':
+                tasks, deleted_task_ids = _delete_planner_task(body.get('taskId'))
+                return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'tasks': tasks, 'deletedTaskIds': sorted(deleted_task_ids)})
+            if path.startswith('/planner/tasks'):
                 task = body.get('task')
                 tasks = _merge_and_save_planner_tasks(body.get('tasks'), single_task=task)
                 return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'tasks': tasks})
@@ -1434,7 +1570,7 @@ class Handler(BaseHTTPRequestHandler):
                     'errorCode': 'inbox_persist_failed',
                     'error': 'Vault에 인박스를 저장하지 못했어요. 브라우저 캐시는 유지됩니다.',
                 })
-            if path == '/planner/tasks':
+            if path.startswith('/planner/tasks'):
                 return self.json_out(503, {
                     'ok': False,
                     'source': 'vault',
@@ -1464,7 +1600,7 @@ class Handler(BaseHTTPRequestHandler):
                     'errorCode': 'invalid_inbox_data',
                     'error': '인박스 데이터 형식을 확인해 주세요. 기존 원문은 변경하지 않았습니다.',
                 })
-            if path == '/planner/tasks':
+            if path.startswith('/planner/tasks'):
                 return self.json_out(400, {
                     'ok': False,
                     'source': 'vault',

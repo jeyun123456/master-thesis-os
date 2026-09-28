@@ -23,7 +23,7 @@ export type ProjectWorkspace = {
   manifestSha: string | null;
 };
 
-export type ProjectMetadataOperation = 'stage' | 'status' | 'favorite_add' | 'favorite_remove' | 'next_task_add';
+export type ProjectMetadataOperation = 'stage' | 'status' | 'favorite_add' | 'favorite_remove' | 'next_task_add' | 'next_tasks_reset';
 export type ProjectMetadataUpdate = {
   projectId: string;
   manifestText: string;

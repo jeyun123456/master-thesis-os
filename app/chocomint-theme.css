@@ -1281,6 +1281,11 @@ html .shell .section {
   border-bottom: 1px solid var(--line);
 }
 
+.planner-user-task {
+  grid-template-columns: 20px minmax(0, 1fr) minmax(0, auto) 24px;
+  gap: 9px;
+}
+
 .planner-user-task > div,
 .planner-mail-task > span {
   min-width: 0;
@@ -1315,14 +1320,54 @@ html .shell .section {
 }
 
 .planner-task-toggle {
-  width: 23px;
-  height: 23px;
-  border: 1px solid var(--line-strong);
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid #8e796d;
   border-radius: 50%;
-  background: var(--panel);
-  color: var(--green);
+  background: var(--panel-elevated);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
   cursor: pointer;
 }
+
+.planner-task-toggle:hover { border-color: var(--blue-strong); }
+.planner-task-toggle:focus-visible { outline: 2px solid var(--blue-strong); outline-offset: 2px; }
+.planner-task-toggle[aria-pressed="true"] { border-color: var(--blue-strong); background: var(--blue-strong); }
+.planner-user-task.done { opacity: .72; }
+.planner-user-task.done b { color: var(--muted); }
+.planner-task-project,
+.planner-task-source {
+  max-width: 180px;
+  overflow: hidden;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.planner-task-project { border-color: var(--line-strong); background: var(--blue-soft); color: var(--text); }
+.planner-task-delete {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+.planner-task-delete:hover { background: var(--panel); color: var(--text); }
+.planner-task-delete:focus-visible { outline: 2px solid var(--blue-strong); outline-offset: 1px; }
 
 .planner-mail-task {
   grid-template-columns: minmax(120px, 1fr) minmax(90px, auto) auto;
@@ -1478,6 +1523,33 @@ html .shell .section {
   text-align: left;
   font: inherit;
 }
+
+.project-task-list { display: flex; flex-direction: column; }
+.project-task-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 9px 1px;
+  border-bottom: 1px solid var(--line);
+}
+.project-task-row:last-child { border-bottom: 0; }
+.project-task-check {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1;
+}
+.project-task-row.done { opacity: .68; }
+.project-task-row.done .project-task-check { color: var(--blue-strong); font-size: 12px; font-weight: 800; }
+.project-task-row > div { min-width: 0; }
+.project-task-row b,
+.project-task-row small { display: block; }
+.project-task-row b { font-size: 10px; line-height: 1.45; }
+.project-task-row small { margin-top: 3px; color: var(--muted); font-size: 8px; }
 
 .project-tree-file {
   color: var(--text-soft);
@@ -2075,6 +2147,9 @@ html .shell .section {
   .planner-task-create {
     grid-template-columns: minmax(0, 1fr) auto;
   }
+  .planner-user-task { grid-template-columns: 20px minmax(0, 1fr) auto 24px; }
+  .planner-task-project,
+  .planner-task-source { max-width: 112px; }
 
   .planner-task-create input[type="date"] {
     grid-column: 1 / 2;

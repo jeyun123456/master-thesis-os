@@ -7,10 +7,12 @@ import type { CalendarEvent } from '@/lib/calendar';
 import { addCalendarEvent } from '@/lib/calendar-client';
 import {
   addPlannerTask,
-  loadPlannerTasks,
+  syncInboxPlannerTasks,
+  deletePlannerTask,
   savePlannerTasks,
 } from '@/lib/planner-tasks-client';
-import { loadCachedPlannerTasks, mergePlannerTasks, saveCachedPlannerTasks, type PlannerTask, type PlannerTaskStatus } from '@/lib/planner-tasks';
+import { filterDeletedPlannerTasks, loadCachedPlannerTasks, mergePlannerTasks, saveCachedPlannerTasks, type PlannerTask, type PlannerTaskStatus } from '@/lib/planner-tasks';
+import type { ResearchProject } from '@/lib/projects';
 import { getMailPlanning, MailAnalysisClientError, readBridgeToken, updateMailCandidate, updateMailTask } from '@/lib/mail-analysis-client';
 import type { MailAnalysisItem, StoredMailCalendarCandidate } from '@/lib/mail-analysis';
 import type { MailPlanning, MailTask, MailTaskStatus } from '@/lib/mail-planning';
@@ -20,7 +22,7 @@ import { CalendarCandidateCard, type CalendarCandidateEdit } from './mail-analys
 type PlannerCandidate = { item: MailAnalysisItem; candidate: StoredMailCalendarCandidate };
 type CalendarResponse = CalendarApiResponse;
 
-export function PlannerPanel() {
+export function PlannerPanel({ projects = [] }: { projects?: ResearchProject[] }) {
   const [month, setMonth] = useState(() => currentMonth());
   const [selectedDate, setSelectedDate] = useState(() => todayDate());
   const [calendar, setCalendar] = useState<CalendarResponse | null>(null);
@@ -35,6 +37,7 @@ export function PlannerPanel() {
   const [planning, setPlanning] = useState<MailPlanning | null>(null);
   const [mailError, setMailError] = useState('');
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const [openingMailId, setOpeningMailId] = useState<string | null>(null);
   const [openError, setOpenError] = useState<ThunderbirdMailErrorCode | null>(null);
 
@@ -58,8 +61,10 @@ export function PlannerPanel() {
     const cached = loadCachedPlannerTasks();
     setTasks(cached);
     try {
-      const stored = await loadPlannerTasks();
-      const merged = mergePlannerTasks(stored, cached);
+      const store = await syncInboxPlannerTasks();
+      const stored = filterDeletedPlannerTasks(store.tasks, store.deletedTaskIds);
+      const availableCached = filterDeletedPlannerTasks(cached, store.deletedTaskIds);
+      const merged = mergePlannerTasks(stored, availableCached);
       setTasks(merged);
       saveCachedPlannerTasks(merged);
       const storedById = new Map(stored.map((task) => [task.id, task]));
@@ -95,7 +100,7 @@ export function PlannerPanel() {
   }, []);
 
   const activeTasks = useMemo(() => tasks.filter((task) => task.status === 'pending'), [tasks]);
-  const doneTasks = useMemo(() => tasks.filter((task) => task.status === 'done'), [tasks]);
+  const orderedTasks = useMemo(() => [...tasks].sort((left, right) => Number(left.status === 'done') - Number(right.status === 'done') || Date.parse(right.createdAt) - Date.parse(left.createdAt)), [tasks]);
   const pendingCandidates = useMemo<PlannerCandidate[]>(() => (planning?.items || []).flatMap((item) => item.candidates
     .filter((candidate) => candidate.status === 'pending')
     .map((candidate) => ({ item, candidate }))), [planning?.items]);
@@ -111,7 +116,7 @@ export function PlannerPanel() {
     if (!cleanTitle) return;
     const now = new Date().toISOString();
     const id = `task:${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
-    const task: PlannerTask = { id, title: cleanTitle, description: '', dueDate: dueDate || null, sourceInboxId: null, status: 'pending', createdAt: now, updatedAt: now, completedAt: null };
+    const task: PlannerTask = { id, title: cleanTitle, description: '', dueDate: dueDate || null, source: 'manual', inboxItemId: null, projectId: null, status: 'pending', createdAt: now, updatedAt: now, completedAt: null };
     setTasks((current) => mergePlannerTasks([task, ...current], []));
     setTitle('');
     setDueDate('');
@@ -146,6 +151,23 @@ export function PlannerPanel() {
       setTaskError(error instanceof Error ? `${error.message} 상태는 브라우저 캐시에 남아 있어.` : '상태를 Vault에 저장하지 못했어.');
     } finally {
       setBusyTaskId(null);
+    }
+  }
+
+  async function removeTask(task: PlannerTask) {
+    if (deletingTaskId) return;
+    setDeletingTaskId(task.id);
+    setTaskError('');
+    try {
+      const store = await deletePlannerTask(task.id);
+      const next = filterDeletedPlannerTasks(store.tasks, store.deletedTaskIds);
+      setTasks(next);
+      saveCachedPlannerTasks(next);
+      setVaultSaved(true);
+    } catch (error) {
+      setTaskError(error instanceof Error ? error.message : '할 일을 삭제하지 못했어.');
+    } finally {
+      setDeletingTaskId(null);
     }
   }
 
@@ -217,8 +239,16 @@ export function PlannerPanel() {
       <form className="planner-task-create" onSubmit={(event) => void createTask(event)}><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="새 할 일" aria-label="새 할 일" maxLength={1200} /><input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} aria-label="할 일 마감일" /><button className="btn primary" type="submit" disabled={!title.trim()}>추가</button></form>
       <div className="planner-persistence-status"><span className={vaultSaved ? 'saved' : 'local'}>{vaultSaved ? 'Vault · shared/planner/tasks.json' : '브라우저 캐시'}</span><button className="mini" type="button" disabled={tasksLoading} onClick={() => void loadTasks()}>새로고침</button></div>
       {taskError && <div className="error">{taskError}</div>}
-      {activeTasks.length ? <div className="planner-task-list">{activeTasks.map((task) => <article className="planner-user-task" key={task.id}><button type="button" className="planner-task-toggle" aria-label={`${task.title} 완료`} disabled={busyTaskId === task.id} onClick={() => void changeTaskStatus(task, 'done')}>○</button><div><b>{task.title}</b>{task.description && <small>{task.description}</small>}{task.dueDate && <time>기한 {task.dueDate}</time>}</div><span>{task.sourceInboxId ? 'Inbox' : '개인'}</span></article>)}</div> : tasksLoading ? <div className="empty compact-empty">Vault 할 일을 읽는 중…</div> : <div className="empty compact-empty">미완료 할 일이 없어.</div>}
-      {doneTasks.length > 0 && <details className="planner-closed"><summary>완료 {doneTasks.length}개 보기</summary><div className="planner-task-list">{doneTasks.map((task) => <article className="planner-user-task done" key={task.id}><button type="button" className="planner-task-toggle" aria-label={`${task.title} 다시 열기`} disabled={busyTaskId === task.id} onClick={() => void changeTaskStatus(task, 'pending')}>✓</button><div><b>{task.title}</b>{task.dueDate && <time>기한 {task.dueDate}</time>}</div><span>완료</span></article>)}</div></details>}
+      {orderedTasks.length ? <div className="planner-task-list">{orderedTasks.map((task) => {
+        const project = projects.find((value) => value.id === task.projectId);
+        const done = task.status === 'done';
+        return <article className={done ? 'planner-user-task done' : 'planner-user-task'} key={task.id}>
+          <button type="button" className="planner-task-toggle" aria-label={done ? task.title + ' 다시 열기' : task.title + ' 완료'} aria-pressed={done} disabled={busyTaskId === task.id || deletingTaskId === task.id} onClick={() => void changeTaskStatus(task, done ? 'pending' : 'done')}>{done ? '✓' : ''}</button>
+          <div><b>{done ? <s>{task.title}</s> : task.title}</b>{task.description && <small>{task.description}</small>}{task.dueDate && <time>기한 {task.dueDate}</time>}</div>
+          {project ? <span className="planner-task-project" title={project.title}>{project.title}</span> : <span className="planner-task-source">{task.source === 'inbox' ? 'Inbox' : '개인'}</span>}
+          <button type="button" className="planner-task-delete" aria-label={'할 일 삭제: ' + task.title} title="할 일 삭제" disabled={deletingTaskId === task.id || busyTaskId === task.id} onClick={() => void removeTask(task)}>{deletingTaskId === task.id ? '…' : '×'}</button>
+        </article>;
+      })}</div> : tasksLoading ? <div className="empty compact-empty">Vault 할 일을 읽는 중…</div> : <div className="empty compact-empty">할 일이 없어.</div>}
     </section>
 
     <section className="card section planner-candidates-card">
