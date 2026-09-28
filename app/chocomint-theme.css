@@ -2581,7 +2581,7 @@ html .shell .section {
 
 .mail-panel .school-mail-inline-actions {
   align-self: center;
-  gap: 6px;
+  gap: 0;
   margin-left: auto;
   padding: 0;
 }
@@ -2601,16 +2601,32 @@ html .shell .section {
   white-space: nowrap;
 }
 
+.mail-panel .school-mail-inline-actions button:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.mail-panel .school-mail-inline-actions button + button {
+  margin-left: -1px;
+  border-radius: 0 8px 8px 0;
+}
+
+.mail-panel .school-mail-inline-actions button:only-child {
+  border-radius: 8px;
+}
+
 .mail-panel .school-mail-inline-actions button:hover:not(:disabled) {
+  position: relative;
+  z-index: 1;
   border-color: #b8cfbd;
   background: #f3f8f2;
   color: var(--blue-strong);
 }
 
 .mail-panel .school-mail-ai-summary {
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
-  margin: 0 0 0 45px;
+  width: 100%;
+  margin: -1px 0 0;
   padding: 0 0 10px;
   border: 0;
   background: transparent;
@@ -2629,7 +2645,11 @@ html .shell .section {
 }
 
 .mail-panel .school-mail-ai-summary span {
-  -webkit-line-clamp: 2;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 760px) {
@@ -2644,7 +2664,7 @@ html .shell .section {
   }
 
   .mail-panel .school-mail-ai-summary {
-    margin-left: 0;
+    margin: 0;
     padding: 0 0 10px;
   }
 }
