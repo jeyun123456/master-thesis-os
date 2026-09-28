@@ -11,6 +11,7 @@ import { MicrosoftMailPanel } from '@/app/microsoft-mail-panel';
 import { ResearchPanel } from '@/app/research-panel';
 import { ResearchMiniTrend } from '@/app/research-mini-trend';
 import { ResultsPanel as ResultsDashboardPanel } from '@/app/results-panel';
+import { InboxPanel, QuickCapturePanel } from '@/app/inbox-panel';
 import { RewardSlotPanel } from '@/app/reward-slot';
 import { SchoolMailPanel } from '@/app/school-mail-panel';
 import { ShortcutList, ShortcutsPanel } from '@/app/shortcuts-panel';
@@ -24,9 +25,11 @@ import type { ResearchStatus } from '@/lib/research-status';
 import type { DashboardBundle } from '@/lib/results';
 import { BRIDGE_OFFLINE_MESSAGE, BRIDGE_TIMEOUT_MESSAGE, bridgeResponseMessage } from '@/lib/bridge-status';
 import { getEnabledShortcuts, getHomeShortcuts, loadShortcutState, shortcuts, type Shortcut } from '@/lib/shortcuts';
+import { applyInboxSuggestions, createInboxEntry, INBOX_AI_BATCH_SIZE, loadInboxEntries, saveInboxEntries, type InboxEntry, type InboxSuggestion } from '@/lib/inbox';
+import { organizeInboxEntries } from '@/lib/inbox-ai-client';
 import appPackage from '../package.json';
 
-type Page = 'home' | 'research' | 'results' | 'library' | 'slot' | 'shortcuts' | 'mail' | 'portal' | 'planner' | 'settings';
+type Page = 'home' | 'research' | 'results' | 'library' | 'slot' | 'shortcuts' | 'inbox' | 'mail' | 'portal' | 'planner' | 'settings';
 
 const APP_VERSION = appPackage.version;
 
@@ -49,6 +52,7 @@ const initialDashboard: DashboardBundle = {
 
 const pageMeta: Record<Page, [string, string]> = {
   home: ['홈', '오늘의 연구 작업과 다음 행동을 한눈에'],
+  inbox: ['AI 인박스', '떠오른 내용을 저장하고 검토 후 정리'],
   research: ['연구', '프로젝트별 질문 · 진행 단계 · 다음 작업 · 관련 자료'],
   results: ['분석 결과', '필요노동 추이 · 분해 · 검증 결과'],
   library: ['자료실', '주요 자료 · 대표 문헌 · 연구 Wiki'],
@@ -76,6 +80,7 @@ const navigationGroups: NavigationGroup[] = [
   {
     label: 'INBOX',
     items: [
+      { id: 'inbox', label: 'AI 인박스', icon: '✦' },
       { id: 'mail', label: '메일', icon: '✉' },
       { id: 'portal', label: '학교 공지', icon: '▣' },
       { id: 'planner', label: '플래너', icon: '✓' },
@@ -156,6 +161,11 @@ export default function Page() {
   const [shortcutMissing, setShortcutMissing] = useState(false);
   const [shortcutWritable, setShortcutWritable] = useState(false);
   const [researchProjectId, setResearchProjectId] = useState<string | null>(null);
+  const [inboxEntries, setInboxEntries] = useState<InboxEntry[]>([]);
+  const [inboxLoaded, setInboxLoaded] = useState(false);
+  const [inboxPreview, setInboxPreview] = useState<InboxSuggestion[] | null>(null);
+  const [inboxOrganizing, setInboxOrganizing] = useState(false);
+  const [inboxAIError, setInboxAIError] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [toast, setToast] = useState('');
   const [todayLabel, setTodayLabel] = useState('');
@@ -167,6 +177,11 @@ export default function Page() {
     updateDate();
     const timer = window.setInterval(updateDate, 60_000);
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    setInboxEntries(loadInboxEntries());
+    setInboxLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -260,6 +275,56 @@ export default function Page() {
     return result.items;
   }
 
+  function addInboxEntry(rawText: string) {
+    if (!inboxLoaded) return false;
+    try {
+      const entry = createInboxEntry(rawText);
+      const next = [entry, ...inboxEntries];
+      if (!saveInboxEntries(next)) {
+        pop('브라우저 저장 공간을 확인해줘');
+        return false;
+      }
+      setInboxEntries(next);
+      pop('인박스에 저장했어');
+      return true;
+    } catch (error) {
+      pop(error instanceof Error ? error.message : '인박스에 저장하지 못했어');
+      return false;
+    }
+  }
+
+  async function organizeInbox() {
+    setPage('inbox');
+    setInboxAIError('');
+    setInboxPreview(null);
+    const pending = inboxEntries.filter((entry) => !entry.processed).slice(0, INBOX_AI_BATCH_SIZE);
+    if (!pending.length) {
+      setInboxAIError('GPT로 정리할 새 항목이 없어.');
+      return;
+    }
+    setInboxOrganizing(true);
+    try {
+      setInboxPreview(await organizeInboxEntries(pending));
+    } catch (error) {
+      setInboxAIError(error instanceof Error ? error.message : 'AI 정리 요청을 처리하지 못했어.');
+    } finally {
+      setInboxOrganizing(false);
+    }
+  }
+
+  function applyInboxPreview() {
+    if (!inboxPreview) return;
+    const next = applyInboxSuggestions(inboxEntries, inboxPreview);
+    if (!saveInboxEntries(next)) {
+      setInboxAIError('브라우저 저장 공간을 확인해줘. 원문과 미리보기는 그대로 남아 있어.');
+      return;
+    }
+    setInboxEntries(next);
+    setInboxPreview(null);
+    setInboxAIError('');
+    pop('AI 정리 결과를 적용했어. 원문은 보존했어.');
+  }
+
   function openResearchProject(projectId: string) {
     setResearchProjectId(projectId);
     setPage('research');
@@ -267,7 +332,6 @@ export default function Page() {
 
   const schedule = useMemo(() => groupCalendarEvents(calendar.items), [calendar.items]);
   const activeProject = useMemo(() => projects.find((project) => project.id === 'thesis') || projects.find((project) => project.status === 'active') || projects[0] || null, [projects]);
-  const activeProjects = useMemo(() => projects.filter((project) => project.status === 'active' || project.status === 'writing'), [projects]);
   const homeTasks = useMemo(() => {
     const projectTasks = activeProject?.nextTasks || [];
     return projectTasks.length ? projectTasks : researchStatus?.nextActions || [];
@@ -275,7 +339,7 @@ export default function Page() {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="brand"><div className="logo">M</div><div><h1>Master Thesis OS</h1><p>석사논문 연구 작업실 · v{APP_VERSION}</p></div></div>
+        <div className="brand"><div className="logo">C</div><div><h1>Chocomint Lab</h1><p>Research Workspace · v{APP_VERSION}</p></div></div>
         <nav className="nav" aria-label="주 메뉴">{navigationGroups.map((group) => <div className="nav-group" key={group.label}>
           <span className="nav-group-label">{group.label}</span>
           {group.items.map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}><span>{item.icon}</span>{item.label}</button>)}
@@ -286,22 +350,20 @@ export default function Page() {
 
       <main className="main">
         <header className={`top${page === 'home' ? ' top-home' : ''}`}>
-          <div>{page === 'home' ? <><h2>Master Thesis OS</h2><p>{todayLabel || '오늘'} · 오늘의 연구 작업과 다음 행동</p></> : <><h2>{pageMeta[page][0]}</h2><p>{pageMeta[page][1]}</p></>}</div>
+          <div>{page === 'home' ? <><h2>Chocomint Lab</h2><p>{todayLabel || '오늘'} · 떠오른 생각을 기록하고 다음 행동을 시작하세요</p></> : <><h2>{pageMeta[page][0]}</h2><p>{pageMeta[page][1]}</p></>}</div>
           <div className="badges"><div className="badge">Vault {repositorySource === 'local' ? '● 로컬' : repositorySource === 'github' ? '● GitHub' : '○ 설정 필요'}</div><div className="badge">Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '● 연결됨' : '○ 확인 필요'}</div><div className="badge">v{APP_VERSION}</div></div>
         </header>
 
         {errors.length > 0 && <div className="error page-error">{errors[0]}</div>}
 
         {page === 'home' && <section className="page active home-page">
-          <CurrentResearchHero project={activeProject} researchStatus={researchStatus} activeCount={activeProjects.length} onOpen={openResearchProject} />
+          <QuickCapturePanel entries={inboxEntries} loaded={inboxLoaded} busy={inboxOrganizing} onAdd={addInboxEntry} onOrganize={() => void organizeInbox()} onOpenInbox={() => setPage('inbox')} />
           <div className="home-status-grid">
             <HomeStatusCard label="오늘 일정" value={schedule.today.length ? `${schedule.today.length}건` : '없음'} detail={schedule.today[0]?.title || calendarStateText(calendar)} tone="blue" />
             <HomeStatusCard label="다음 마감" value={schedule.nextDeadline ? deadlineLabel(schedule.nextDeadline) : '없음'} detail={schedule.nextDeadline?.title || '등록된 마감이 없어.'} tone="orange" />
-            <HomeStatusCard label="주요 상태" value={activeProject ? stageLabel(activeProject.stage) : researchStatus?.currentStage || '확인 필요'} detail={activeProject ? projectStatusLabel(activeProject.status) : '연구 상태 연결 필요'} tone="green" />
-            <HomeStatusCard label="해야 할 일" value={homeTasks.length ? `${homeTasks.length}개` : '없음'} detail={homeTasks[0] || '현재 등록된 다음 작업이 없어.'} tone="slate" />
           </div>
           <div className="home-lower-grid section-gap">
-            <Card title="해야 할 일" right={activeProject?.title || '연구 상태'} className="home-tasks-card"><HomeTaskList items={homeTasks} /></Card>
+            <CurrentResearchCard project={activeProject} researchStatus={researchStatus} onOpen={openResearchProject} />
             <Card title="최근 분석 결과" right={dashboard.necessaryLabour?.source.yearRange || '결과 데이터'} className="home-results-card"><ResearchMiniTrend series={dashboard.necessaryLabour?.series || []} /></Card>
           </div>
           <div className="home-attention-grid section-gap">
@@ -339,6 +401,17 @@ export default function Page() {
         {page === 'mail' && <section className="page active"><MailPanel /></section>}
         {page === 'portal' && <section className="page active"><PortalNoticesPanel /></section>}
         {page === 'planner' && <section className="page active"><PlannerPanel /></section>}
+        {page === 'inbox' && <section className="page active"><InboxPanel
+          entries={inboxEntries}
+          loaded={inboxLoaded}
+          busy={inboxOrganizing}
+          onAdd={addInboxEntry}
+          onOrganize={() => void organizeInbox()}
+          preview={inboxPreview}
+          error={inboxAIError}
+          onApply={applyInboxPreview}
+          onDiscardPreview={() => setInboxPreview(null)}
+        /></section>}
 
         {page === 'settings' && <section className="page active">
           <div className="grid2">
@@ -360,26 +433,22 @@ export default function Page() {
   );
 }
 
-function CurrentResearchHero({ project, researchStatus, activeCount, onOpen }: { project: ResearchProject | null; researchStatus: ResearchStatus | null; activeCount: number; onOpen: (projectId: string) => void }) {
-  const focus = project?.currentFocus || researchStatus?.nextActions[0] || researchStatus?.currentStage || '현재 집중 항목이 등록되지 않았어.';
-  const stage = project ? stageLabel(project.stage) : researchStatus?.currentStage || '연구 상태 확인 중';
+function CurrentResearchCard({ project, researchStatus, onOpen }: { project: ResearchProject | null; researchStatus: ResearchStatus | null; onOpen: (projectId: string) => void }) {
+  const focus = project?.currentFocus || researchStatus?.currentInterpretation || '현재 문제의식이 등록되지 않았어.';
+  const stage = project ? stageLabel(project.stage) : researchStatus?.currentStage || '연구 단계 확인 필요';
   const status = project ? projectStatusLabel(project.status) : '연결 필요';
   const summary = project?.summary || researchStatus?.currentInterpretation || 'projects/와 wiki/current_status.md에서 현재 연구 상태를 읽어와.';
 
-  return <section className="card home-research-hero">
-    <div className="home-research-hero-copy">
-      <span className="home-eyebrow">CURRENT RESEARCH</span>
-      <h3>{project?.title || '현재 연구 프로젝트'}</h3>
-      <p className="home-research-focus">{focus}</p>
-      <p className="home-research-summary">{summary}</p>
-      <div className="home-research-meta"><span>단계</span><strong>{stage}</strong><span>활성 프로젝트</span><strong>{activeCount ? `${activeCount}개` : '확인 필요'}</strong></div>
+  return <Card title="현재 연구" right={status} className="home-current-research-card">
+    <div className="home-current-research">
+      <span className="home-eyebrow">ACTIVE PROJECT</span>
+      <h4>{project?.title || '현재 연구 프로젝트'}</h4>
+      <div className="home-current-focus"><b>핵심 문제의식 / 해석</b><p>{focus}</p></div>
+      <p className="home-current-summary">{summary}</p>
+      <div className="home-current-meta"><span>현재 단계</span><strong>{stage}</strong><span>진행 상태</span><strong>{status}</strong></div>
+      {project && <button className="mini" type="button" onClick={() => onOpen(project.id)}>연구 열기 <span aria-hidden="true">↗</span></button>}
     </div>
-    <div className="home-research-hero-status">
-      <span className="home-status-label">현재 상태</span>
-      <span className="home-status-indicator"><i aria-hidden="true" />{status}</span>
-      {project && <button className="mini" type="button" onClick={() => onOpen(project.id)}>연구 열기</button>}
-    </div>
-  </section>;
+  </Card>;
 }
 
 function HomeStatusCard({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: 'blue' | 'orange' | 'green' | 'slate' }) {
@@ -387,15 +456,6 @@ function HomeStatusCard({ label, value, detail, tone }: { label: string; value: 
     <span className="home-status-label">{label}</span>
     <strong>{value}</strong>
     <small title={detail}>{detail}</small>
-  </div>;
-}
-
-function HomeTaskList({ items }: { items: string[] }) {
-  const visible = items.slice(0, 4);
-  if (!visible.length) return <div className="empty compact-empty">현재 등록된 다음 작업이 없어.</div>;
-  return <div className="home-task-list">
-    {visible.map((item) => <div className="home-task-row" key={item}><span aria-hidden="true">□</span><p>{item}</p></div>)}
-    {items.length > visible.length && <small className="home-task-more">+{items.length - visible.length}개 · 연구 탭에서 전체 보기</small>}
   </div>;
 }
 

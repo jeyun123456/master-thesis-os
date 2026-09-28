@@ -85,8 +85,8 @@ export default function WallpaperPage() {
     <div className="wallpaper-visual" aria-hidden="true" />
     <aside className="wallpaper-rail">
       <div className="wallpaper-brand">
-        <span className="wallpaper-brand-mark">M</span>
-        <div><strong>Master Thesis OS</strong><small>ambient research HUD</small></div>
+        <span className="wallpaper-brand-mark">C</span>
+        <div><strong>Chocomint Lab</strong><small>Research Workspace</small></div>
       </div>
 
       <div className="wallpaper-clock" aria-live="polite">

@@ -4,10 +4,11 @@ import './research-panel.css';
 import './shortcuts-panel.css';
 import './research-os-theme.css';
 import './wallpaper/wallpaper.css';
+import './chocomint-theme.css';
 
 export const metadata = {
-  title: 'Master Thesis OS',
-  description: '한국 필요노동 석사논문 연구 작업실',
+  title: 'Chocomint Lab',
+  description: 'Research Workspace',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

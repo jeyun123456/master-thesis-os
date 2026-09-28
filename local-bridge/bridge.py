@@ -653,6 +653,25 @@ class Handler(BaseHTTPRequestHandler):
         return None
 
     def _portal_post(self, path: str, body: dict[str, object] | None = None):
+        if path == '/inbox/organize' and body is not None:
+            import portal_ai
+
+            try:
+                entries = portal_ai.organize_inbox_entries(body.get('entries'))
+            except portal_ai.PortalAIError as exc:
+                status = 400 if exc.code == 'inbox_entries_invalid' else 503
+                return self.json_out(status, {
+                    'ok': False,
+                    'source': 'ai_provider',
+                    'errorCode': exc.code,
+                    'error': str(exc),
+                })
+            return self.json_out(200, {
+                'ok': True,
+                'source': 'ai_provider',
+                'model': portal_ai.provider_model(),
+                'entries': entries,
+            })
         if path == '/portal/sync':
             if not start_portal_sync_job():
                 return self.json_out(409, {'ok': False, 'source': 'sqlite', 'error': 'sync_already_running'})
@@ -747,7 +766,7 @@ class Handler(BaseHTTPRequestHandler):
         allowed = (
             '/open', '/open-folder', '/launch', '/mail/recent', '/mail/folders',
             '/mail/message', '/mail/open', '/mail/sync', '/mail/analysis/candidate', '/mail/task',
-            '/portal/sync', '/portal/login', '/portal/open-url',
+            '/portal/sync', '/portal/login', '/portal/open-url', '/inbox/organize',
         )
         is_portal_state = path.startswith('/portal/notices/') and path.endswith('/state')
         is_portal_analyze = path.startswith('/portal/notices/') and path.endswith('/analyze')
