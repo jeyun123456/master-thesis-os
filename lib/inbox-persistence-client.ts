@@ -1,11 +1,10 @@
 import { parseInboxEntries, type InboxEntry } from './inbox';
-import { bridgeApiVersionMismatchMessage } from './bridge-status';
 
 type RecordValue = Record<string, unknown>;
 type BridgeRequestInit = RequestInit & { targetAddressSpace?: 'loopback' };
 const REQUEST_TIMEOUT_MS = 10_000;
 
-export type InboxPersistenceErrorCode = 'bridge_auth' | 'bridge_offline' | 'bridge_outdated' | 'malformed_response' | 'persistence_failed';
+export type InboxPersistenceErrorCode = 'bridge_auth' | 'bridge_offline' | 'bridge_unknown' | 'bridge_outdated' | 'malformed_response' | 'persistence_failed';
 
 export class InboxPersistenceError extends Error {
   constructor(public readonly code: InboxPersistenceErrorCode, message: string) {
@@ -67,7 +66,7 @@ async function requestInbox(
     const data = await readResponse(response);
     if (!response.ok) {
       if (response.status === 404) {
-        throw new InboxPersistenceError('bridge_outdated', bridgeApiVersionMismatchMessage(null));
+        throw new InboxPersistenceError('bridge_unknown', 'Bridge Inbox API를 찾을 수 없어. Bridge 버전을 확인하거나 Companion을 다시 시작해줘.');
       }
       const message = typeof data.error === 'string' ? data.error : '';
       const code: InboxPersistenceErrorCode = response.status === 403

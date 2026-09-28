@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import platform
 import re
@@ -32,7 +33,7 @@ MAX_INBOX_BODY_BYTES = 4 * 1024 * 1024
 MAX_INBOX_STORE_BYTES = 8 * 1024 * 1024
 MAX_INBOX_ENTRIES = 10_000
 MAX_INBOX_RAW_CHARS = 1_200
-BRIDGE_API_VERSION = 4
+BRIDGE_API_VERSION = 5
 MAIL_PATH_PREFIX = '/mail/'
 
 
@@ -80,6 +81,7 @@ INBOX_DATA_PATH = ROOT / 'shared' / 'inbox' / 'inbox.json'
 INBOX_STORE_LOCK = threading.Lock()
 PLANNER_TASKS_DATA_PATH = ROOT / 'shared' / 'planner' / 'tasks.json'
 PLANNER_TASKS_STORE_LOCK = threading.Lock()
+PROJECT_METADATA_LOCK = threading.Lock()
 
 
 def _valid_iso_timestamp(value: object) -> bool:
@@ -385,6 +387,149 @@ def _merge_and_save_planner_tasks(raw_tasks: object, single_task: object = None)
         return result
 
 
+class ProjectManifestConflict(Exception):
+    pass
+
+
+def _project_manifest_path(project_id: object) -> tuple[str, Path, Path]:
+    if not isinstance(project_id, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', project_id):
+        raise ValueError('invalid project id')
+    project_root = ROOT / 'projects' / project_id
+    if not project_root.is_dir() or project_root.is_symlink():
+        raise FileNotFoundError('project folder not found')
+    resolved_root = project_root.resolve(strict=True)
+    try:
+        resolved_root.relative_to(ROOT.resolve())
+    except ValueError as exc:
+        raise ValueError('project folder is outside the Vault') from exc
+    manifest_path = resolved_root / 'project.md'
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise FileNotFoundError('project.md not found in Vault')
+    resolved_manifest = manifest_path.resolve(strict=True)
+    try:
+        resolved_manifest.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ValueError('project.md is outside the project folder') from exc
+    return project_id, resolved_root, resolved_manifest
+
+
+def _project_manifest_snapshot(project_id: object) -> tuple[str, str, Path, bytes]:
+    normalized_id, project_root, manifest_path = _project_manifest_path(project_id)
+    raw = manifest_path.read_bytes()
+    raw.decode('utf-8')
+    return raw.decode('utf-8'), hashlib.sha256(raw).hexdigest(), manifest_path, raw
+
+
+def _update_project_frontmatter(markdown: str, key: str, value: str) -> str:
+    match = re.match(r'\A---(?P<first>\r?\n)(?P<body>.*?)(?P<last>\r?\n)---', markdown, flags=re.DOTALL)
+    if not match:
+        raise ValueError('project.md frontmatter is missing')
+    newline = '\r\n' if '\r\n' in match.group(0) else '\n'
+    lines = re.split(r'\r?\n', match.group('body'))
+    pattern = re.compile(rf'^\s*{re.escape(key)}\s*:', flags=re.IGNORECASE)
+    found = False
+    updated: list[str] = []
+    for line in lines:
+        if pattern.match(line):
+            updated.append(f'{key}: {value}')
+            found = True
+        else:
+            updated.append(line)
+    if not found:
+        id_index = next((index for index, line in enumerate(updated) if re.match(r'^\s*id\s*:', line, flags=re.IGNORECASE)), -1)
+        updated.insert(id_index + 1 if id_index >= 0 else 0, f'{key}: {value}')
+    frontmatter = f"---{match.group('first')}{newline.join(updated)}{match.group('last')}---"
+    return frontmatter + markdown[match.end():]
+
+
+def _update_project_key_file(markdown: str, project_id: str, path: str, pinned: bool) -> str:
+    if not path.startswith('projects/') or '\\' in path or '\x00' in path:
+        raise ValueError('invalid project file path')
+    parts = path.split('/')
+    if any(part in {'', '.', '..'} for part in parts):
+        raise ValueError('invalid project file path')
+    newline = '\r\n' if '\r\n' in markdown else '\n'
+    heading = re.compile(r'^##\s+주요 파일\s*$', flags=re.MULTILINE)
+    match = heading.search(markdown)
+    if not match:
+        prefix = '' if not markdown else ('' if markdown.endswith(('\n', '\r')) else newline) + newline
+        section = f'## 주요 파일{newline}- {path}{newline}' if pinned else f'## 주요 파일{newline}'
+        return f'{markdown}{prefix}{section}'
+    next_heading = re.search(r'^##\s+', markdown[match.end():], flags=re.MULTILINE)
+    section_end = match.end() + next_heading.start() if next_heading else len(markdown)
+    section = markdown[match.end():section_end]
+    lines = section.splitlines(keepends=True)
+    relative_path = path.removeprefix(f'projects/{project_id}/')
+    stored_entries = {f'- {path}', f'* {path}', f'- {relative_path}', f'* {relative_path}'}
+    entry = f'- {path}'
+    has_entry = any(line.strip() in stored_entries for line in lines)
+    if pinned and not has_entry:
+        if lines and not lines[-1].endswith(('\n', '\r')):
+            lines[-1] += newline
+        lines.append(entry + newline)
+    elif not pinned:
+        lines = [line for line in lines if line.strip() not in stored_entries]
+    return markdown[:match.end()] + ''.join(lines) + markdown[section_end:]
+
+
+def _update_project_metadata(body: dict[str, object]) -> dict[str, object]:
+    project_id = body.get('projectId')
+    operation = body.get('operation')
+    value = body.get('value')
+    expected_sha = body.get('expectedSha')
+    if not isinstance(expected_sha, str) or not re.fullmatch(r'[a-f0-9]{64}', expected_sha):
+        raise ValueError('a valid project metadata revision is required')
+    with PROJECT_METADATA_LOCK:
+        markdown, current_sha, manifest_path, original = _project_manifest_snapshot(project_id)
+        if current_sha != expected_sha:
+            raise ProjectManifestConflict('project.md changed. Reload the project before saving again.')
+        if operation == 'stage':
+            if value not in {'planning', 'collection', 'analysis', 'interpretation', 'writing', 'complete'}:
+                raise ValueError('invalid research stage')
+            updated = _update_project_frontmatter(markdown, 'stage', str(value))
+        elif operation == 'status':
+            if value not in {'writing', 'active', 'paused', 'waiting', 'blocked', 'complete'}:
+                raise ValueError('invalid project status')
+            updated = _update_project_frontmatter(markdown, 'status', str(value))
+        elif operation in {'favorite_add', 'favorite_remove'}:
+            if not isinstance(value, str):
+                raise ValueError('invalid project file path')
+            normalized_id = str(project_id)
+            if not value.startswith(f'projects/{normalized_id}/'):
+                raise ValueError('file must be inside the project folder')
+            target = ROOT.joinpath(*value.split('/'))
+            if operation == 'favorite_add' and (target.is_symlink() or not target.is_file()):
+                raise FileNotFoundError('project file not found')
+            try:
+                target.resolve(strict=operation == 'favorite_add').relative_to((ROOT / 'projects' / normalized_id).resolve(strict=True))
+            except (OSError, ValueError) as exc:
+                raise ValueError('project file is outside the project folder') from exc
+            updated = _update_project_key_file(markdown, normalized_id, value, operation == 'favorite_add')
+        else:
+            raise ValueError('invalid project metadata operation')
+        if updated == markdown:
+            return {'ok': True, 'source': 'vault', 'projectId': project_id, 'manifestText': markdown, 'manifestSha': current_sha}
+        if manifest_path.read_bytes() != original:
+            raise ProjectManifestConflict('project.md changed. Reload the project before saving again.')
+        newline = '\r\n' if b'\r\n' in original else '\n'
+        encoded = updated.replace('\r\n', '\n').replace('\n', newline).encode('utf-8')
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=manifest_path.parent, prefix='.project-', suffix='.tmp') as temporary_file:
+                temporary_path = Path(temporary_file.name)
+                temporary_file.write(encoded)
+                temporary_file.flush()
+                os.fsync(temporary_file.fileno())
+            if manifest_path.read_bytes() != original:
+                raise ProjectManifestConflict('project.md changed. Reload the project before saving again.')
+            os.replace(temporary_path, manifest_path)
+        finally:
+            if temporary_path is not None and temporary_path.exists():
+                temporary_path.unlink()
+        saved = manifest_path.read_bytes()
+        return {'ok': True, 'source': 'vault', 'projectId': project_id, 'manifestText': saved.decode('utf-8'), 'manifestSha': hashlib.sha256(saved).hexdigest()}
+
+
 def _project_workspace(project_id: object) -> dict[str, object]:
     if not isinstance(project_id, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', project_id):
         raise ValueError('invalid project id')
@@ -429,6 +574,12 @@ def _project_workspace(project_id: object) -> dict[str, object]:
                     break
                 parent = parent.rpartition('/')[0]
     recent.sort(key=lambda item: str(item['modifiedAt']), reverse=True)
+    manifest_text: str | None = None
+    manifest_sha: str | None = None
+    try:
+        manifest_text, manifest_sha, _, _ = _project_manifest_snapshot(project_id)
+    except FileNotFoundError:
+        pass
     return {
         'ok': True,
         'source': 'vault',
@@ -437,6 +588,8 @@ def _project_workspace(project_id: object) -> dict[str, object]:
         'items': sorted(files, key=lambda item: str(item['path']).casefold()),
         'folders': sorted(folders, key=str.casefold),
         'recentFiles': recent[:10],
+        'manifestText': manifest_text,
+        'manifestSha': manifest_sha,
     }
 
 
@@ -1142,6 +1295,7 @@ class Handler(BaseHTTPRequestHandler):
             state_fields = {
                 'isRead': 'is_read',
                 'isImportant': 'is_important',
+                'isInterested': 'is_interested',
                 'interest': 'interest',
                 'isArchived': 'is_archived',
             }
@@ -1175,7 +1329,7 @@ class Handler(BaseHTTPRequestHandler):
             '/open', '/open-folder', '/launch', '/mail/recent', '/mail/folders',
             '/mail/message', '/mail/open', '/mail/sync', '/mail/analysis/candidate', '/mail/task',
             '/portal/sync', '/portal/login', '/portal/open-url', '/inbox', '/inbox/organize', '/planner/tasks',
-            '/projects/workspace',
+            '/projects/workspace', '/projects/update',
         )
         is_portal_state = path.startswith('/portal/notices/') and path.endswith('/state')
         is_portal_analyze = path.startswith('/portal/notices/') and path.endswith('/analyze')
@@ -1200,6 +1354,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'tasks': tasks})
             if path == '/projects/workspace':
                 return self.json_out(200, _project_workspace(body.get('projectId')))
+            if path == '/projects/update':
+                return self.json_out(200, _update_project_metadata(body))
             portal_response = self._portal_post(path, body)
             if portal_response is not None:
                 return portal_response
@@ -1233,6 +1389,8 @@ class Handler(BaseHTTPRequestHandler):
                 })
             if path == '/projects/workspace':
                 return self.json_out(404, {'ok': False, 'source': 'vault', 'error': 'project workspace item not found'})
+            if path == '/projects/update':
+                return self.json_out(404, {'ok': False, 'source': 'vault', 'error': 'project metadata not found'})
             if path.startswith(MAIL_PATH_PREFIX):
                 return self.json_out(503, {'ok': False, 'source': 'thunderbird', 'error': 'profile_not_found'})
             return self.json_out(404, {'error': 'local file not found', 'detail': str(exc)})
@@ -1242,7 +1400,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_out(503, {'ok': False, 'source': 'sqlite', 'error': 'database_unavailable'})
         except portal_db.PortalDatabaseError:
             return self.json_out(503, {'ok': False, 'source': 'sqlite', 'error': 'database_error'})
-        except ValueError:
+        except ProjectManifestConflict as exc:
+            return self.json_out(409, {'ok': False, 'source': 'vault', 'error': str(exc)})
+        except ValueError as exc:
             if path == '/inbox':
                 return self.json_out(400, {
                     'ok': False,
@@ -1257,6 +1417,8 @@ class Handler(BaseHTTPRequestHandler):
                     'errorCode': 'invalid_planner_data',
                     'error': 'Planner 할 일 데이터 형식을 확인해 주세요. 기존 파일은 변경하지 않았습니다.',
                 })
+            if path == '/projects/update':
+                return self.json_out(400, {'ok': False, 'source': 'vault', 'error': str(exc)})
             if path.startswith(MAIL_PATH_PREFIX):
                 return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'request_failed'})
             return self.json_out(400, {'error': 'request failed'})

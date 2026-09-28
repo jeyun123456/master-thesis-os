@@ -46,17 +46,21 @@ function calendarWriteErrorMessage(errorCode: string): string {
 export async function GET(req: NextRequest) {
   const requestedMonth = req.nextUrl.searchParams.get('month') || '';
   const requestedDays = Number(req.nextUrl.searchParams.get('days') || 14);
+  const requestedStartDate = req.nextUrl.searchParams.get('startDate') || '';
   const monthBounds = requestedMonth ? calendarMonthBounds(requestedMonth) : null;
   if (requestedMonth && !monthBounds) {
     return NextResponse.json({ error: 'month must use YYYY-MM format' }, { status: 400 });
   }
+  if (requestedStartDate && calendarRange(1, new Date(), requestedStartDate).startDate !== requestedStartDate) {
+    return NextResponse.json({ error: 'startDate must use YYYY-MM-DD format' }, { status: 400 });
+  }
   const range = monthBounds
     ? calendarRange(monthBounds.days, new Date(), monthBounds.startDate)
-    : calendarRange(requestedDays);
+    : calendarRange(requestedDays, new Date(), requestedStartDate || undefined);
   const base = { configured: calendarConfigured(), calendarId: configuredCalendarId(), timezone: CALENDAR_TIMEZONE, range };
   if (!base.configured) return NextResponse.json({ ...base, state: 'unconfigured', items: [] });
   try {
-    const items = await getCalendarEvents(range.days, monthBounds ? { startDate: monthBounds.startDate } : {});
+    const items = await getCalendarEvents(range.days, { startDate: range.startDate });
     return NextResponse.json({ ...base, state: items.length ? 'ready' : 'empty', items });
   } catch (error) {
     const errorCode = error instanceof CalendarIntegrationError ? error.code : 'network_error';

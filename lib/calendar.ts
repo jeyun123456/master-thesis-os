@@ -1,4 +1,5 @@
 import { createHash, createSign } from 'node:crypto';
+export { calendarWeekDates } from './calendar-dates';
 
 export const CALENDAR_TIMEZONE = 'Asia/Seoul';
 export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar';
@@ -147,12 +148,14 @@ export function normalizeCalendarEvent(raw: GoogleEvent, calendarId: string): Ca
 }
 
 function seoulDate(now: Date): string {
-  return new Intl.DateTimeFormat('en-CA', {
+  const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: CALENDAR_TIMEZONE,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(now);
+  }).formatToParts(now);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
 }
 
 export function calendarRange(days = DEFAULT_DAYS, now = new Date(), requestedStartDate?: string) {

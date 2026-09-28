@@ -28,6 +28,7 @@ export interface PortalNoticeDepartment {
 export interface PortalNoticeStatePatch {
   isRead?: boolean;
   isImportant?: boolean;
+  isInterested?: boolean;
   interest?: 0 | 1 | 2 | 3;
   isArchived?: boolean;
 }
@@ -73,6 +74,7 @@ export interface PortalNoticeSummary {
   changeCount: number;
   isRead: boolean;
   isImportant: boolean;
+  isInterested: boolean;
   interest: 0 | 1 | 2 | 3;
   aiSummary: string;
   isArchived: boolean;
@@ -314,6 +316,9 @@ function normalizeNotice(raw: unknown, includeBody: boolean): PortalNoticeSummar
     interest: value.interest === 0 || value.interest === 1 || value.interest === 2 || value.interest === 3
       ? value.interest
       : booleanValue(value.isImportant) ? 3 : 1,
+    isInterested: typeof value.isInterested === 'boolean'
+      ? value.isInterested
+      : value.interest === 2 || value.interest === 3 || booleanValue(value.isImportant),
     aiSummary: isRecord(value.ai) ? textValue(value.ai.summary) : '',
     isArchived: booleanValue(value.isArchived),
     firstSeenAt: textValue(value.firstSeenAt),

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { dashboardApi, type CalendarApiResponse } from '@/lib/client-api';
+import { calendarWeekDates } from '@/lib/calendar-dates';
 import type { CalendarEvent } from '@/lib/calendar';
 import { addCalendarEvent } from '@/lib/calendar-client';
 import {
@@ -41,7 +42,7 @@ export function PlannerPanel() {
     setCalendarLoading(true);
     setCalendarError('');
     try {
-      const next = await dashboardApi.calendarMonth(month);
+      const next = await dashboardApi.calendarRange(42, calendarWeekDates(`${month}-01`)[0] || `${month}-01`);
       setCalendar(next);
       if (next.error) setCalendarError(next.error);
     } catch (error) {
@@ -100,7 +101,7 @@ export function PlannerPanel() {
     .map((candidate) => ({ item, candidate }))), [planning?.items]);
   const eventsByDate = useMemo(() => groupByDate(calendar?.items || []), [calendar?.items]);
   const monthCells = useMemo(() => buildMonthCells(month), [month]);
-  const weekDays = useMemo(() => mondayWeek(selectedDate), [selectedDate]);
+  const weekDays = useMemo(() => calendarWeekDates(selectedDate), [selectedDate]);
   const selectedEvents = eventsByDate.get(selectedDate) || [];
   const weekEvents = (calendar?.items || []).filter((event) => weekDays.some((day) => eventDate(event) === day));
 
@@ -265,7 +266,7 @@ function CalendarEventRow({ event }: { event: CalendarEvent }) {
   return <div className="planner-calendar-event"><time>{event.allDay ? '종일' : formatEventTime(event)}</time><b>{event.title}</b><small>{event.category}</small></div>;
 }
 
-function todayDate() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
+function todayDate() { return seoulDateParts(new Date()); }
 function currentMonth() { return todayDate().slice(0, 7); }
 function monthLabel(month: string) { const [year, number] = month.split('-').map(Number); return `${year}년 ${number}월`; }
 function shiftMonth(month: string, amount: number) { const [year, number] = month.split('-').map(Number); return new Date(Date.UTC(year, number - 1 + amount, 1)).toISOString().slice(0, 7); }
@@ -281,15 +282,10 @@ function buildMonthCells(month: string) {
     return { date, inMonth: date.startsWith(month) };
   });
 }
-function mondayWeek(dateValue: string) {
-  const date = new Date(`${dateValue}T12:00:00+09:00`);
-  const day = date.getDay();
-  date.setDate(date.getDate() - ((day + 6) % 7));
-  return Array.from({ length: 7 }, (_, index) => {
-    const current = new Date(date);
-    current.setDate(date.getDate() + index);
-    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(current);
-  });
+function seoulDateParts(value: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(value);
+  const dateParts = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
 }
 function formatDateLabel(value: string) { const date = new Date(`${value}T00:00:00+09:00`); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', weekday: 'short', year: 'numeric', month: 'long', day: 'numeric' }).format(date); }
 function weekdayLabel(value: string) { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', weekday: 'short' }).format(new Date(`${value}T00:00:00+09:00`)); }

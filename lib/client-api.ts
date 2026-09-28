@@ -57,10 +57,24 @@ async function calendarMonthRequest(month: string): Promise<CalendarApiResponse>
   return data;
 }
 
+async function calendarRangeRequest(days: number, startDate: string): Promise<CalendarApiResponse> {
+  if (!Number.isInteger(days) || days < 1 || days > 365 || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+    throw new Error('Calendar range must use a valid day count and YYYY-MM-DD start date');
+  }
+  const query = new URLSearchParams({ days: String(days), startDate });
+  const response = await fetch(`/api/calendar/events?${query}`, { cache: 'no-store' });
+  const data = await response.json() as CalendarApiResponse;
+  if (!response.ok || !data || !Array.isArray(data.items) || !data.state) {
+    throw new Error(data && typeof data.error === 'string' ? data.error : 'Calendar API returned an invalid response');
+  }
+  return data;
+}
+
 export const dashboardApi = {
   tree: () => request<RepositoryApiResponse>('/api/github/tree'),
   calendar: calendarRequest,
   calendarMonth: calendarMonthRequest,
+  calendarRange: calendarRangeRequest,
   results: (resultsPath?: string) => request<DashboardBundle>(resultsPath ? `/api/results?path=${encodeURIComponent(resultsPath)}` : '/api/results'),
   commits: () => request<ApiEnvelope<GitHubCommitSummary[]>>('/api/github/commits'),
   researchStatus: () => request<ResearchStatusApiResponse>('/api/research/status'),

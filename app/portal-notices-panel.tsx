@@ -60,7 +60,7 @@ export function filterPortalNotices(
     if (item.type !== type) return false;
     if (department === '__unknown__' ? item.department.trim() !== '' : department && item.department !== department) return false;
     if (viewFilter === 'unread' && item.isRead) return false;
-    if (viewFilter === 'interested' && item.interest < 2) return false;
+    if (viewFilter === 'interested' && !item.isInterested) return false;
     if (viewFilter === 'important' && item.interest !== 3 && !item.isImportant) return false;
     if (viewFilter === 'archived' && !item.isArchived) return false;
     if (viewFilter === 'deadline' && !item.deadline.trim() && !item.expiresAt.trim()) return false;
@@ -80,10 +80,6 @@ export function filterPortalNotices(
     }
     return true;
   });
-}
-
-function portalInterestLabel(interest: PortalNoticeSummary['interest']): string {
-  return interest === 3 ? '중요' : interest === 2 ? '관심' : interest === 1 ? '보통' : '관심 없음';
 }
 
 function portalNoticeDateValue(value: string): number | null {
@@ -225,6 +221,8 @@ export function PortalNoticesPanel() {
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [sort, setSort] = useState<PortalNoticeSort>('published_desc');
+  const [pageSize, setPageSize] = useState<10 | 20 | 50>(10);
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<PortalNotice | null>(null);
   const [loading, setLoading] = useState(true);
@@ -265,6 +263,14 @@ export function PortalNoticesPanel() {
     () => sortPortalNotices(filterPortalNotices(items, tab, viewFilter, departmentFilter, searchQuery), sort),
     [items, tab, viewFilter, departmentFilter, searchQuery, sort],
   );
+  const pageCount = Math.max(1, Math.ceil(visibleItems.length / pageSize));
+  const pageItems = useMemo(
+    () => visibleItems.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [currentPage, pageSize, visibleItems],
+  );
+
+  useEffect(() => { setCurrentPage(1); }, [tab, viewFilter, departmentFilter, searchQuery, sort, pageSize]);
+  useEffect(() => { setCurrentPage((page) => Math.min(page, pageCount)); }, [pageCount]);
 
   const visibleUnreadCount = useMemo(
     () => visibleItems.filter((item) => !item.isRead).length,
@@ -430,12 +436,12 @@ export function PortalNoticesPanel() {
     }
   }
 
-  async function changeNoticeInterest(noticeId: string, interest: 0 | 1 | 2 | 3) {
+  async function changeNoticeInterest(noticeId: string, isInterested: boolean) {
     if (stateAction) return;
     setStateAction(noticeId);
     setError(null);
     try {
-      const updated = await updatePortalNoticeState(noticeId, { interest }, readPortalBridgeToken());
+      const updated = await updatePortalNoticeState(noticeId, { isInterested }, readPortalBridgeToken());
       setItems((current) => current.map((item) => item.noticeId === noticeId ? { ...item, ...updated } : item));
       setDetail((current) => current?.noticeId === noticeId ? updated : current);
     } catch (nextError) {
@@ -492,7 +498,7 @@ export function PortalNoticesPanel() {
           <div className="tabs" role="tablist" aria-label="학교 공지 유형">
             {(['ALL', 'DM'] as PortalNoticeType[]).map((type) => <button key={type} className={tab === type ? 'active' : ''} type="button" role="tab" aria-selected={tab === type} onClick={() => setTab(type)}>{type} <span>{status.counts[type]}</span></button>)}
           </div>
-          <small>{loading ? '불러오는 중…' : `${visibleItems.length}건 표시 · 미읽음 ${visibleUnreadCount}건`}</small>
+          <small>{loading ? '불러오는 중…' : `${visibleItems.length}건 검색 결과 · ${pageItems.length}건 표시 · 미읽음 ${visibleUnreadCount}건`}</small>
         </div>
         <div className="portal-notice-filters">
           <label className="portal-notice-department-filter">발신자/담당부서
@@ -516,19 +522,29 @@ export function PortalNoticesPanel() {
             </label>
           </div>
           <div className="portal-notice-view-filters" role="tablist" aria-label="학교 공지 상태">
-            {([['all', '전체'], ['interested', '관심 공지'], ['important', '중요']] as [PortalNoticeViewFilter, string][]).map(([filter, label]) => <button key={filter} className={viewFilter === filter ? 'active' : ''} type="button" role="tab" aria-selected={viewFilter === filter} onClick={() => setViewFilter(filter)}>{label}</button>)}
+            {([['all', '전체'], ['interested', '관심 공지']] as [PortalNoticeViewFilter, string][]).map(([filter, label]) => <button key={filter} className={viewFilter === filter ? 'active' : ''} type="button" role="tab" aria-selected={viewFilter === filter} onClick={() => setViewFilter(filter)}>{label}</button>)}
           </div>
+          <label className="portal-notice-page-size">페이지당
+            <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value) as 10 | 20 | 50)}>
+              <option value={10}>10</option><option value={20}>20</option><option value={50}>50</option>
+            </select>
+          </label>
         </div>
         {loading ? <div className="empty compact-empty">저장된 학교 공지를 불러오는 중이야.</div> : visibleItems.length ? <div className="portal-notice-list">
-          {visibleItems.map((notice) => <div className="portal-notice-row-wrap" key={notice.noticeId}>
+          {pageItems.map((notice) => <div className="portal-notice-row-wrap" key={notice.noticeId}>
             <button className={`portal-notice-row ${selectedId === notice.noticeId ? 'selected' : ''} ${!notice.isRead ? 'unread' : ''} ${notice.isArchived ? 'archived' : ''}`} type="button" onClick={() => void openDetail(notice)} aria-expanded={selectedId === notice.noticeId}>
               <span className={`portal-notice-type ${notice.type === 'DM' ? 'dm' : ''}`}>{notice.type}</span>
               <span className="portal-notice-main"><span className="portal-notice-title-line"><b title={notice.title || '(제목 없음)'}>{notice.title || '(제목 없음)'}</b>{!notice.isRead && <i className="portal-notice-unread-dot" aria-label="읽지 않음" />}</span><small>{notice.department || '담당부서 미상'} · 게시 {formatPortalNoticeDate(notice.publishedAt)}</small>{notice.aiSummary && <small className="portal-notice-ai-summary">AI · {notice.aiSummary}</small>}</span>
-              <span className="portal-notice-extra">{notice.firstSeenAt === status.lastSyncAt && <em className="notice-new">신규</em>}{noticeUpdatedInSync(notice, status) && <em className="notice-updated">수정됨</em>}{notice.interest > 1 && <em className={`notice-interest interest-${notice.interest}`}>{portalInterestLabel(notice.interest)}</em>}{notice.isArchived && <small>보관</small>}</span>
+              <span className="portal-notice-extra">{notice.firstSeenAt === status.lastSyncAt && <em className="notice-new">신규</em>}{noticeUpdatedInSync(notice, status) && <em className="notice-updated">수정됨</em>}{notice.isInterested && <em className="notice-interest">관심</em>}{notice.isArchived && <small>보관</small>}</span>
             </button>
-            <label className="portal-notice-interest-picker"><span className="sr-only">{notice.title} 관심도</span><select value={notice.interest} disabled={stateAction === notice.noticeId} onClick={(event) => event.stopPropagation()} onChange={(event) => void changeNoticeInterest(notice.noticeId, Number(event.target.value) as 0 | 1 | 2 | 3)}><option value={0}>관심 없음</option><option value={1}>보통</option><option value={2}>관심</option><option value={3}>중요</option></select></label>
+            <button className={`portal-notice-interest-toggle${notice.isInterested ? ' active' : ''}`} type="button" title={notice.isInterested ? '관심 공지에서 해제' : '관심 공지로 저장'} aria-label={`${notice.title} ${notice.isInterested ? '관심 해제' : '관심 추가'}`} aria-pressed={notice.isInterested} disabled={stateAction === notice.noticeId} onClick={() => void changeNoticeInterest(notice.noticeId, !notice.isInterested)}>{notice.isInterested ? '★' : '☆'}</button>
           </div>)}
         </div> : <div className="empty compact-empty">{searchQuery ? '검색 조건에 맞는 공지가 없어.' : `저장된 ${tab} 공지가 없어. 상단의 공지 동기화를 눌러줘.`}</div>}
+        {!loading && visibleItems.length > 0 && <div className="portal-notice-pagination">
+          <button className="mini" type="button" disabled={currentPage <= 1} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}>← 이전</button>
+          <span>{currentPage} / {pageCount}</span>
+          <button className="mini" type="button" disabled={currentPage >= pageCount} onClick={() => setCurrentPage((page) => Math.min(pageCount, page + 1))}>다음 →</button>
+        </div>}
       </div>
 
       {(selectedId || detailLoading) && <div className="portal-notice-drawer-layer">
@@ -549,7 +565,7 @@ export function PortalNoticesPanel() {
           </dl>
           <div className="portal-notice-detail-actions">
             <button className="mini" type="button" disabled={stateAction !== null} onClick={() => void changeNoticeState({ isRead: !detail.isRead })}>{detail.isRead ? '읽지 않음으로 표시' : '읽음 처리'}</button>
-            <label className="portal-notice-detail-interest">관심도<select value={detail.interest} disabled={stateAction !== null} onChange={(event) => void changeNoticeInterest(detail.noticeId, Number(event.target.value) as 0 | 1 | 2 | 3)}><option value={0}>관심 없음</option><option value={1}>보통</option><option value={2}>관심</option><option value={3}>중요</option></select></label>
+            <button className={`mini portal-notice-detail-interest-toggle${detail.isInterested ? ' active' : ''}`} type="button" aria-pressed={detail.isInterested} disabled={stateAction !== null} onClick={() => void changeNoticeInterest(detail.noticeId, !detail.isInterested)}>{detail.isInterested ? '★ 관심 중' : '☆ 관심 추가'}</button>
             <button className="mini" type="button" disabled={stateAction !== null} onClick={() => void changeNoticeState({ isArchived: !detail.isArchived })}>{detail.isArchived ? '보관 해제' : '보관'}</button>
             <button className="mini portal-notice-source-button" type="button" disabled={externalAction !== null} onClick={() => void openNoticeUrl(detail.sourceUrl, 'source')}>
               {externalAction === 'source' ? '기본 브라우저 여는 중…' : '원문 열기 ↗'}

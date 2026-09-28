@@ -42,10 +42,10 @@ describe('Inbox Vault persistence client', () => {
     expect(JSON.parse(String(init?.body))).toMatchObject({ token: 'bridge-secret', entries: [entry] });
   });
 
-  it('explains that a 404 means the running bridge is outdated', async () => {
+  it('explains that a 404 leaves the Bridge API version unknown', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(404, { error: 'not found' }));
 
-    await expect(loadPersistedInbox('bridge-secret', fetchImpl)).rejects.toThrow('Local Bridge API 버전');
+    await expect(loadPersistedInbox('bridge-secret', fetchImpl)).rejects.toMatchObject({ code: 'bridge_unknown' });
   });
 
   it('keeps bridge authentication failures distinct from persistence failures', async () => {

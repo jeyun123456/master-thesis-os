@@ -146,7 +146,7 @@ export function SchoolMailRow({
         {analysisExpanded ? 'AI 분석 닫기' : analysisState === 'queued' || analysisState === 'processing' ? 'AI 분석 대기…' : analysisState === 'failed' ? 'AI 다시 시도' : 'AI 분석 보기'}
       </button>
     </div></div>
-    {analysisSummary && <p className="school-mail-ai-summary"><b>AI 요약</b>{analysisSummary}</p>}
+    {analysisSummary && <p className="school-mail-ai-summary"><b>AI 요약</b><span>{analysisSummary}</span></p>}
     {analysisExpanded && !analysisAvailable && <div className="note">저장된 AI 분석이 없어. 메일 동기화 후 분석된 요약이 표시돼.</div>}
     {analysisExpanded && analysisDetails}
   </div>;

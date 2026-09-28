@@ -5,6 +5,7 @@ import {
   CalendarIntegrationError,
   calendarConfigured,
   calendarRange,
+  calendarWeekDates,
   classifyCalendarEvent,
   clearCalendarCacheForTests,
   calendarEventIdForCandidate,
@@ -126,6 +127,15 @@ describe('calendar normalization and ranges', () => {
   it('uses Seoul midnight and clamps the range', () => {
     expect(calendarRange(14, baseNow)).toEqual({ days: 14, startDate: '2026-09-08', timeMin: '2026-09-07T15:00:00.000Z', timeMax: '2026-09-21T15:00:00.000Z' });
     expect(calendarRange(999, baseNow).days).toBe(365);
+  });
+
+  it('uses the selected date to derive a Monday-first week across month boundaries', () => {
+    expect(calendarWeekDates('2026-09-28')).toEqual([
+      '2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04',
+    ]);
+    expect(calendarWeekDates('2026-09-01')).toEqual([
+      '2026-08-31', '2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05', '2026-09-06',
+    ]);
   });
 });
 

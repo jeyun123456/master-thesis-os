@@ -1,4 +1,3 @@
-import { bridgeApiVersionMismatchMessage } from './bridge-status';
 import { readBridgeToken } from './inbox-persistence-client';
 import { parsePlannerTasks, type PlannerTask } from './planner-tasks';
 
@@ -30,7 +29,7 @@ async function request(method: 'GET' | 'POST', tasks?: PlannerTask[], task?: Pla
     const response = await fetchImpl(`${bridgeUrl()}/planner/tasks`, requestInit(method, token, tasks, task, controller.signal));
     const data = await response.json().catch(() => ({})) as Record<string, unknown>;
     if (!response.ok) {
-      if (response.status === 404) throw new Error(bridgeApiVersionMismatchMessage(null));
+      if (response.status === 404) throw new Error('Planner 작업 API를 찾을 수 없어. Bridge 버전을 확인하거나 Companion을 다시 시작해줘.');
       throw new Error(typeof data.error === 'string' ? data.error : 'Planner 할 일을 저장소에서 읽지 못했어.');
     }
     if (data.ok !== true || data.source !== 'vault' || data.version !== 1 || !Array.isArray(data.tasks)) {

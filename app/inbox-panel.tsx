@@ -181,7 +181,7 @@ export function InboxPanel({ entries, loaded, busy, storageStatus, storageError,
       {!entries.length ? <div className="inbox-empty">아직 저장된 항목이 없습니다.</div> : visibleEntries.length ? <div className="inbox-entry-list">{visibleEntries.map((entry) => <article className={entry.processed ? 'inbox-entry is-processed' : 'inbox-entry'} key={entry.id}>
         <div className="inbox-entry-meta">
           <time dateTime={entry.createdAt}>{formatInboxDate(entry.createdAt)}</time>
-          {entry.ai ? <span className="inbox-category-tag">{categoryLabels[entry.ai.category]}</span> : <span className="inbox-pending-tag">미정리</span>}
+          {!entry.ai && <span className="inbox-pending-tag">미정리</span>}
         </div>
         <p className="inbox-entry-raw">{entry.rawText}</p>
         {entry.ai && <div className="inbox-entry-ai">
@@ -191,6 +191,7 @@ export function InboxPanel({ entries, loaded, busy, storageStatus, storageError,
           {entry.ai.dueDate && <div><b>날짜</b><time dateTime={entry.ai.dueDate}>{entry.ai.dueDate}</time></div>}
           {entry.ai.relatedEntryIds.length > 0 && <div className="inbox-entry-related"><b>유사 항목</b><span>{entry.ai.relatedEntryIds.map((id) => entriesById.get(id)?.rawText).filter(Boolean).join(' · ')}</span></div>}
         </div>}
+        {entry.ai && <div className="inbox-entry-category"><span className="inbox-category-tag">{categoryLabels[entry.ai.category]}</span></div>}
         {entry.ai?.category === 'todo' && <ProjectTaskRoute
           entry={entry}
           projects={projects}

@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -376,6 +377,7 @@ class PortalDatabaseTests(unittest.TestCase):
         initial = portal_db.get_notice('I-0000000001', self.path)
         self.assertFalse(initial['isRead'])
         self.assertFalse(initial['isImportant'])
+        self.assertFalse(initial['isInterested'])
         self.assertFalse(initial['isArchived'])
         self.assertEqual(initial['firstSeenAt'], self.synced_at)
         self.assertIsNone(initial['readAt'])
@@ -388,6 +390,7 @@ class PortalDatabaseTests(unittest.TestCase):
         )
         self.assertTrue(updated['isRead'])
         self.assertTrue(updated['isImportant'])
+        self.assertTrue(updated['isInterested'])
         self.assertIsNotNone(updated['readAt'])
         self.assertFalse(updated['isArchived'])
 
@@ -408,6 +411,37 @@ class PortalDatabaseTests(unittest.TestCase):
         department_map = {item['value']: item for item in departments}
         self.assertEqual(department_map['새 담당부서']['count'], 1)
         self.assertEqual(department_map['教学推進課']['counts']['DM'], 1)
+
+    def test_boolean_interest_migrates_legacy_values_and_updates_compatibility_fields(self):
+        legacy_path = Path(self.temp.name) / 'legacy-portal.db'
+        legacy_schema = portal_db.SCHEMA.replace(
+            '    is_interested INTEGER NOT NULL DEFAULT 0 CHECK(is_interested IN (0, 1)),\n',
+            '',
+        )
+        with sqlite3.connect(legacy_path) as connection:
+            connection.executescript(legacy_schema)
+            for suffix, interest, important in (('0', 0, 0), ('2', 2, 0), ('3', 3, 1)):
+                notice_id = f'I-LEGACY-{suffix}'
+                connection.execute(
+                    'INSERT INTO portal_notices(notice_id, type, title, synced_at) VALUES (?, ?, ?, ?)',
+                    (notice_id, 'ALL', notice_id, self.synced_at),
+                )
+                connection.execute(
+                    'INSERT INTO portal_notice_user_state(notice_id, is_important, interest, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+                    (notice_id, important, interest, self.synced_at, self.synced_at),
+                )
+        connection.close()
+
+        self.assertFalse(portal_db.get_notice('I-LEGACY-0', legacy_path)['isInterested'])
+        migrated_interest = portal_db.get_notice('I-LEGACY-2', legacy_path)
+        self.assertTrue(migrated_interest['isInterested'])
+        updated = portal_db.update_notice_state('I-LEGACY-2', is_interested=False, path=legacy_path)
+        self.assertFalse(updated['isInterested'])
+        self.assertFalse(updated['isImportant'])
+        self.assertEqual(updated['interest'], 1)
+        preserved_important = portal_db.get_notice('I-LEGACY-3', legacy_path)
+        self.assertTrue(preserved_important['isInterested'])
+        self.assertTrue(preserved_important['isImportant'])
 
     def test_notice_ai_and_calendar_candidate_state_survives_reanalysis(self):
         portal_db.upsert_notice_summary(self.summary, self.synced_at, self.path)

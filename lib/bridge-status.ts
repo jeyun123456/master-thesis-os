@@ -1,21 +1,21 @@
 export const BRIDGE_OFFLINE_MESSAGE = 'Bridge offline: 로컬 브리지가 실행 중인지 확인해줘.';
 export const BRIDGE_TIMEOUT_MESSAGE = 'Bridge timeout: 로컬 브리지가 5초 안에 응답하지 않았어.';
-export const SUPPORTED_LOCAL_BRIDGE_API_VERSION = 4;
+export const SUPPORTED_LOCAL_BRIDGE_API_VERSION = 5;
 
 export type BridgeApiVersionCheck =
-  | { state: 'current'; apiVersion: number }
-  | { state: 'mismatch'; apiVersion: number | null }
-  | { state: 'unavailable' };
+  | { state: 'compatible'; apiVersion: number }
+  | { state: 'outdated'; apiVersion: number }
+  | { state: 'unknown'; apiVersion: null }
+  | { state: 'offline' };
 
 type BridgeRequestInit = RequestInit & { targetAddressSpace?: 'loopback' };
 
-export function bridgeApiVersionMismatchMessage(apiVersion: number | null): string {
-  const reported = apiVersion === null ? '확인할 수 없음' : `v${apiVersion}`;
-  return `Local Bridge API 버전이 앱(v${SUPPORTED_LOCAL_BRIDGE_API_VERSION})과 맞지 않습니다. 현재 Bridge: ${reported}. Companion/Local Bridge를 업데이트한 뒤 다시 시작해 주세요.`;
+export function bridgeApiVersionMismatchMessage(apiVersion: number): string {
+  return `Companion Bridge 업데이트 필요: 현재 v${apiVersion}, 앱은 v${SUPPORTED_LOCAL_BRIDGE_API_VERSION} 이상을 요구해. Companion을 업데이트한 뒤 다시 시작해줘.`;
 }
 
 export class BridgeApiVersionMismatchError extends Error {
-  constructor(public readonly apiVersion: number | null) {
+  constructor(public readonly apiVersion: number) {
     super(bridgeApiVersionMismatchMessage(apiVersion));
     this.name = 'BridgeApiVersionMismatchError';
   }
@@ -32,18 +32,19 @@ export async function checkLocalBridgeApiVersion(fetchImpl: typeof fetch = fetch
 
   try {
     const response = await fetchImpl(`${base}/health`, init);
-    if (response.status === 404) return { state: 'mismatch', apiVersion: null };
-    if (!response.ok) return { state: 'unavailable' };
-    const data: unknown = await response.json();
+    if (!response.ok) return { state: 'unknown', apiVersion: null };
+    let data: unknown;
+    try { data = await response.json(); } catch { return { state: 'unknown', apiVersion: null }; }
     const apiVersion = typeof data === 'object' && data !== null && 'apiVersion' in data
       && Number.isInteger(data.apiVersion)
       ? data.apiVersion as number
       : null;
-    return apiVersion === SUPPORTED_LOCAL_BRIDGE_API_VERSION
-      ? { state: 'current', apiVersion }
-      : { state: 'mismatch', apiVersion };
+    if (apiVersion === null) return { state: 'unknown', apiVersion: null };
+    return apiVersion < SUPPORTED_LOCAL_BRIDGE_API_VERSION
+      ? { state: 'outdated', apiVersion }
+      : { state: 'compatible', apiVersion };
   } catch {
-    return { state: 'unavailable' };
+    return { state: 'offline' };
   } finally {
     clearTimeout(timeoutId);
   }

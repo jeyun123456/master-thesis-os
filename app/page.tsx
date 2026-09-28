@@ -156,6 +156,8 @@ export default function Page() {
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [researchStatus, setResearchStatus] = useState<ResearchStatus | null>(null);
   const [projects, setProjects] = useState<ResearchProject[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectsError, setProjectsError] = useState('');
   const [commits, setCommits] = useState<GitHubCommitSummary[]>([]);
   const [repositorySource, setRepositorySource] = useState<RepositorySource>('none');
   const [shortcutItems, setShortcutItems] = useState<Shortcut[]>(shortcuts);
@@ -164,6 +166,7 @@ export default function Page() {
   const [shortcutMissing, setShortcutMissing] = useState(false);
   const [shortcutWritable, setShortcutWritable] = useState(false);
   const [researchProjectId, setResearchProjectId] = useState<string | null>(null);
+  const [expandedProjectFolders, setExpandedProjectFolders] = useState<Set<string>>(() => new Set());
   const [inboxEntries, setInboxEntries] = useState<InboxEntry[]>([]);
   const [inboxLoaded, setInboxLoaded] = useState(false);
   const [inboxStorageStatus, setInboxStorageStatus] = useState<InboxStorageStatus>('loading');
@@ -196,7 +199,7 @@ export default function Page() {
     }
     void checkLocalBridgeApiVersion().then((result) => {
       if (cancelled) return;
-      setBridgeApiWarning(result.state === 'mismatch' ? bridgeApiVersionMismatchMessage(result.apiVersion) : '');
+      setBridgeApiWarning(result.state === 'outdated' ? bridgeApiVersionMismatchMessage(result.apiVersion) : '');
     });
     return () => { cancelled = true; };
   }, []);
@@ -240,6 +243,21 @@ export default function Page() {
   }, [inboxLoadAttempt]);
 
   useEffect(() => {
+    let cancelled = false;
+    void dashboardApi.projects().then((result) => {
+      if (cancelled) return;
+      setProjects(Array.isArray(result.items) ? result.items : []);
+      setProjectsError(result.error || '');
+    }).catch((error) => {
+      if (cancelled) return;
+      setProjectsError(errorMessage(error, '연구 프로젝트를 불러오지 못했습니다.'));
+    }).finally(() => {
+      if (!cancelled) setProjectsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     (async () => {
       const results = await Promise.allSettled([
         dashboardApi.tree(),
@@ -247,11 +265,10 @@ export default function Page() {
         dashboardApi.results(),
         dashboardApi.commits(),
         dashboardApi.researchStatus(),
-        dashboardApi.projects(),
         dashboardApi.shortcuts(),
       ]);
       const nextErrors: string[] = [];
-      const [treeResult, calendarResult, dashboardResult, commitResult, statusResult, projectResult, shortcutResult] = results;
+      const [treeResult, calendarResult, dashboardResult, commitResult, statusResult, shortcutResult] = results;
 
       if (treeResult.status === 'fulfilled') {
         setRepositorySource(treeResult.value.source || (treeResult.value.configured ? 'github' : 'none'));
@@ -266,11 +283,6 @@ export default function Page() {
       if (commitResult.status === 'fulfilled') setCommits(commitResult.value.items || []);
       if (statusResult.status === 'fulfilled') setResearchStatus(statusResult.value.status);
       else nextErrors.push(errorMessage(statusResult.reason, '현재 연구 상태를 불러오지 못했습니다.'));
-
-      if (projectResult.status === 'fulfilled') {
-        setProjects(projectResult.value.items || []);
-        if (projectResult.value.error) nextErrors.push(projectResult.value.error);
-      } else nextErrors.push(errorMessage(projectResult.reason, '연구 프로젝트를 불러오지 못했습니다.'));
 
       if (shortcutResult.status === 'fulfilled') {
         const loaded = shortcutResult.value.source === 'fallback' ? loadShortcutState(shortcutResult.value.items) : shortcutResult.value.items;
@@ -527,8 +539,16 @@ export default function Page() {
 
         {page === 'research' && <section className="page active"><ResearchPanel
           projects={projects}
+          projectsLoading={projectsLoading}
+          projectsError={projectsError}
           tree={tree}
           selectedProjectId={researchProjectId || undefined}
+          expandedFolders={expandedProjectFolders}
+          onToggleProjectFolder={(path) => setExpandedProjectFolders((current) => {
+            const next = new Set(current);
+            if (next.has(path)) next.delete(path); else next.add(path);
+            return next;
+          })}
           onProjectSelected={setResearchProjectId}
           onProjectStatusChange={(updated) => setProjects((current) => current.map((project) => project.id === updated.id ? updated : project))}
           onOpen={openLocal}

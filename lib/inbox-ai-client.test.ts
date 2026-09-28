@@ -11,14 +11,14 @@ describe('Inbox AI bridge client', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('posts to the Local Bridge organize route and reports a stale bridge clearly on 404', async () => {
+  it('reports a missing Local Bridge organize route without claiming its version is outdated', async () => {
     const entry = createInboxEntry('연구 아이디어', new Date('2026-09-28T08:00:00.000Z'), 'ai-1');
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(
       JSON.stringify({ error: 'not found' }),
       { status: 404, headers: { 'Content-Type': 'application/json' } },
     ));
 
-    await expect(organizeInboxEntries([entry], 'bridge-secret', fetchImpl)).rejects.toThrow('Local Bridge API 버전');
+    await expect(organizeInboxEntries([entry], 'bridge-secret', fetchImpl)).rejects.toThrow('Bridge AI 정리 API를 찾을 수 없어');
     const [url, init] = fetchImpl.mock.calls[0];
     expect(url).toBe('http://127.0.0.1:38471/inbox/organize');
     expect(init?.method).toBe('POST');

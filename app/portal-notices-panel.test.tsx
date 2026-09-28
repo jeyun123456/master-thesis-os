@@ -27,6 +27,7 @@ function notice(overrides: Partial<PortalNoticeSummary>): PortalNoticeSummary {
     changeCount: 0,
     isRead: false,
     isImportant: false,
+    isInterested: false,
     interest: 1,
     aiSummary: '',
     isArchived: false,
@@ -62,10 +63,12 @@ describe('학교 공지 panel helpers', () => {
     const items = [
       notice({ noticeId: 'all-unread', department: '教学推進課' }),
       notice({ noticeId: 'all-important', isRead: true, isImportant: true, department: '経済学部事務室' }),
+      notice({ noticeId: 'all-interested', isRead: true, isInterested: true }),
       notice({ noticeId: 'dm-archived', type: 'DM', isRead: true, isArchived: true, department: '' }),
     ];
     expect(filterPortalNotices(items, 'ALL', 'unread').map((item) => item.noticeId)).toEqual(['all-unread']);
     expect(filterPortalNotices(items, 'ALL', 'important').map((item) => item.noticeId)).toEqual(['all-important']);
+    expect(filterPortalNotices(items, 'ALL', 'interested').map((item) => item.noticeId)).toEqual(['all-interested']);
     expect(filterPortalNotices(items, 'DM', 'archived').map((item) => item.noticeId)).toEqual(['dm-archived']);
     expect(filterPortalNotices(items, 'ALL', 'all', '経済学部事務室').map((item) => item.noticeId)).toEqual(['all-important']);
     expect(filterPortalNotices(items, 'DM', 'all', '__unknown__').map((item) => item.noticeId)).toEqual(['dm-archived']);

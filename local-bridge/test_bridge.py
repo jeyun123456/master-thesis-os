@@ -409,7 +409,7 @@ class InboxBridgeEndpointTests(unittest.TestCase):
     def test_inbox_get_and_post_persist_to_vault_json(self):
         health_status, health = self.request('GET', '/health')
         self.assertEqual(health_status, 200)
-        self.assertEqual(health['apiVersion'], 2)
+        self.assertEqual(health['apiVersion'], 5)
 
         status, data = self.request('GET', '/inbox')
         self.assertEqual(status, 200)
@@ -423,6 +423,51 @@ class InboxBridgeEndpointTests(unittest.TestCase):
         self.assertEqual(stored['version'], 1)
         self.assertEqual(stored['entries'][0]['id'], 'entry-1')
         self.assertEqual(list(self.inbox_path.parent.glob('.inbox-*.tmp')), [])
+
+    def test_project_metadata_update_and_conflict_safety(self):
+        project_root = self.root / 'projects' / 'thesis'
+        project_root.mkdir(parents=True)
+        manifest_path = project_root / 'project.md'
+        original = '---\nid: thesis\nstage: planning\nstatus: active\n---\n\n사용자 메모는 보존되어야 한다.\n'
+        manifest_path.write_bytes(original.encode('utf-8'))
+        (project_root / 'paper.md').write_text('# Draft\n', encoding='utf-8')
+
+        status, workspace = self.request('POST', '/projects/workspace', {'projectId': 'thesis'})
+        self.assertEqual(status, 200)
+        self.assertEqual(workspace['manifestText'], original)
+        self.assertRegex(workspace['manifestSha'], r'^[a-f0-9]{64}$')
+        first_sha = workspace['manifestSha']
+
+        status, saved = self.request('POST', '/projects/update', {
+            'projectId': 'thesis', 'operation': 'stage', 'value': 'analysis', 'expectedSha': first_sha,
+        })
+        self.assertEqual(status, 200, saved)
+        self.assertIn('stage: analysis', saved['manifestText'])
+        self.assertIn('사용자 메모는 보존되어야 한다.', saved['manifestText'])
+        self.assertEqual(manifest_path.read_bytes().decode('utf-8'), saved['manifestText'])
+
+        status, saved = self.request('POST', '/projects/update', {
+            'projectId': 'thesis', 'operation': 'favorite_add', 'value': 'projects/thesis/paper.md',
+            'expectedSha': saved['manifestSha'],
+        })
+        self.assertEqual(status, 200)
+        self.assertIn('## 주요 파일\n- projects/thesis/paper.md', saved['manifestText'].replace('\r\n', '\n'))
+        current_sha = saved['manifestSha']
+
+        status, saved = self.request('POST', '/projects/update', {
+            'projectId': 'thesis', 'operation': 'favorite_remove', 'value': 'projects/thesis/paper.md',
+            'expectedSha': current_sha,
+        })
+        self.assertEqual(status, 200)
+        self.assertNotIn('- projects/thesis/paper.md', saved['manifestText'])
+
+        before_stale_write = manifest_path.read_bytes()
+        status, conflict = self.request('POST', '/projects/update', {
+            'projectId': 'thesis', 'operation': 'stage', 'value': 'writing', 'expectedSha': first_sha,
+        })
+        self.assertEqual(status, 409)
+        self.assertIn('changed', conflict['error'])
+        self.assertEqual(manifest_path.read_bytes(), before_stale_write)
 
     def test_ai_apply_cannot_replace_raw_fields_or_remove_existing_entries(self):
         original = self.raw_entry()

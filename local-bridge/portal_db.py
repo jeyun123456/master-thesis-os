@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS portal_notice_user_state (
     is_read INTEGER NOT NULL DEFAULT 0 CHECK(is_read IN (0, 1)),
     is_important INTEGER NOT NULL DEFAULT 0 CHECK(is_important IN (0, 1)),
     interest INTEGER NOT NULL DEFAULT 1 CHECK(interest BETWEEN 0 AND 3),
+    is_interested INTEGER NOT NULL DEFAULT 0 CHECK(is_interested IN (0, 1)),
     is_archived INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0, 1)),
     first_seen_at TEXT NOT NULL,
     read_at TEXT,
@@ -269,6 +270,9 @@ def _connect(path: str | Path | None = None) -> sqlite3.Connection:
         if "interest" not in state_columns:
             connection.execute("ALTER TABLE portal_notice_user_state ADD COLUMN interest INTEGER NOT NULL DEFAULT 1")
             connection.execute("UPDATE portal_notice_user_state SET interest = CASE WHEN is_important = 1 THEN 3 ELSE 1 END")
+        if "is_interested" not in state_columns:
+            connection.execute("ALTER TABLE portal_notice_user_state ADD COLUMN is_interested INTEGER NOT NULL DEFAULT 0 CHECK(is_interested IN (0, 1))")
+            connection.execute("UPDATE portal_notice_user_state SET is_interested = CASE WHEN interest >= 2 OR is_important = 1 THEN 1 ELSE 0 END")
         sync_columns = {
             str(row["name"])
             for row in connection.execute("PRAGMA table_info(portal_sync_state)").fetchall()
@@ -383,6 +387,7 @@ def _notice_payload(
         "isRead": state_bool("is_read"),
         "isImportant": state_bool("is_important"),
         "interest": int(row["interest"] or 0) if "interest" in row_keys else (3 if state_bool("is_important") else 1),
+        "isInterested": state_bool("is_interested") if "is_interested" in row_keys else ((int(row["interest"] or 0) >= 2) if "interest" in row_keys else state_bool("is_important")),
         "isArchived": state_bool("is_archived"),
         "firstSeenAt": state_text("first_seen_at"),
         "readAt": row["read_at"] if "read_at" in row_keys and row["read_at"] else None,
@@ -1018,7 +1023,7 @@ def list_notices(
                    n.expires_at, n.deadline, n.importance, n.category, n.body,
                    n.source_url, n.synced_at,
                    n.last_changed_at, n.change_count,
-                   s.is_read, s.is_important, s.interest, s.is_archived, s.first_seen_at,
+                   s.is_read, s.is_important, s.interest, s.is_interested, s.is_archived, s.first_seen_at,
                    s.read_at, s.updated_at,
                    a.status AS ai_status, a.summary AS ai_summary, a.translation AS ai_translation,
                    a.error_code AS ai_error_code, a.error AS ai_error, a.analyzed_at AS ai_analyzed_at,
@@ -1090,7 +1095,7 @@ def get_notice(notice_id: str, path: str | Path | None = None) -> dict[str, obje
                    n.expires_at, n.deadline, n.importance, n.category, n.body,
                    n.source_url, n.synced_at,
                    n.last_changed_at, n.change_count,
-                   s.is_read, s.is_important, s.interest, s.is_archived, s.first_seen_at,
+                   s.is_read, s.is_important, s.interest, s.is_interested, s.is_archived, s.first_seen_at,
                    s.read_at, s.updated_at,
                    a.status AS ai_status, a.summary AS ai_summary,
                    a.translation AS ai_translation, a.error_code AS ai_error_code,
@@ -1120,14 +1125,17 @@ def update_notice_state(
     *,
     is_read: bool | None = None,
     is_important: bool | None = None,
+    is_interested: bool | None = None,
     interest: int | None = None,
     is_archived: bool | None = None,
     path: str | Path | None = None,
 ) -> dict[str, object]:
     normalized = _notice_id(notice_id)
-    if is_read is None and is_important is None and interest is None and is_archived is None:
+    if is_read is None and is_important is None and is_interested is None and interest is None and is_archived is None:
         raise PortalDatabaseError('notice state update is empty')
-    if interest is not None and interest not in {0, 1, 2, 3}:
+    if is_interested is not None and not isinstance(is_interested, bool):
+        raise PortalDatabaseError('invalid portal notice interest')
+    if interest is not None and (not isinstance(interest, int) or isinstance(interest, bool) or interest not in {0, 1, 2, 3}):
         raise PortalDatabaseError('invalid portal notice interest')
     connection = _connect(path)
     try:
@@ -1150,11 +1158,22 @@ def update_notice_state(
             parameters.append(1 if is_important else 0)
             updates.append('interest = ?')
             parameters.append(3 if is_important else 1)
+            updates.append('is_interested = ?')
+            parameters.append(1 if is_important else 0)
+        if is_interested is not None:
+            updates.append('is_interested = ?')
+            parameters.append(1 if is_interested else 0)
+            updates.append('is_important = ?')
+            parameters.append(1 if is_interested else 0)
+            updates.append('interest = ?')
+            parameters.append(3 if is_interested else 1)
         if interest is not None:
             updates.append('interest = ?')
             parameters.append(interest)
             updates.append('is_important = ?')
             parameters.append(1 if interest == 3 else 0)
+            updates.append('is_interested = ?')
+            parameters.append(1 if interest >= 2 else 0)
         if is_archived is not None:
             updates.append('is_archived = ?')
             parameters.append(1 if is_archived else 0)
@@ -1171,7 +1190,7 @@ def update_notice_state(
                    n.expires_at, n.deadline, n.importance, n.category, n.body,
                    n.source_url, n.synced_at,
                    n.last_changed_at, n.change_count,
-                   s.is_read, s.is_important, s.interest, s.is_archived, s.first_seen_at,
+                   s.is_read, s.is_important, s.interest, s.is_interested, s.is_archived, s.first_seen_at,
                    s.read_at, s.updated_at,
                    a.status AS ai_status, a.summary AS ai_summary,
                    a.translation AS ai_translation, a.error_code AS ai_error_code,
