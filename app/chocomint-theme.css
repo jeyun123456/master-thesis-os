@@ -2490,7 +2490,7 @@ html .shell .section {
 }
 
 .mail-panel .school-mail-triage-row > .microsoft-mail-row {
-  padding: 10px 0 8px;
+  padding: 9px 0 6px;
   border: 0;
   background: transparent;
 }
@@ -2527,15 +2527,19 @@ html .shell .section {
 }
 
 .mail-panel .microsoft-mail-row.unread .microsoft-mail-main b {
-  font-weight: 800;
+  color: #241f1a;
+  font-weight: 900;
 }
 
 .mail-panel .microsoft-mail-row.unread .microsoft-mail-main > small:first-of-type {
   font-weight: 600;
 }
 
-.mail-panel .school-mail-priority-label,
-.mail-panel .microsoft-mail-row.school-mail-priority-normal .microsoft-mail-main b::before {
+.mail-panel .microsoft-mail-main > small:first-of-type {
+  margin-top: 3px;
+}
+
+.mail-panel .school-mail-priority-label {
   display: inline-flex;
   min-width: 37px;
   height: 18px;
@@ -2551,13 +2555,6 @@ html .shell .section {
   vertical-align: 1px;
 }
 
-.mail-panel .microsoft-mail-row.school-mail-priority-normal .microsoft-mail-main b::before {
-  content: "기본";
-  border-color: var(--line);
-  background: var(--panel-subtle);
-  color: var(--text-soft);
-}
-
 .mail-panel .school-mail-priority-label.important {
   background: #e8f1e9;
   color: #3f715e;
@@ -2570,20 +2567,24 @@ html .shell .section {
 
 .mail-panel .school-mail-inline-actions {
   align-self: center;
-  gap: 6px;
+  gap: 5px;
+  margin-left: auto;
   padding: 0;
 }
 
 .mail-panel .school-mail-inline-actions button {
-  min-height: 30px;
-  height: 30px;
-  padding: 0 9px;
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 28px;
+  height: 28px;
+  padding: 0 7px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--panel-elevated);
   color: var(--text-soft);
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .mail-panel .school-mail-inline-actions button:hover:not(:disabled) {
@@ -2596,9 +2597,10 @@ html .shell .section {
   align-items: flex-start;
   gap: 8px;
   margin: 0;
-  padding: 0 0 10px;
+  padding: 0 0 8px;
   border: 0;
   background: transparent;
+  color: var(--text-soft);
   line-height: 1.45;
 }
 
@@ -2622,6 +2624,7 @@ html .shell .section {
 
   .mail-panel .school-mail-inline-actions {
     justify-content: flex-end;
+    margin-left: 0;
     padding: 0 0 8px;
   }
 

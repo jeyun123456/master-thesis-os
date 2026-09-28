@@ -470,7 +470,7 @@ function MailListControls({
         type="button"
       >{MAIL_FILTER_LABELS[value]}</button>)}
     </div>
-    <label className="mail-sort-control"><span>정렬</span><select aria-label="메일 정렬" onChange={(event) => onSortChange(event.target.value as MailSort)} value={sort}>
+    <label className="mail-sort-control"><select aria-label="메일 정렬" onChange={(event) => onSortChange(event.target.value as MailSort)} value={sort}>
       {sortOptions.map((value) => <option key={value} value={value}>{MAIL_SORT_LABELS[value]}</option>)}
     </select></label>
   </div>;
