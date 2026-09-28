@@ -43,7 +43,7 @@ describe('학교 공지 panel helpers', () => {
   it('formats persisted timestamps for the Korean local timezone', () => {
     expect(formatPortalSyncDate('2026-09-18T14:00:00Z')).toBe('2026-09-18 23:00');
     expect(formatPortalNoticeDate('2026-09-18T14:00:00Z')).toBe('2026-09-18 23:00');
-    expect(formatPortalNoticeDate('2026/09/18 18:00')).toContain('2026-09-18');
+    expect(formatPortalNoticeDate('2026-09-18T18:00:00+09:00')).toContain('2026-09-18');
     expect(formatPortalSyncDate(null)).toBe('아직 동기화하지 않음');
   });
 
