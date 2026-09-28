@@ -25,6 +25,7 @@ export type ResearchProject = {
   summary: string;
   currentFocus: string;
   questions: string[];
+  keyFiles: string[];
   nextTasks: string[];
   blocked: string[];
   relatedPaths: string[];
@@ -37,9 +38,10 @@ export type RelatedFolderGroup = {
   files: RepositoryItem[];
 };
 
-const sectionAliases: Record<string, keyof Pick<ResearchProject, 'currentFocus' | 'questions' | 'nextTasks' | 'blocked' | 'relatedPaths' | 'resultPaths'>> = {
+const sectionAliases: Record<string, keyof Pick<ResearchProject, 'currentFocus' | 'questions' | 'keyFiles' | 'nextTasks' | 'blocked' | 'relatedPaths' | 'resultPaths'>> = {
   '현재 집중': 'currentFocus',
   '연구 질문': 'questions',
+  '주요 파일': 'keyFiles',
   '다음 작업': 'nextTasks',
   '막힌 부분': 'blocked',
   '관련 경로': 'relatedPaths',
@@ -62,6 +64,7 @@ export function parseProjectManifest(markdown: string, sourcePath: string): Rese
     summary: firstBodyParagraph(markdown),
     currentFocus: sections.currentFocus[0] || '',
     questions: sections.questions,
+    keyFiles: sections.keyFiles,
     nextTasks: sections.nextTasks,
     blocked: sections.blocked,
     relatedPaths: sections.relatedPaths.map(normalizeRelatedPath).filter(Boolean),
@@ -119,6 +122,11 @@ function compareText(left: string, right: string) {
 }
 
 export function stageLabel(stage: string): string {
+  const pipeline = pipelineStageValue(stage);
+  const pipelineLabels: Record<string, string> = {
+    planning: '기획', collection: '자료 수집', analysis: '분석', interpretation: '해석', writing: '집필', complete: '완료',
+  };
+  if (pipelineLabels[pipeline]) return pipelineLabels[pipeline];
   const labels: Record<string, string> = {
     data: '자료',
     mapping: '부문통합',
@@ -132,6 +140,69 @@ export function stageLabel(stage: string): string {
     complete: '완료',
   };
   return labels[stage] || stage || '미지정';
+}
+
+export const researchPipelineStages = [
+  { value: 'planning', label: '기획' },
+  { value: 'collection', label: '자료 수집' },
+  { value: 'analysis', label: '분석' },
+  { value: 'interpretation', label: '해석' },
+  { value: 'writing', label: '집필' },
+  { value: 'complete', label: '완료' },
+] as const;
+
+export function pipelineStageValue(stage: string): string {
+  const normalized = stage.toLocaleLowerCase();
+  if (['complete', 'completed', 'done'].includes(normalized)) return 'complete';
+  if (['interpretation', 'interpret', 'analysis-interpretation'].includes(normalized)) return 'interpretation';
+  if (['writing', 'presentation', 'draft', 'write'].includes(normalized)) return 'writing';
+  if (['labour', 'calculation', 'validation', 'analysis', '분석'].includes(normalized)) return 'analysis';
+  if (['mapping', 'data', 'literature', 'collection', '자료', '부문통합'].includes(normalized)) return 'collection';
+  return 'planning';
+}
+
+export function updateProjectStageMarkdown(markdown: string, stage: string): string {
+  return updateFrontmatterValue(markdown, 'stage', stage);
+}
+
+export function appendProjectTaskMarkdown(markdown: string, value: string): { markdown: string; added: boolean } {
+  const task = value.replace(/\s+/g, ' ').trim();
+  if (!task || task.length > 1200) throw new Error('A project task between 1 and 1200 characters is required');
+  const lineBreak = markdown.includes('\r\n') ? '\r\n' : '\n';
+  const taskLine = `- ${task}`;
+  const headings = [...markdown.matchAll(/^##\s+다음 작업\s*$/gm)];
+  if (headings.length) {
+    const heading = headings[headings.length - 1];
+    const start = (heading.index || 0) + heading[0].length;
+    const nextHeading = /^##\s+/gm;
+    nextHeading.lastIndex = start;
+    const next = nextHeading.exec(markdown);
+    const end = next ? next.index : markdown.length;
+    const section = markdown.slice(start, end);
+    if (section.split(/\r?\n/).some((line) => line.trim() === taskLine || line.trim() === `* ${task}`)) {
+      return { markdown, added: false };
+    }
+    const prefix = section && !section.endsWith('\n') && !section.endsWith('\r') ? lineBreak : '';
+    return { markdown: `${markdown.slice(0, end)}${prefix}${taskLine}${lineBreak}${markdown.slice(end)}`, added: true };
+  }
+  const separator = markdown && !markdown.endsWith('\n') && !markdown.endsWith('\r') ? lineBreak : '';
+  return { markdown: `${markdown}${separator}${separator ? '' : lineBreak}## 다음 작업${lineBreak}${taskLine}${lineBreak}`, added: true };
+}
+
+function updateFrontmatterValue(markdown: string, key: string, value: string): string {
+  const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) throw new Error('project.md frontmatter is missing');
+  const lineBreak = markdown.includes('\r\n') ? '\r\n' : '\n';
+  const lines = match[1].split(/\r?\n/);
+  let replaced = false;
+  const updatedLines = lines.map((line) => {
+    if (!new RegExp(`^\\s*${key}\\s*:`, 'i').test(line)) return line;
+    replaced = true;
+    return `${key}: ${value}`;
+  });
+  if (!replaced) updatedLines.push(`${key}: ${value}`);
+  const updatedFrontmatter = `---${lineBreak}${updatedLines.join(lineBreak)}${lineBreak}---`;
+  return `${updatedFrontmatter}${markdown.slice(match[0].length)}`;
 }
 
 export function projectStatusLabel(status: string): string {
@@ -174,6 +245,7 @@ function parseSections(markdown: string) {
   const result = {
     currentFocus: [] as string[],
     questions: [] as string[],
+    keyFiles: [] as string[],
     nextTasks: [] as string[],
     blocked: [] as string[],
     relatedPaths: [] as string[],

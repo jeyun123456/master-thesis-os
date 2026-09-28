@@ -27,11 +27,12 @@ from thunderbird_mail import (
 HERE = Path(__file__).resolve().parent
 CONFIG = resolve_config_path(HERE)
 MAX_BODY_BYTES = 16 * 1024
+MAX_PLANNER_BODY_BYTES = 512 * 1024
 MAX_INBOX_BODY_BYTES = 4 * 1024 * 1024
 MAX_INBOX_STORE_BYTES = 8 * 1024 * 1024
 MAX_INBOX_ENTRIES = 10_000
 MAX_INBOX_RAW_CHARS = 1_200
-BRIDGE_API_VERSION = 2
+BRIDGE_API_VERSION = 4
 MAIL_PATH_PREFIX = '/mail/'
 
 
@@ -77,6 +78,8 @@ def _resolve_bridge_db_path():
 DB_PATH = _resolve_bridge_db_path()
 INBOX_DATA_PATH = ROOT / 'shared' / 'inbox' / 'inbox.json'
 INBOX_STORE_LOCK = threading.Lock()
+PLANNER_TASKS_DATA_PATH = ROOT / 'shared' / 'planner' / 'tasks.json'
+PLANNER_TASKS_STORE_LOCK = threading.Lock()
 
 
 def _valid_iso_timestamp(value: object) -> bool:
@@ -124,7 +127,16 @@ def _normalize_inbox_entry(raw: object) -> dict[str, object]:
         if not isinstance(ai_raw, dict):
             raise ValueError('invalid inbox AI result')
         category = ai_raw.get('category')
-        if category not in {'Todo', 'Idea', 'Research Note', 'Later / Reference'}:
+        legacy_categories = {
+            'Todo': 'todo',
+            'Idea': 'idea',
+            'Research Note': 'idea',
+            'Later / Reference': 'other',
+        }
+        if not isinstance(category, str):
+            raise ValueError('invalid inbox AI category')
+        category = legacy_categories.get(category, category)
+        if category not in {'idea', 'todo', 'schedule', 'other'}:
             raise ValueError('invalid inbox AI category')
         if ai_raw.get('entryId') != entry_id or not _valid_iso_timestamp(ai_raw.get('processedAt')):
             raise ValueError('invalid inbox AI identity')
@@ -137,7 +149,7 @@ def _normalize_inbox_entry(raw: object) -> dict[str, object]:
             raise ValueError('invalid inbox AI text')
         if len(title) > 1_200 or len(summary) > 1_200 or len(next_action) > 1_200:
             raise ValueError('inbox AI text is too long')
-        if category != 'Todo' and next_action:
+        if category != 'todo' and next_action:
             next_action = ''
         if due_date is not None:
             if not isinstance(due_date, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', due_date):
@@ -252,6 +264,180 @@ def _merge_and_save_inbox_entries(raw_entries: object) -> list[dict[str, object]
             raise ValueError('too many inbox entries')
         _atomic_write_inbox_entries(result)
         return result
+
+
+def _normalize_planner_task(raw: object) -> dict[str, object]:
+    if not isinstance(raw, dict):
+        raise ValueError('invalid planner task')
+    task_id = raw.get('id')
+    title = raw.get('title')
+    status = raw.get('status')
+    if not isinstance(task_id, str) or not task_id.strip() or len(task_id) > 256:
+        raise ValueError('invalid planner task id')
+    if not isinstance(title, str) or not title.strip() or len(title) > 1200:
+        raise ValueError('invalid planner task title')
+    if not isinstance(status, str) or status not in {'pending', 'done'}:
+        raise ValueError('invalid planner task status')
+    created_at = raw.get('createdAt')
+    updated_at = raw.get('updatedAt')
+    if not _valid_iso_timestamp(created_at) or not _valid_iso_timestamp(updated_at):
+        raise ValueError('invalid planner task timestamps')
+    due_date = raw.get('dueDate')
+    if due_date is not None:
+        if not isinstance(due_date, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', due_date):
+            raise ValueError('invalid planner task date')
+        try:
+            date.fromisoformat(due_date)
+        except ValueError as exc:
+            raise ValueError('invalid planner task date') from exc
+    completed_at = raw.get('completedAt')
+    if completed_at is not None and not _valid_iso_timestamp(completed_at):
+        raise ValueError('invalid planner completion timestamp')
+    source_inbox_id = raw.get('sourceInboxId')
+    if source_inbox_id is not None and (not isinstance(source_inbox_id, str) or len(source_inbox_id) > 256):
+        raise ValueError('invalid planner Inbox source')
+    description = raw.get('description', '')
+    if not isinstance(description, str) or len(description) > 1200:
+        raise ValueError('invalid planner task description')
+    if status == 'done' and completed_at is None:
+        completed_at = updated_at
+    if status == 'pending':
+        completed_at = None
+    return {
+        'id': task_id.strip(),
+        'title': title.strip(),
+        'description': description,
+        'dueDate': due_date,
+        'sourceInboxId': source_inbox_id,
+        'status': status,
+        'createdAt': created_at,
+        'updatedAt': updated_at,
+        'completedAt': completed_at,
+    }
+
+
+def _read_planner_tasks_unlocked() -> list[dict[str, object]]:
+    if not PLANNER_TASKS_DATA_PATH.exists():
+        return []
+    if PLANNER_TASKS_DATA_PATH.stat().st_size > MAX_PLANNER_BODY_BYTES:
+        raise ValueError('planner task store is too large')
+    with PLANNER_TASKS_DATA_PATH.open('r', encoding='utf-8') as file:
+        payload = json.load(file)
+    if not isinstance(payload, dict) or payload.get('version') != 1 or not isinstance(payload.get('tasks'), list):
+        raise ValueError('invalid planner task store')
+    tasks = [_normalize_planner_task(raw) for raw in payload['tasks']]
+    ids = [task['id'] for task in tasks]
+    if len(ids) != len(set(ids)):
+        raise ValueError('duplicate planner task id')
+    return tasks
+
+
+def _atomic_write_planner_tasks(tasks: list[dict[str, object]]) -> None:
+    PLANNER_TASKS_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps({'version': 1, 'tasks': tasks}, ensure_ascii=False, indent=2) + '\n'
+    if len(payload.encode('utf-8')) > MAX_PLANNER_BODY_BYTES:
+        raise ValueError('planner task store is too large')
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode='w', encoding='utf-8', newline='\n', delete=False,
+            dir=PLANNER_TASKS_DATA_PATH.parent, prefix='.tasks-', suffix='.tmp',
+        ) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+            temporary_file.write(payload)
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+        os.replace(temporary_path, PLANNER_TASKS_DATA_PATH)
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
+
+
+def _merge_and_save_planner_tasks(raw_tasks: object, single_task: object = None) -> list[dict[str, object]]:
+    incoming_raw = [single_task] if single_task is not None else raw_tasks
+    if not isinstance(incoming_raw, list) or len(incoming_raw) > 10_000:
+        raise ValueError('invalid planner tasks')
+    incoming = [_normalize_planner_task(raw) for raw in incoming_raw]
+    incoming_ids = [task['id'] for task in incoming]
+    if len(incoming_ids) != len(set(incoming_ids)):
+        raise ValueError('duplicate planner task id')
+
+    with PLANNER_TASKS_STORE_LOCK:
+        try:
+            existing = _read_planner_tasks_unlocked()
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            raise OSError('planner task store could not be read') from exc
+        merged = {task['id']: task for task in existing}
+        for task in incoming:
+            previous = merged.get(task['id'])
+            if previous is None:
+                merged[task['id']] = task
+            elif single_task is None and str(task['updatedAt']) > str(previous['updatedAt']):
+                # Task edits can update completion state, but omitted IDs never delete Vault data.
+                merged[task['id']] = {
+                    **previous,
+                    'status': task['status'],
+                    'updatedAt': task['updatedAt'],
+                    'completedAt': task['completedAt'],
+                }
+        result = sorted(merged.values(), key=lambda task: str(task['createdAt']), reverse=True)
+        _atomic_write_planner_tasks(result)
+        return result
+
+
+def _project_workspace(project_id: object) -> dict[str, object]:
+    if not isinstance(project_id, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', project_id):
+        raise ValueError('invalid project id')
+    root = ROOT / 'projects' / project_id
+    if not root.is_dir() or root.is_symlink():
+        raise FileNotFoundError('project folder not found')
+    resolved_root = root.resolve(strict=True)
+    try:
+        resolved_root.relative_to(ROOT.resolve())
+    except ValueError as exc:
+        raise ValueError('project folder is outside the Vault') from exc
+    root = resolved_root
+    files: list[dict[str, object]] = []
+    folders: set[str] = set()
+    recent: list[dict[str, object]] = []
+    allowed_recent = {'.ppt', '.pptx', '.md', '.doc', '.docx'}
+    ignored = {'.git', '.obsidian', '.trash', '.tmp', '__pycache__', 'node_modules', '.next'}
+    for directory, names, filenames in os.walk(root, topdown=True, followlinks=False):
+        current = Path(directory)
+        names[:] = [name for name in names if name.lower() not in ignored and not (current / name).is_symlink()]
+        relative_directory = current.relative_to(root).as_posix()
+        if relative_directory != '.':
+            folders.add(f'projects/{project_id}/{relative_directory}')
+        for name in filenames:
+            file_path = current / name
+            if file_path.is_symlink() or not file_path.is_file():
+                continue
+            try:
+                metadata = file_path.stat()
+            except OSError:
+                continue
+            relative_path = file_path.relative_to(ROOT).as_posix()
+            modified_at = datetime.fromtimestamp(metadata.st_mtime).astimezone().isoformat(timespec='seconds')
+            row = {'path': relative_path, 'type': 'blob', 'size': metadata.st_size, 'modifiedAt': modified_at}
+            files.append(row)
+            if file_path.suffix.lower() in allowed_recent:
+                recent.append({**row, 'name': file_path.name, 'extension': file_path.suffix.lower()})
+            parent = relative_path.rpartition('/')[0]
+            while parent.startswith(f'projects/{project_id}'):
+                folders.add(parent)
+                if parent == f'projects/{project_id}':
+                    break
+                parent = parent.rpartition('/')[0]
+    recent.sort(key=lambda item: str(item['modifiedAt']), reverse=True)
+    return {
+        'ok': True,
+        'source': 'vault',
+        'projectId': project_id,
+        'rootPath': f'projects/{project_id}',
+        'items': sorted(files, key=lambda item: str(item['path']).casefold()),
+        'folders': sorted(folders, key=str.casefold),
+        'recentFiles': recent[:10],
+    }
 
 
 def _resolve_portal_db_path():
@@ -633,6 +819,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_out(404, {'ok': False, 'source': 'sqlite', 'error': 'notice not found'})
         return self.json_out(200, {'ok': True, 'source': 'sqlite', 'item': item})
 
+    def _planner_tasks_response(self):
+        with PLANNER_TASKS_STORE_LOCK:
+            tasks = _read_planner_tasks_unlocked()
+        return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'tasks': tasks})
+
     def _analysis_response(self):
         query = self._query()
         folder_values = query.get('folder', [])
@@ -687,6 +878,18 @@ class Handler(BaseHTTPRequestHandler):
                     'error': 'Vault 인박스 파일을 읽지 못했어요. 기존 원문 파일은 보존했습니다.',
                 })
             return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'entries': entries})
+        if path == '/planner/tasks':
+            if not self._header_authenticated():
+                return
+            try:
+                return self._planner_tasks_response()
+            except (OSError, ValueError, json.JSONDecodeError):
+                return self.json_out(503, {
+                    'ok': False,
+                    'source': 'vault',
+                    'errorCode': 'planner_read_failed',
+                    'error': 'Vault Planner 할 일 파일을 읽지 못했어요. 기존 파일은 변경하지 않았습니다.',
+                })
         if path == '/portal/status':
             if not self._header_authenticated():
                 return
@@ -939,10 +1142,16 @@ class Handler(BaseHTTPRequestHandler):
             state_fields = {
                 'isRead': 'is_read',
                 'isImportant': 'is_important',
+                'interest': 'interest',
                 'isArchived': 'is_archived',
             }
             provided = {key: body.get(key) for key in state_fields if key in body}
-            if not provided or any(not isinstance(value, bool) for value in provided.values()):
+            invalid_state = not provided or any(
+                (key == 'interest' and (not isinstance(value, int) or isinstance(value, bool) or value not in {0, 1, 2, 3}))
+                or (key != 'interest' and not isinstance(value, bool))
+                for key, value in provided.items()
+            )
+            if invalid_state:
                 return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'invalid notice state'})
             try:
                 item = portal_db.update_notice_state(
@@ -965,7 +1174,8 @@ class Handler(BaseHTTPRequestHandler):
         allowed = (
             '/open', '/open-folder', '/launch', '/mail/recent', '/mail/folders',
             '/mail/message', '/mail/open', '/mail/sync', '/mail/analysis/candidate', '/mail/task',
-            '/portal/sync', '/portal/login', '/portal/open-url', '/inbox', '/inbox/organize',
+            '/portal/sync', '/portal/login', '/portal/open-url', '/inbox', '/inbox/organize', '/planner/tasks',
+            '/projects/workspace',
         )
         is_portal_state = path.startswith('/portal/notices/') and path.endswith('/state')
         is_portal_analyze = path.startswith('/portal/notices/') and path.endswith('/analyze')
@@ -974,7 +1184,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_out(404, {'error': 'not found'})
         if not self._origin_allowed():
             return
-        body = self._read_json_body(MAX_INBOX_BODY_BYTES if path == '/inbox' else MAX_BODY_BYTES)
+        body_limit = MAX_INBOX_BODY_BYTES if path == '/inbox' else MAX_PLANNER_BODY_BYTES if path == '/planner/tasks' else MAX_BODY_BYTES
+        body = self._read_json_body(body_limit)
         if body is None:
             return
         if not token_matches(body.get('token', ''), TOKEN):
@@ -983,6 +1194,12 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/inbox':
                 entries = _merge_and_save_inbox_entries(body.get('entries'))
                 return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'entries': entries})
+            if path == '/planner/tasks':
+                task = body.get('task')
+                tasks = _merge_and_save_planner_tasks(body.get('tasks'), single_task=task)
+                return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'tasks': tasks})
+            if path == '/projects/workspace':
+                return self.json_out(200, _project_workspace(body.get('projectId')))
             portal_response = self._portal_post(path, body)
             if portal_response is not None:
                 return portal_response
@@ -1007,6 +1224,15 @@ class Handler(BaseHTTPRequestHandler):
                     'errorCode': 'inbox_persist_failed',
                     'error': 'Vault에 인박스를 저장하지 못했어요. 브라우저 캐시는 유지됩니다.',
                 })
+            if path == '/planner/tasks':
+                return self.json_out(503, {
+                    'ok': False,
+                    'source': 'vault',
+                    'errorCode': 'planner_persist_failed',
+                    'error': 'Vault Planner 할 일을 저장하지 못했어요. 브라우저 캐시는 유지됩니다.',
+                })
+            if path == '/projects/workspace':
+                return self.json_out(404, {'ok': False, 'source': 'vault', 'error': 'project workspace item not found'})
             if path.startswith(MAIL_PATH_PREFIX):
                 return self.json_out(503, {'ok': False, 'source': 'thunderbird', 'error': 'profile_not_found'})
             return self.json_out(404, {'error': 'local file not found', 'detail': str(exc)})
@@ -1023,6 +1249,13 @@ class Handler(BaseHTTPRequestHandler):
                     'source': 'vault',
                     'errorCode': 'invalid_inbox_data',
                     'error': '인박스 데이터 형식을 확인해 주세요. 기존 원문은 변경하지 않았습니다.',
+                })
+            if path == '/planner/tasks':
+                return self.json_out(400, {
+                    'ok': False,
+                    'source': 'vault',
+                    'errorCode': 'invalid_planner_data',
+                    'error': 'Planner 할 일 데이터 형식을 확인해 주세요. 기존 파일은 변경하지 않았습니다.',
                 })
             if path.startswith(MAIL_PATH_PREFIX):
                 return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'request_failed'})

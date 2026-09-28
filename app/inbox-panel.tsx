@@ -6,6 +6,7 @@ import {
   type InboxEntry,
   type InboxSuggestion,
 } from '@/lib/inbox';
+import type { ResearchProject } from '@/lib/projects';
 
 export type InboxStorageStatus = 'loading' | 'saved' | 'saving' | 'failed';
 
@@ -24,18 +25,21 @@ type QuickCapturePanelProps = {
 };
 
 type InboxPanelProps = Pick<QuickCapturePanelProps, 'entries' | 'loaded' | 'busy' | 'storageStatus' | 'storageError' | 'bridgeApiWarning' | 'bridgeTokenWarning' | 'onAdd' | 'onOrganize' | 'onRetrySave'> & {
-  preview: InboxSuggestion[] | null;
   error: string;
-  onApply: () => void;
-  onDiscardPreview: () => void;
+  routeMessage: string;
+  projects: ResearchProject[];
+  projectTaskSavingId: string | null;
+  onAddToProject: (entryId: string, projectId: string) => void;
 };
 
 const categoryLabels: Record<InboxSuggestion['category'], string> = {
-  Todo: 'Todo',
-  Idea: 'Idea',
-  'Research Note': 'Research Note',
-  'Later / Reference': 'Later / Reference',
+  idea: '연구 아이디어',
+  todo: '할 일',
+  schedule: '일정',
+  other: '기타',
 };
+
+type InboxFilter = 'all' | InboxSuggestion['category'];
 
 const storageStatusText: Record<InboxStorageStatus, string> = {
   loading: 'Vault 불러오는 중',
@@ -125,14 +129,16 @@ export function QuickCapturePanel({ entries, loaded, busy, storageStatus, storag
       <button className="capture-ai-button" type="button" onClick={onOrganize} disabled={busy || pendingCount === 0}>
         <span aria-hidden="true">✦</span> {busy ? 'GPT가 정리하는 중…' : 'GPT로 정리'}
       </button>
-      <span>분류 제안을 확인한 뒤 적용할 수 있어요.</span>
+      <span>GPT 정리 후 할 일과 명시된 일정은 자동 전달돼요.</span>
     </div>
   </section>;
 }
 
-export function InboxPanel({ entries, loaded, busy, storageStatus, storageError, bridgeApiWarning, bridgeTokenWarning, onAdd, onOrganize, onRetrySave, preview, error, onApply, onDiscardPreview }: InboxPanelProps) {
+export function InboxPanel({ entries, loaded, busy, storageStatus, storageError, bridgeApiWarning, bridgeTokenWarning, onAdd, onOrganize, onRetrySave, error, routeMessage, projects, projectTaskSavingId, onAddToProject }: InboxPanelProps) {
+  const [filter, setFilter] = useState<InboxFilter>('all');
   const pendingCount = entries.filter((entry) => !entry.processed).length;
   const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
+  const visibleEntries = entries.filter((entry) => filter === 'all' || entry.ai?.category === filter);
   return <section className="inbox-page">
     <BridgeWarnings api={bridgeApiWarning} token={bridgeTokenWarning} />
     <section className="card section inbox-capture-card" aria-labelledby="inbox-capture-title">
@@ -154,7 +160,7 @@ export function InboxPanel({ entries, loaded, busy, storageStatus, storageError,
           <h3 id="inbox-list-title">인박스</h3>
         </div>
         <div className="inbox-list-actions">
-          <span>{entries.length}개 · 미정리 {pendingCount}개</span>
+          <span>{visibleEntries.length}개 표시 · 미정리 {pendingCount}개</span>
           <button className="capture-ai-button" type="button" onClick={onOrganize} disabled={busy || pendingCount === 0}>
             <span aria-hidden="true">✦</span> {busy ? 'GPT가 정리하는 중…' : 'GPT로 정리'}
           </button>
@@ -162,36 +168,17 @@ export function InboxPanel({ entries, loaded, busy, storageStatus, storageError,
       </div>
       {busy && <div className="inbox-ai-status" role="status">최근 미정리 항목을 분석하고 있어요. 원문은 변경되지 않습니다.</div>}
       {error && <div className="inbox-ai-error" role="alert">{error}</div>}
-      {preview && <section className="inbox-preview" aria-labelledby="inbox-preview-title">
-        <div className="inbox-preview-head">
-          <div>
-            <span className="capture-eyebrow">REVIEW BEFORE APPLY</span>
-            <h4 id="inbox-preview-title">정리 미리보기</h4>
-            <p>내용을 확인한 뒤 적용하세요. 원문은 별도로 계속 보존됩니다.</p>
-          </div>
-          <div className="inbox-preview-actions">
-            <button className="btn" type="button" onClick={onDiscardPreview}>닫기</button>
-            <button className="capture-ai-button" type="button" onClick={onApply}>미리보기 적용</button>
-          </div>
-        </div>
-        <div className="inbox-proposal-list">{preview.map((suggestion) => {
-          const entry = entriesById.get(suggestion.entryId);
-          if (!entry) return null;
-          const related = suggestion.relatedEntryIds.map((id) => entriesById.get(id)).filter((item): item is InboxEntry => Boolean(item));
-          return <article className="inbox-proposal" key={suggestion.entryId}>
-            <div className="inbox-proposal-top">
-              <span className="inbox-category-tag">{categoryLabels[suggestion.category]}</span>
-              <strong>{suggestion.title}</strong>
-            </div>
-            <blockquote>{entry.rawText}</blockquote>
-            {suggestion.summary && <p>{suggestion.summary}</p>}
-            {suggestion.category === 'Todo' && suggestion.nextAction && <div className="inbox-proposal-detail"><b>다음 행동</b><span>{suggestion.nextAction}</span></div>}
-            {suggestion.dueDate && <div className="inbox-proposal-detail"><b>원문에 적힌 날짜</b><time dateTime={suggestion.dueDate}>{suggestion.dueDate}</time></div>}
-            {related.length > 0 && <div className="inbox-related-suggestions"><b>유사 항목 제안</b>{related.map((item) => <span key={item.id}>{item.rawText}</span>)}</div>}
-          </article>;
-        })}</div>
-      </section>}
-      {!entries.length ? <div className="inbox-empty">아직 저장된 항목이 없습니다.</div> : <div className="inbox-entry-list">{entries.map((entry) => <article className={entry.processed ? 'inbox-entry is-processed' : 'inbox-entry'} key={entry.id}>
+      {routeMessage && <div className="inbox-route-message" role="status">{routeMessage}</div>}
+      <div className="inbox-category-filters" role="group" aria-label="Inbox 분류 필터">
+        {([['all', '전체'], ['idea', '연구 아이디어'], ['todo', '할 일'], ['schedule', '일정'], ['other', '기타']] as [InboxFilter, string][]).map(([value, label]) => <button
+          aria-pressed={filter === value}
+          className={filter === value ? 'active' : ''}
+          key={value}
+          onClick={() => setFilter(value)}
+          type="button"
+        >{label}</button>)}
+      </div>
+      {!entries.length ? <div className="inbox-empty">아직 저장된 항목이 없습니다.</div> : visibleEntries.length ? <div className="inbox-entry-list">{visibleEntries.map((entry) => <article className={entry.processed ? 'inbox-entry is-processed' : 'inbox-entry'} key={entry.id}>
         <div className="inbox-entry-meta">
           <time dateTime={entry.createdAt}>{formatInboxDate(entry.createdAt)}</time>
           {entry.ai ? <span className="inbox-category-tag">{categoryLabels[entry.ai.category]}</span> : <span className="inbox-pending-tag">미정리</span>}
@@ -200,11 +187,42 @@ export function InboxPanel({ entries, loaded, busy, storageStatus, storageError,
         {entry.ai && <div className="inbox-entry-ai">
           <strong>{entry.ai.title}</strong>
           {entry.ai.summary && <p>{entry.ai.summary}</p>}
-          {entry.ai.category === 'Todo' && entry.ai.nextAction && <div><b>다음 행동</b><span>{entry.ai.nextAction}</span></div>}
+          {entry.ai.category === 'todo' && entry.ai.nextAction && <div><b>다음 행동</b><span>{entry.ai.nextAction}</span></div>}
           {entry.ai.dueDate && <div><b>날짜</b><time dateTime={entry.ai.dueDate}>{entry.ai.dueDate}</time></div>}
           {entry.ai.relatedEntryIds.length > 0 && <div className="inbox-entry-related"><b>유사 항목</b><span>{entry.ai.relatedEntryIds.map((id) => entriesById.get(id)?.rawText).filter(Boolean).join(' · ')}</span></div>}
         </div>}
-      </article>)}</div>}
+        {entry.ai?.category === 'todo' && <ProjectTaskRoute
+          entry={entry}
+          projects={projects}
+          busy={projectTaskSavingId === entry.id}
+          onAdd={(projectId) => onAddToProject(entry.id, projectId)}
+        />}
+      </article>)}</div> : <div className="inbox-empty">이 분류에 저장된 항목이 없습니다.</div>}
     </section>
   </section>;
+}
+
+function ProjectTaskRoute({ entry, projects, busy, onAdd }: {
+  entry: InboxEntry;
+  projects: ResearchProject[];
+  busy: boolean;
+  onAdd: (projectId: string) => void;
+}) {
+  const [projectId, setProjectId] = useState('');
+  const task = entry.ai?.title || entry.ai?.nextAction || entry.rawText;
+  const selectedProject = projects.find((project) => project.id === projectId);
+  const alreadyAdded = selectedProject?.nextTasks.includes(task) === true;
+  if (!projects.length) return null;
+  return <div className="inbox-project-route">
+    <label>
+      <span className="sr-only">할 일을 추가할 연구 프로젝트</span>
+      <select aria-label="할 일을 추가할 연구 프로젝트" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+        <option value="">프로젝트 선택</option>
+        {projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
+      </select>
+    </label>
+    <button className="mini" type="button" disabled={!selectedProject || alreadyAdded || busy} onClick={() => onAdd(projectId)}>
+      {busy ? '추가 중…' : alreadyAdded ? '프로젝트에 추가됨' : '프로젝트에 추가'}
+    </button>
+  </div>;
 }

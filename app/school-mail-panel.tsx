@@ -108,6 +108,8 @@ export function SchoolMailRow({
   analysisExpanded = false,
   onToggleAnalysis,
   analysisDetails,
+  analysisSummary,
+  analysisAvailable = true,
 }: {
   item: PrioritizedMail;
   isOpening?: boolean;
@@ -116,6 +118,8 @@ export function SchoolMailRow({
   analysisExpanded?: boolean;
   onToggleAnalysis?: () => void;
   analysisDetails?: ReactNode;
+  analysisSummary?: string;
+  analysisAvailable?: boolean;
 }) {
   const priorityLabel = mailPriorityLabel(item.priority);
   const content = <>
@@ -125,7 +129,7 @@ export function SchoolMailRow({
       <small>{item.senderName}{item.senderAddress && ` · ${item.senderAddress}`} · <time dateTime={item.receivedAt} title={formatMailDate(item.receivedAt)}>{relativeMailDate(item.receivedAt)}</time></small>
       {item.priorityReason && <small className="school-mail-priority-reason">{item.priorityReason}</small>}
     </span>
-    {onOpen && <span className="school-mail-open-hint" aria-hidden="true">{isOpening ? '여는 중…' : '열기'}</span>}
+    {!onToggleAnalysis && onOpen && <span className="school-mail-open-hint" aria-hidden="true">{isOpening ? '여는 중…' : '열기'}</span>}
   </>;
   const row = !onOpen ? <div className={schoolMailRowClass(item.isRead, item.priority)}>{content}</div> : <button
     aria-label={isOpening ? 'Thunderbird에서 메일을 여는 중' : `${item.subject} 메일 열기`}
@@ -136,10 +140,14 @@ export function SchoolMailRow({
   >{content}</button>;
   if (!onToggleAnalysis) return row;
   return <div className="school-mail-item">
-    {row}
-    <button className={`school-mail-analysis-toggle${analysisExpanded ? ' active' : ''}`} onClick={onToggleAnalysis} type="button">
-      {analysisExpanded ? 'AI 분석 닫기' : analysisState === 'queued' || analysisState === 'processing' ? 'AI 분석 대기…' : analysisState === 'failed' ? 'AI 다시 시도' : 'AI 분석 보기'}
-    </button>
+    <div className="school-mail-triage-row">{row}<div className="school-mail-inline-actions">
+      {onOpen && <button type="button" disabled={isOpening} onClick={() => { void onOpen(item); }}>{isOpening ? '여는 중…' : '열기'}</button>}
+      <button className={`school-mail-analysis-toggle${analysisExpanded ? ' active' : ''}`} disabled={!analysisAvailable && !analysisExpanded} onClick={onToggleAnalysis} type="button">
+        {analysisExpanded ? 'AI 분석 닫기' : analysisState === 'queued' || analysisState === 'processing' ? 'AI 분석 대기…' : analysisState === 'failed' ? 'AI 다시 시도' : 'AI 분석 보기'}
+      </button>
+    </div></div>
+    {analysisSummary && <p className="school-mail-ai-summary"><b>AI 요약</b>{analysisSummary}</p>}
+    {analysisExpanded && !analysisAvailable && <div className="note">저장된 AI 분석이 없어. 메일 동기화 후 분석된 요약이 표시돼.</div>}
     {analysisExpanded && analysisDetails}
   </div>;
 }

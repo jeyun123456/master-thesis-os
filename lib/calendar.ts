@@ -35,7 +35,7 @@ type GoogleEvent = {
   status?: unknown;
 };
 type FetchLike = typeof fetch;
-type CalendarOptions = { fetchImpl?: FetchLike; now?: Date; bypassCache?: boolean };
+type CalendarOptions = { fetchImpl?: FetchLike; now?: Date; bypassCache?: boolean; startDate?: string };
 type CalendarConfig = { serviceAccountEmail: string; privateKey: string; calendarIds: string[] };
 type CacheEntry = { expiresAt: number; items: CalendarEvent[] };
 type AccessTokenEntry = { token: string; expiresAt: number };
@@ -49,7 +49,7 @@ export type CalendarCreateInput = {
   allDay: boolean;
   type?: 'event' | 'deadline';
   reason?: string;
-  source?: 'mail' | 'portal';
+  source?: 'mail' | 'portal' | 'inbox';
 };
 
 export type CalendarCreateResult = {
@@ -155,11 +155,24 @@ function seoulDate(now: Date): string {
   }).format(now);
 }
 
-export function calendarRange(days = DEFAULT_DAYS, now = new Date()) {
+export function calendarRange(days = DEFAULT_DAYS, now = new Date(), requestedStartDate?: string) {
   const safeDays = Number.isFinite(days) ? Math.min(Math.max(Math.trunc(days), 1), 365) : DEFAULT_DAYS;
-  const start = new Date(`${seoulDate(now)}T00:00:00+09:00`);
+  const startDate = requestedStartDate && dateOnlyIsValid(requestedStartDate) ? requestedStartDate : seoulDate(now);
+  const start = new Date(`${startDate}T00:00:00+09:00`);
   const end = new Date(start.getTime() + safeDays * 86_400_000);
-  return { days: safeDays, timeMin: start.toISOString(), timeMax: end.toISOString() };
+  return { days: safeDays, startDate, timeMin: start.toISOString(), timeMax: end.toISOString() };
+}
+
+export function calendarMonthBounds(month: string): { startDate: string; days: number } | null {
+  const match = month.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const monthNumber = Number(match[2]);
+  if (year < 1970 || year > 9999 || monthNumber < 1 || monthNumber > 12) return null;
+  return {
+    startDate: `${match[1]}-${match[2]}-01`,
+    days: new Date(Date.UTC(year, monthNumber, 0)).getUTCDate(),
+  };
 }
 
 export function normalizePrivateKey(value: string): string {
@@ -234,7 +247,7 @@ function normalizeCreateInput(input: CalendarCreateInput): {
       title,
       start: { date: startValue },
       end: { date: end },
-      description: `${input.source === 'portal' ? '학교 공지에서 확인한' : '메일에서 확인한'} ${input.type === 'deadline' ? '마감 후보' : '일정 후보'}${input.reason ? `\n${input.reason.trim().slice(0, 500)}` : ''}`,
+      description: `${input.source === 'portal' ? '학교 공지에서 확인한' : input.source === 'inbox' ? 'Inbox에서 정리한' : '메일에서 확인한'} ${input.type === 'deadline' ? '마감 후보' : '일정 후보'}${input.reason ? `\n${input.reason.trim().slice(0, 500)}` : ''}`,
     };
   }
 
@@ -251,7 +264,7 @@ function normalizeCreateInput(input: CalendarCreateInput): {
     title,
     start: { dateTime: start, timeZone: CALENDAR_TIMEZONE },
     end: { dateTime: end, timeZone: CALENDAR_TIMEZONE },
-    description: `${input.source === 'portal' ? '학교 공지에서 확인한' : '메일에서 확인한'} ${input.type === 'deadline' ? '마감 후보' : '일정 후보'}${input.reason ? `\n${input.reason.trim().slice(0, 500)}` : ''}`,
+    description: `${input.source === 'portal' ? '학교 공지에서 확인한' : input.source === 'inbox' ? 'Inbox에서 정리한' : '메일에서 확인한'} ${input.type === 'deadline' ? '마감 후보' : '일정 후보'}${input.reason ? `\n${input.reason.trim().slice(0, 500)}` : ''}`,
   };
 }
 
@@ -523,7 +536,7 @@ export async function createCalendarEvent(
           private: {
             masterThesisOsMailId: input.mailId.trim(),
             masterThesisOsCandidateId: input.candidateId.trim(),
-            masterThesisOsSource: input.source === 'portal' ? 'portal-notice' : 'mail',
+            masterThesisOsSource: input.source === 'portal' ? 'portal-notice' : input.source === 'inbox' ? 'inbox' : 'mail',
           },
         },
       }),
@@ -561,7 +574,7 @@ export async function getCalendarEvents(days = DEFAULT_DAYS, options: CalendarOp
   const fetchImpl = options.fetchImpl || fetch;
   const now = options.now || new Date();
   const value = config();
-  const range = calendarRange(days, now);
+  const range = calendarRange(days, now, options.startDate);
   if (!value.calendarIds.length) {
     throw new CalendarIntegrationError('auth_error', 'Google Calendar service account is not configured.');
   }

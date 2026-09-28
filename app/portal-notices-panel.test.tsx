@@ -27,6 +27,8 @@ function notice(overrides: Partial<PortalNoticeSummary>): PortalNoticeSummary {
     changeCount: 0,
     isRead: false,
     isImportant: false,
+    interest: 1,
+    aiSummary: '',
     isArchived: false,
     firstSeenAt: '2026-09-18T09:00:00Z',
     readAt: null,

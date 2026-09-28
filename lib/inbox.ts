@@ -2,8 +2,26 @@ export const INBOX_STORAGE_KEY = 'chocomintLab.inbox.v1';
 export const INBOX_MAX_RAW_CHARS = 1200;
 export const INBOX_AI_BATCH_SIZE = 4;
 
-export const INBOX_CATEGORIES = ['Todo', 'Idea', 'Research Note', 'Later / Reference'] as const;
+export const INBOX_CATEGORIES = ['idea', 'todo', 'schedule', 'other'] as const;
 export type InboxCategory = (typeof INBOX_CATEGORIES)[number];
+
+const legacyCategoryMap: Record<string, InboxCategory> = {
+  Todo: 'todo',
+  Idea: 'idea',
+  'Research Note': 'idea',
+  'Later / Reference': 'other',
+  연구: 'idea',
+  '연구 아이디어': 'idea',
+  '할 일': 'todo',
+  일정: 'schedule',
+  기타: 'other',
+};
+
+export function normalizeInboxCategory(value: unknown): InboxCategory | null {
+  if (typeof value !== 'string') return null;
+  if (INBOX_CATEGORIES.includes(value as InboxCategory)) return value as InboxCategory;
+  return legacyCategoryMap[value] || null;
+}
 
 export type InboxSuggestion = {
   entryId: string;
@@ -16,6 +34,9 @@ export type InboxSuggestion = {
 };
 
 export type InboxAIResult = InboxSuggestion & { processedAt: string };
+
+/** Accept older cached category labels while persisting only the current taxonomy. */
+export type InboxSuggestionInput = Omit<InboxSuggestion, 'category'> & { category: string };
 
 export type InboxEntry = {
   id: string;
@@ -31,23 +52,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isInboxCategory(value: unknown): value is InboxCategory {
-  return INBOX_CATEGORIES.includes(value as InboxCategory);
-}
-
 function createId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
   return `inbox-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function normalizeAIResult(value: unknown, entryId: string): InboxAIResult | null {
-  if (!isRecord(value) || !isInboxCategory(value.category)) return null;
+  if (!isRecord(value)) return null;
+  const category = normalizeInboxCategory(value.category);
+  if (!category) return null;
   const relatedEntryIds = Array.isArray(value.relatedEntryIds)
     ? value.relatedEntryIds.filter((id): id is string => typeof id === 'string' && id !== entryId).slice(0, 4)
     : [];
   return {
     entryId,
-    category: value.category,
+    category,
     title: typeof value.title === 'string' ? value.title : '',
     summary: typeof value.summary === 'string' ? value.summary : '',
     nextAction: typeof value.nextAction === 'string' ? value.nextAction : '',
@@ -136,7 +155,7 @@ export function createInboxEntry(rawText: string, now = new Date(), id = createI
 
 export function applyInboxSuggestions(
   entries: InboxEntry[],
-  suggestions: InboxSuggestion[],
+  suggestions: InboxSuggestionInput[],
   now = new Date(),
 ): InboxEntry[] {
   const byId = new Map(suggestions.map((suggestion) => [suggestion.entryId, suggestion]));
@@ -145,14 +164,31 @@ export function applyInboxSuggestions(
   return entries.map((entry) => {
     const suggestion = byId.get(entry.id);
     if (!suggestion) return entry;
+    const category = normalizeInboxCategory(suggestion.category) || 'other';
     const ai: InboxAIResult = {
       ...suggestion,
       entryId: entry.id,
-      nextAction: suggestion.category === 'Todo' ? suggestion.nextAction : '',
-      dueDate: suggestion.dueDate,
+      category,
+      nextAction: category === 'todo' ? suggestion.nextAction : '',
+      dueDate: suggestion.dueDate && hasExplicitDate(entry.rawText, suggestion.dueDate) ? suggestion.dueDate : null,
       relatedEntryIds: suggestion.relatedEntryIds.filter((id) => id !== entry.id && entryIds.has(id)).slice(0, 4),
       processedAt,
     };
     return { ...entry, processed: true, ai };
   });
+}
+
+function hasExplicitDate(rawText: string, value: string): boolean {
+  const patterns = [
+    /(?<!\d)(\d{4})[-/.]\s*(\d{1,2})[-/.]\s*(\d{1,2})(?!\d)/g,
+    /(?<!\d)(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of rawText.matchAll(pattern)) {
+      const [, year, month, day] = match;
+      const date = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      if (date === value) return true;
+    }
+  }
+  return false;
 }

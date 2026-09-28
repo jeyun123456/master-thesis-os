@@ -18,6 +18,32 @@ export type Shortcut = {
   order: number;
 };
 
+export const SHORTCUT_EXPORT_VERSION = 1;
+
+export function exportShortcutsJson(items: Shortcut[]): string {
+  return JSON.stringify({ version: SHORTCUT_EXPORT_VERSION, shortcuts: items }, null, 2);
+}
+
+export function parseShortcutImport(value: unknown): Shortcut[] {
+  if (!isRecord(value) || value.version !== SHORTCUT_EXPORT_VERSION || !Array.isArray(value.shortcuts)) {
+    throw new Error('바로가기 JSON은 version 1과 shortcuts 목록이 필요해.');
+  }
+  for (const item of value.shortcuts) {
+    if (!isRecord(item)
+      || typeof item.id !== 'string' || typeof item.title !== 'string'
+      || typeof item.type !== 'string' || typeof item.target !== 'string'
+      || typeof item.pinnedToHome !== 'boolean' || typeof item.enabled !== 'boolean'
+      || typeof item.order !== 'number' || !Number.isFinite(item.order)
+      || ['description', 'icon', 'args', 'workingDirectory'].some((key) => key in item && typeof item[key] !== 'string')
+      || ('runAsAdmin' in item && typeof item.runAsAdmin !== 'boolean')) {
+      throw new Error('바로가기 JSON에 유효하지 않은 항목이 있어. 기존 목록은 유지했어.');
+    }
+  }
+  const parsed = parseShortcuts(value.shortcuts);
+  if (parsed.length !== value.shortcuts.length) throw new Error('바로가기 JSON의 ID, 대상 경로 또는 형식이 유효하지 않아. 기존 목록은 유지했어.');
+  return parsed;
+}
+
 const shortcutTypes = new Set<ShortcutType>(['web', 'uri', 'shell', 'app', 'file', 'folder', 'command']);
 const SHORTCUT_STORAGE_KEY = 'masterThesisOs.shortcuts.v2';
 

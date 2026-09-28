@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   CALENDAR_TIMEZONE,
   CalendarIntegrationError,
+  calendarMonthBounds,
   calendarConfigured,
   calendarRange,
   configuredCalendarId,
@@ -27,7 +28,7 @@ function createInput(value: unknown): CalendarCreateInput | null {
     allDay: value.allDay === true,
     ...(value.type === 'deadline' || value.type === 'event' ? { type: value.type } : {}),
     ...(typeof value.reason === 'string' ? { reason: value.reason } : {}),
-    ...(value.source === 'portal' || value.source === 'mail' ? { source: value.source } : {}),
+    ...(value.source === 'portal' || value.source === 'mail' || value.source === 'inbox' ? { source: value.source } : {}),
   };
 }
 
@@ -43,12 +44,19 @@ function calendarWriteErrorMessage(errorCode: string): string {
 }
 
 export async function GET(req: NextRequest) {
+  const requestedMonth = req.nextUrl.searchParams.get('month') || '';
   const requestedDays = Number(req.nextUrl.searchParams.get('days') || 14);
-  const range = calendarRange(requestedDays);
+  const monthBounds = requestedMonth ? calendarMonthBounds(requestedMonth) : null;
+  if (requestedMonth && !monthBounds) {
+    return NextResponse.json({ error: 'month must use YYYY-MM format' }, { status: 400 });
+  }
+  const range = monthBounds
+    ? calendarRange(monthBounds.days, new Date(), monthBounds.startDate)
+    : calendarRange(requestedDays);
   const base = { configured: calendarConfigured(), calendarId: configuredCalendarId(), timezone: CALENDAR_TIMEZONE, range };
   if (!base.configured) return NextResponse.json({ ...base, state: 'unconfigured', items: [] });
   try {
-    const items = await getCalendarEvents(range.days);
+    const items = await getCalendarEvents(range.days, monthBounds ? { startDate: monthBounds.startDate } : {});
     return NextResponse.json({ ...base, state: items.length ? 'ready' : 'empty', items });
   } catch (error) {
     const errorCode = error instanceof CalendarIntegrationError ? error.code : 'network_error';

@@ -124,7 +124,7 @@ describe('calendar normalization and ranges', () => {
   });
 
   it('uses Seoul midnight and clamps the range', () => {
-    expect(calendarRange(14, baseNow)).toEqual({ days: 14, timeMin: '2026-09-07T15:00:00.000Z', timeMax: '2026-09-21T15:00:00.000Z' });
+    expect(calendarRange(14, baseNow)).toEqual({ days: 14, startDate: '2026-09-08', timeMin: '2026-09-07T15:00:00.000Z', timeMax: '2026-09-21T15:00:00.000Z' });
     expect(calendarRange(999, baseNow).days).toBe(365);
   });
 });

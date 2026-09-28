@@ -47,9 +47,20 @@ async function calendarRequest():Promise<CalendarApiResponse>{
   throw lastError instanceof Error?lastError:new Error('Calendar API request failed');
 }
 
+async function calendarMonthRequest(month: string): Promise<CalendarApiResponse> {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Calendar month must use YYYY-MM format');
+  const response = await fetch(`/api/calendar/events?month=${encodeURIComponent(month)}`, { cache: 'no-store' });
+  const data = await response.json() as CalendarApiResponse;
+  if (!response.ok || !data || !Array.isArray(data.items) || !data.state) {
+    throw new Error(data && typeof data.error === 'string' ? data.error : 'Calendar API returned an invalid response');
+  }
+  return data;
+}
+
 export const dashboardApi = {
   tree: () => request<RepositoryApiResponse>('/api/github/tree'),
   calendar: calendarRequest,
+  calendarMonth: calendarMonthRequest,
   results: (resultsPath?: string) => request<DashboardBundle>(resultsPath ? `/api/results?path=${encodeURIComponent(resultsPath)}` : '/api/results'),
   commits: () => request<ApiEnvelope<GitHubCommitSummary[]>>('/api/github/commits'),
   researchStatus: () => request<ResearchStatusApiResponse>('/api/research/status'),
@@ -60,6 +71,16 @@ export const dashboardApi = {
     '/api/research/projects/status',
     'PATCH',
     { id, status, ...(sha ? { sha } : {}) },
+  ),
+  updateProjectStage: (id: string, stage: string, sha?: string) => mutate<{ configured:boolean; source:'github'|'local'; project:ResearchProject; sha:string }>(
+    '/api/research/projects/stage',
+    'PATCH',
+    { id, stage, ...(sha ? { sha } : {}) },
+  ),
+  addProjectTask: (id: string, title: string, sha?: string) => mutate<{ configured:boolean; project:ResearchProject; sha:string; added:boolean }>(
+    '/api/research/projects/next-task',
+    'PATCH',
+    { id, title, ...(sha ? { sha } : {}) },
   ),
   papers: () => request<PaperIndexApiResponse>('/api/library/papers'),
 };

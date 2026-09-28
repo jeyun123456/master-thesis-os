@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   detectShortcutType,
+  exportShortcutsJson,
   isRepositoryShortcut,
+  parseShortcutImport,
   saveShortcutState,
   shortcutTitleFromTarget,
   type Shortcut,
@@ -39,6 +41,8 @@ export function ShortcutsPanel({ shortcuts, source, missing = false, writable = 
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
+  const importInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => setItems(shortcuts), [shortcuts]);
   useEffect(() => {
@@ -111,12 +115,45 @@ export function ShortcutsPanel({ shortcuts, source, missing = false, writable = 
     void commit(next, '바로가기 순서를 저장했어.');
   }
 
+  function exportItems() {
+    const blob = new Blob([exportShortcutsJson(items)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'chocomint-shortcuts-v1.json';
+    anchor.click();
+    URL.revokeObjectURL(url);
+    pop('바로가기를 version 1 JSON으로 내보냈어.');
+  }
+
+  async function importItems(file?: File) {
+    if (!file) return;
+    try {
+      const parsed = parseShortcutImport(JSON.parse(await file.text()) as unknown);
+      const merged = importMode === 'replace' ? parsed : (() => {
+        const byId = new Map(items.map((item) => [item.id, item]));
+        parsed.forEach((item) => byId.set(item.id, item));
+        return [...byId.values()].sort((left, right) => left.order - right.order);
+      })();
+      await commit(merged, `바로가기 ${importMode === 'replace' ? '교체' : '병합'}을 저장했어.`);
+    } catch (error) {
+      pop(error instanceof Error ? error.message : '가져오기 파일을 읽지 못했어. 기존 목록은 유지했어.');
+    } finally {
+      if (importInput.current) importInput.current.value = '';
+    }
+  }
+
   const canCreateFile = missing && writable && Boolean(onSave);
 
   return <div className="shortcuts-shell">
     <div className="card section shortcuts-intro">
       <div><h3>바로가기</h3><p>웹 · 프로그램 · 파일 · 폴더 · 명령어를 바탕화면 아이콘처럼 실행해.</p></div>
-      <span>{items.length}개 · {sourceLabel(source)}</span>
+      <div className="shortcut-data-actions"><span>{items.length}개 · {sourceLabel(source)}</span>
+        <button className="mini" type="button" disabled={saving} onClick={exportItems}>내보내기</button>
+        <label>가져오기 방식<select value={importMode} disabled={saving} onChange={(event) => setImportMode(event.target.value as 'merge' | 'replace')}><option value="merge">병합</option><option value="replace">교체</option></select></label>
+        <input className="sr-only" ref={importInput} type="file" accept="application/json,.json" onChange={(event) => void importItems(event.target.files?.[0])} />
+        <button className="mini" type="button" disabled={saving} onClick={() => importInput.current?.click()}>가져오기</button>
+      </div>
     </div>
 
     {missing && <div className="card section section-gap shortcut-file-missing">

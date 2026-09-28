@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   THUNDERBIRD_ANALYSIS_FOLDER_IDS,
   THUNDERBIRD_ANALYSIS_FOLDER_LABELS,
+  THUNDERBIRD_FOLDER_LABELS,
+  getRecentThunderbirdMail,
   openThunderbird,
   openThunderbirdMessage,
   thunderbirdMailErrorMessage,
@@ -11,6 +13,7 @@ import {
   type ThunderbirdAnalysisFolderId,
   type ThunderbirdFolder,
   type ThunderbirdMailErrorCode,
+  type ThunderbirdMail,
 } from '../lib/thunderbird-mail';
 import { prioritizeMail, type PrioritizedMail } from '../lib/mail-priority';
 import {
@@ -43,6 +46,7 @@ import { MailAnalysisDetails, type CalendarCandidateEdit } from './mail-analysis
 import { addCalendarEvent } from '../lib/calendar-client';
 
 type MailPanelStatus = 'loading' | 'ready' | 'empty' | 'bridge_offline' | 'error';
+type MailTab = 'inbox' | ThunderbirdAnalysisFolderId;
 
 export const MAIL_FOLDER_TAB_IDS = THUNDERBIRD_ANALYSIS_FOLDER_IDS;
 
@@ -71,10 +75,13 @@ export function mailPanelStateMessage(errorCode: ThunderbirdMailErrorCode | null
 }
 
 export function MailPanel() {
-  const [selectedFolder, setSelectedFolder] = useState<ThunderbirdAnalysisFolderId>('school-work');
+  const [selectedFolder, setSelectedFolder] = useState<MailTab>('inbox');
   const [status, setStatus] = useState<MailPanelStatus>('loading');
   const [errorCode, setErrorCode] = useState<ThunderbirdMailErrorCode | null>(null);
   const [items, setItems] = useState<MailAnalysisItem[]>([]);
+  const [inboxItems, setInboxItems] = useState<ThunderbirdMail[]>([]);
+  const [inboxStatus, setInboxStatus] = useState<MailPanelStatus>('loading');
+  const [inboxErrorCode, setInboxErrorCode] = useState<ThunderbirdMailErrorCode | null>(null);
   const [syncStatus, setSyncStatus] = useState<MailSyncStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('아직 동기화하지 않았어.');
@@ -115,6 +122,27 @@ export function MailPanel() {
     void loadAnalysis();
   }, [loadAnalysis]);
 
+  const loadInbox = useCallback(async () => {
+    setInboxStatus('loading');
+    setInboxErrorCode(null);
+    try {
+      const result = await getRecentThunderbirdMail(readBridgeToken(), fetch, 100, 'inbox');
+      if (!mountedRef.current) return;
+      setInboxItems(result.items);
+      setInboxStatus(result.items.length ? 'ready' : 'empty');
+    } catch (error) {
+      if (!mountedRef.current) return;
+      const code = readErrorCode(error);
+      setInboxItems([]);
+      setInboxErrorCode(code);
+      setInboxStatus(statusForError(code));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedFolder === 'inbox') void loadInbox();
+  }, [loadInbox, selectedFolder]);
+
   useEffect(() => {
     try {
       const preferences = readMailListPreferences(localStorage.getItem(MAIL_LIST_PREFERENCES_STORAGE_KEY));
@@ -143,8 +171,12 @@ export function MailPanel() {
     }
   }, [mailFilter, mailSort, preferencesReady, searchQuery, visibleCount]);
 
-  const folderItems = useMemo(() => items.filter((item) => item.folder === selectedFolder), [items, selectedFolder]);
-  const prioritizedItems = useMemo(() => folderItems.map((item) => prioritizeMail(item.mail)), [folderItems]);
+  const folderItems = useMemo(() => selectedFolder === 'inbox' ? [] : items.filter((item) => item.folder === selectedFolder), [items, selectedFolder]);
+  const inboxRows = useMemo(() => inboxItems.map((mail) => {
+    const analysis = items.find((value) => value.mail.id === mail.id || Boolean(mail.messageId && value.mail.messageId === mail.messageId));
+    return { mail: prioritizeMail(mail), analysis };
+  }), [inboxItems, items]);
+  const prioritizedItems = useMemo(() => selectedFolder === 'inbox' ? inboxRows.map((row) => row.mail) : folderItems.map((item) => prioritizeMail(item.mail)), [folderItems, inboxRows, selectedFolder]);
   const filteredItems = useMemo(
     () => filterAndSortMailItems(prioritizedItems, { filter: mailFilter, query: searchQuery, sort: mailSort }),
     [mailFilter, mailSort, prioritizedItems, searchQuery],
@@ -288,7 +320,7 @@ export function MailPanel() {
     }
   }
 
-  function handleFolderChange(folder: ThunderbirdAnalysisFolderId) {
+  function handleFolderChange(folder: MailTab) {
     setSelectedFolder(folder);
     setVisibleCount(INITIAL_MAIL_VISIBLE_COUNT);
   }
@@ -308,31 +340,33 @@ export function MailPanel() {
     setVisibleCount(INITIAL_MAIL_VISIBLE_COUNT);
   }
 
-  const selectedLabel = mailFolderTabLabel(selectedFolder);
+  const selectedLabel = selectedFolder === 'inbox' ? THUNDERBIRD_FOLDER_LABELS.inbox : mailFolderTabLabel(selectedFolder);
+  const visibleStatus = selectedFolder === 'inbox' ? inboxStatus : status;
+  const visibleErrorCode = selectedFolder === 'inbox' ? inboxErrorCode : errorCode;
   const openLabel = openState === 'opening' ? 'Thunderbird 여는 중…' : openState === 'opened' ? 'Thunderbird 열림' : 'Thunderbird 열기';
   const currentSyncLabel = syncing ? syncMessage : syncStatus?.status === 'running' ? syncPhaseLabel(syncStatus.phase) : syncMessage;
 
   return <section className="card section microsoft-mail-card mail-panel">
-    <div className="head"><h3>메일</h3><span>{mailPanelStatusLabel(status, errorCode)}</span></div>
+    <div className="head"><h3>메일</h3><span>{mailPanelStatusLabel(visibleStatus, visibleErrorCode)}</span></div>
     <div className="mail-analysis-sync-summary">
       <div><b>메일 분석</b><small>대상 폴더: 학교 업무, 국제과</small></div>
       <div className="mail-analysis-sync-metrics"><small>마지막 동기화: {formatSyncDate(syncStatus?.lastSyncAt)}</small><small>신규 메일: {syncStatus?.newCount ?? 0}</small><small>분석 완료: {syncStatus?.analysisCompleted ?? 0}</small><small>분석 실패: {syncStatus?.analysisFailed ?? 0}</small></div>
-      <button className="btn" disabled={syncing} onClick={() => void handleSync()} type="button">{syncing ? currentSyncLabel : '메일 분석 동기화'}</button>
+      <button className="btn" disabled={syncing} onClick={() => void handleSync()} type="button">{syncing ? currentSyncLabel : '메일 동기화'}</button>
     </div>
     {syncing && <div className="note" aria-live="polite">{currentSyncLabel}</div>}
     {!syncing && syncStatus?.status === 'failed' && <div className="error microsoft-mail-error">{syncStatus.folders.find((folder) => folder.error)?.error || '마지막 메일 동기화에 실패했어.'}</div>}
-    <div className="muted"><small>{selectedLabel} · SQLite · Thunderbird 동기화 결과</small></div>
+    <div className="muted"><small>{selectedFolder === 'inbox' ? `${selectedLabel} · Thunderbird 원본 · 읽음 상태 읽기 전용` : `${selectedLabel} · SQLite · 저장된 분석 결과`}</small></div>
     <div className="mail-folder-tabs" role="tablist" aria-label="메일 분석 폴더">
-      {defaultMailFolders().map((folder) => <button
+      {[{ id: 'inbox' as const, label: THUNDERBIRD_FOLDER_LABELS.inbox }, ...defaultMailFolders()].map((folder) => <button
         className={`mail-folder-tab${selectedFolder === folder.id ? ' active' : ''}`}
         key={folder.id}
-        onClick={() => handleFolderChange(folder.id as ThunderbirdAnalysisFolderId)}
+        onClick={() => handleFolderChange(folder.id as MailTab)}
         role="tab"
         aria-selected={selectedFolder === folder.id}
         type="button"
       >{folder.label}</button>)}
     </div>
-    {(status === 'ready' || status === 'empty') && <MailListControls
+    {(visibleStatus === 'ready' || visibleStatus === 'empty') && <MailListControls
       filter={mailFilter}
       onFilterChange={handleFilterChange}
       onQueryChange={handleSearchChange}
@@ -340,8 +374,33 @@ export function MailPanel() {
       query={searchQuery}
       sort={mailSort}
     />}
-    {status === 'loading' && <div className="microsoft-mail-state">SQLite에 저장된 {selectedLabel} 메일을 확인하는 중이야…</div>}
-    {(status === 'ready' || status === 'empty') && <>
+    {visibleStatus === 'loading' && <div className="microsoft-mail-state">{selectedFolder === 'inbox' ? 'Thunderbird 받은 편지함을 읽는 중이야…' : `SQLite에 저장된 ${selectedLabel} 메일을 확인하는 중이야…`}</div>}
+    {selectedFolder === 'inbox' && (inboxStatus === 'ready' || inboxStatus === 'empty') && <>
+      <div className="mail-list-summary" aria-live="polite"><span>{visibleItems.length} / {filteredItems.length}개 표시</span><small>Thunderbird 원본 · 읽음/미읽음 상태는 읽기 전용</small></div>
+      {filteredItems.length ? <div className="microsoft-mail-list">{visibleItems.map((item, index) => {
+        const stored = inboxRows.find((row) => row.mail.id === item.id)?.analysis;
+        return <SchoolMailRow
+          analysisAvailable={Boolean(stored)}
+          analysisDetails={stored ? <MailAnalysisDetails
+            candidates={stored.candidates}
+            onAddCandidate={(candidate, edit) => handleAddCandidate(item, candidate, edit)}
+            onIgnoreCandidate={(candidate) => handleIgnoreCandidate(item, candidate)}
+            onRetry={() => handleRetry(stored)}
+            record={stored.analysis}
+          /> : undefined}
+          analysisExpanded={expandedAnalysisId === item.id}
+          analysisState={stored?.analysis.status}
+          analysisSummary={stored?.analysis.summary || undefined}
+          item={item}
+          isOpening={openingMailId === item.id}
+          key={schoolMailRowKey(item, index)}
+          onOpen={handleOpenMail}
+          onToggleAnalysis={() => setExpandedAnalysisId((current) => current === item.id ? null : item.id)}
+        />;
+      })}</div> : <div className="empty compact-empty">받은 편지함에 메일이 없어.</div>}
+      {hasMoreItems && <div className="mail-list-more"><button className="mini" onClick={() => setVisibleCount(nextMailVisibleCount(visibleCount))} type="button">더 보기 (+{Math.min(MAIL_VISIBLE_INCREMENT, filteredItems.length - visibleItems.length)})</button></div>}
+    </>}
+    {selectedFolder !== 'inbox' && (status === 'ready' || status === 'empty') && <>
       <div className="mail-list-summary" aria-live="polite"><span>{visibleItems.length} / {filteredItems.length}개 표시</span><small>SQLite 저장 범위 기준</small></div>
       {filteredItems.length ? <div className="microsoft-mail-list">{visibleItems.map((item, index) => {
         const stored = folderItems.find((value) => value.mail.id === item.id);
@@ -356,6 +415,7 @@ export function MailPanel() {
           />}
           analysisExpanded={expandedAnalysisId === item.id}
           analysisState={stored.analysis.status}
+          analysisSummary={stored.analysis.summary || undefined}
           item={item}
           isOpening={openingMailId === item.id}
           key={schoolMailRowKey(item, index)}
@@ -365,11 +425,12 @@ export function MailPanel() {
       })}</div> : <div className="empty compact-empty">{folderItems.length ? '조건에 맞는 메일이 없어.' : `${selectedLabel}에 저장된 메일이 없어. 동기화를 눌러 수집해줘.`}</div>}
       {hasMoreItems && <div className="mail-list-more"><button className="mini" onClick={() => setVisibleCount(nextMailVisibleCount(visibleCount))} type="button">더 보기 (+{Math.min(MAIL_VISIBLE_INCREMENT, filteredItems.length - visibleItems.length)})</button></div>}
     </>}
-    {status !== 'loading' && status !== 'ready' && status !== 'empty' && <div className="microsoft-mail-error-wrap"><div className="error microsoft-mail-error">{mailPanelStateMessage(errorCode)}</div><button className="mini" onClick={() => void loadAnalysis()} type="button">다시 시도</button></div>}
+    {selectedFolder === 'inbox' && inboxStatus !== 'loading' && inboxStatus !== 'ready' && inboxStatus !== 'empty' && <div className="microsoft-mail-error-wrap"><div className="error microsoft-mail-error">{mailPanelStateMessage(inboxErrorCode)}</div><button className="mini" onClick={() => void loadInbox()} type="button">다시 시도</button></div>}
+    {selectedFolder !== 'inbox' && status !== 'loading' && status !== 'ready' && status !== 'empty' && <div className="microsoft-mail-error-wrap"><div className="error microsoft-mail-error">{mailPanelStateMessage(errorCode)}</div><button className="mini" onClick={() => void loadAnalysis()} type="button">다시 시도</button></div>}
     {openError && <div className="error school-mail-open-error">{thunderbirdMailErrorMessage(openError)}</div>}
     <div className="toolbar school-mail-actions">
       <button className="btn" disabled={openState === 'opening'} onClick={() => void handleOpenThunderbird()} type="button">{openLabel}</button>
-      <button className="mini" onClick={() => void loadAnalysis()} type="button">새로고침</button>
+      <button className="mini" onClick={() => selectedFolder === 'inbox' ? void loadInbox() : void loadAnalysis()} type="button">새로고침</button>
     </div>
   </section>;
 }
