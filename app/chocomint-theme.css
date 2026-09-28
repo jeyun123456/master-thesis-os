@@ -2424,6 +2424,10 @@ html .shell .section {
 }
 
 /* Mail screen: flat rows with compact, shared status and action styling. */
+.mail-panel > .muted {
+  display: none;
+}
+
 .mail-panel .mail-analysis-sync-summary {
   border-color: var(--line);
   border-radius: 10px;
@@ -2490,7 +2494,7 @@ html .shell .section {
 }
 
 .mail-panel .school-mail-triage-row > .microsoft-mail-row {
-  padding: 9px 0 6px;
+  padding: 11px 0 7px;
   border: 0;
   background: transparent;
 }
@@ -2523,12 +2527,16 @@ html .shell .section {
 }
 
 .mail-panel .microsoft-mail-main b {
-  font-weight: 550;
+  display: block;
+  color: #4d463e;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.35;
 }
 
 .mail-panel .microsoft-mail-row.unread .microsoft-mail-main b {
   color: #241f1a;
-  font-weight: 900;
+  font-weight: 850;
 }
 
 .mail-panel .microsoft-mail-row.unread .microsoft-mail-main > small:first-of-type {
@@ -2555,6 +2563,12 @@ html .shell .section {
   vertical-align: 1px;
 }
 
+.mail-panel .school-mail-priority-label.normal {
+  border-color: #e4e0d6;
+  background: #f1efe9;
+  color: #756d62;
+}
+
 .mail-panel .school-mail-priority-label.important {
   background: #e8f1e9;
   color: #3f715e;
@@ -2567,7 +2581,7 @@ html .shell .section {
 
 .mail-panel .school-mail-inline-actions {
   align-self: center;
-  gap: 5px;
+  gap: 6px;
   margin-left: auto;
   padding: 0;
 }
@@ -2575,14 +2589,14 @@ html .shell .section {
 .mail-panel .school-mail-inline-actions button {
   flex: 0 0 auto;
   min-width: 0;
-  min-height: 28px;
-  height: 28px;
-  padding: 0 7px;
+  min-height: 30px;
+  height: 30px;
+  padding: 0 9px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--panel-elevated);
   color: var(--text-soft);
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -2596,12 +2610,13 @@ html .shell .section {
 .mail-panel .school-mail-ai-summary {
   align-items: flex-start;
   gap: 8px;
-  margin: 0;
-  padding: 0 0 8px;
+  margin: 0 0 0 45px;
+  padding: 0 0 10px;
   border: 0;
   background: transparent;
-  color: var(--text-soft);
-  line-height: 1.45;
+  color: #655f57;
+  font-size: 9px;
+  line-height: 1.5;
 }
 
 .mail-panel .school-mail-ai-summary b {
@@ -2629,6 +2644,7 @@ html .shell .section {
   }
 
   .mail-panel .school-mail-ai-summary {
+    margin-left: 0;
     padding: 0 0 10px;
   }
 }

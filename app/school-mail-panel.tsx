@@ -110,6 +110,7 @@ export function SchoolMailRow({
   analysisDetails,
   analysisSummary,
   analysisAvailable = true,
+  showNormalPriorityLabel = false,
 }: {
   item: PrioritizedMail;
   isOpening?: boolean;
@@ -120,8 +121,9 @@ export function SchoolMailRow({
   analysisDetails?: ReactNode;
   analysisSummary?: string;
   analysisAvailable?: boolean;
+  showNormalPriorityLabel?: boolean;
 }) {
-  const priorityLabel = mailPriorityLabel(item.priority);
+  const priorityLabel = item.priority === 'normal' && showNormalPriorityLabel ? '기본' : mailPriorityLabel(item.priority);
   const content = <>
     <span className={`microsoft-mail-dot${item.isRead ? '' : ' unread'}`} aria-label={item.isRead ? '읽음' : '미읽음'}>{schoolMailIndicator(item.isRead)}</span>
     <span className="microsoft-mail-main">

@@ -381,6 +381,7 @@ export function MailPanel() {
         const stored = inboxRows.find((row) => row.mail.id === item.id)?.analysis;
         return <SchoolMailRow
           analysisAvailable={Boolean(stored)}
+          showNormalPriorityLabel
           analysisDetails={stored ? <MailAnalysisDetails
             candidates={stored.candidates}
             onAddCandidate={(candidate, edit) => handleAddCandidate(item, candidate, edit)}
@@ -406,6 +407,7 @@ export function MailPanel() {
         const stored = folderItems.find((value) => value.mail.id === item.id);
         if (!stored) return null;
         return <SchoolMailRow
+          showNormalPriorityLabel
           analysisDetails={<MailAnalysisDetails
             candidates={stored.candidates}
             onAddCandidate={(candidate, edit) => handleAddCandidate(item, candidate, edit)}
