@@ -424,6 +424,26 @@ class InboxBridgeEndpointTests(unittest.TestCase):
         self.assertEqual(stored['entries'][0]['id'], 'entry-1')
         self.assertEqual(list(self.inbox_path.parent.glob('.inbox-*.tmp')), [])
 
+    def test_inbox_delete_persists_after_reload(self):
+        self.request('POST', '/inbox', {'entries': [
+            self.raw_entry('delete-me', '삭제할 항목'),
+            self.raw_entry('keep-me', '남길 항목'),
+        ]})
+
+        status, deleted = self.request('POST', '/inbox/delete', {'entryId': 'delete-me'})
+        self.assertEqual(status, 200)
+        self.assertEqual([entry['id'] for entry in deleted['entries']], ['keep-me'])
+        stored = json.loads(self.inbox_path.read_text(encoding='utf-8'))
+        self.assertEqual([entry['id'] for entry in stored['entries']], ['keep-me'])
+
+        status, reloaded = self.request('GET', '/inbox')
+        self.assertEqual(status, 200)
+        self.assertEqual([entry['id'] for entry in reloaded['entries']], ['keep-me'])
+
+        status, repeated = self.request('POST', '/inbox/delete', {'entryId': 'delete-me'})
+        self.assertEqual(status, 200)
+        self.assertEqual([entry['id'] for entry in repeated['entries']], ['keep-me'])
+
     def test_project_metadata_update_and_conflict_safety(self):
         project_root = self.root / 'projects' / 'thesis'
         project_root.mkdir(parents=True)
@@ -468,6 +488,42 @@ class InboxBridgeEndpointTests(unittest.TestCase):
         self.assertEqual(status, 409)
         self.assertIn('changed', conflict['error'])
         self.assertEqual(manifest_path.read_bytes(), before_stale_write)
+
+    def test_project_next_task_update_targets_only_selected_project(self):
+        target_root = self.root / 'projects' / 'inbox-task-target'
+        other_root = self.root / 'projects' / 'inbox-task-other'
+        target_root.mkdir(parents=True, exist_ok=True)
+        other_root.mkdir(parents=True, exist_ok=True)
+        target_manifest = target_root / 'project.md'
+        other_manifest = other_root / 'project.md'
+        target_manifest.write_text('---\nid: inbox-task-target\n---\n\n# Target project\n', encoding='utf-8')
+        other_original = '---\nid: inbox-task-other\n---\n\n# Other project\n'
+        other_manifest.write_text(other_original, encoding='utf-8')
+
+        status, workspace = self.request('POST', '/projects/workspace', {'projectId': 'inbox-task-target'})
+        self.assertEqual(status, 200)
+        status, saved = self.request('POST', '/projects/update', {
+            'projectId': 'inbox-task-target',
+            'operation': 'next_task_add',
+            'value': '교수님께 결과 보내기',
+            'expectedSha': workspace['manifestSha'],
+        })
+        self.assertEqual(status, 200, saved)
+        self.assertTrue(saved['added'])
+        self.assertIn('## 다음 작업\n- 교수님께 결과 보내기', saved['manifestText'].replace('\r\n', '\n'))
+        self.assertEqual(other_manifest.read_text(encoding='utf-8'), other_original)
+
+        status, refreshed = self.request('POST', '/projects/workspace', {'projectId': 'inbox-task-target'})
+        self.assertEqual(status, 200)
+        status, duplicate = self.request('POST', '/projects/update', {
+            'projectId': 'inbox-task-target',
+            'operation': 'next_task_add',
+            'value': '교수님께 결과 보내기',
+            'expectedSha': refreshed['manifestSha'],
+        })
+        self.assertEqual(status, 200, duplicate)
+        self.assertFalse(duplicate['added'], duplicate['manifestText'])
+        self.assertEqual(other_manifest.read_text(encoding='utf-8'), other_original)
 
     def test_ai_apply_cannot_replace_raw_fields_or_remove_existing_entries(self):
         original = self.raw_entry()

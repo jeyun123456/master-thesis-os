@@ -268,6 +268,25 @@ def _merge_and_save_inbox_entries(raw_entries: object) -> list[dict[str, object]
         return result
 
 
+def _delete_inbox_entry(entry_id: object) -> list[dict[str, object]]:
+    if not isinstance(entry_id, str) or not entry_id.strip() or len(entry_id) > 256:
+        raise ValueError('invalid inbox entry id')
+    with INBOX_STORE_LOCK:
+        try:
+            existing = _read_inbox_entries_unlocked()
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            raise OSError('inbox store could not be read') from exc
+        result = [entry for entry in existing if entry['id'] != entry_id]
+        if len(result) == len(existing):
+            return existing
+        for entry in result:
+            ai = entry['ai']
+            if isinstance(ai, dict):
+                ai['relatedEntryIds'] = [value for value in ai['relatedEntryIds'] if value != entry_id]
+        _atomic_write_inbox_entries(result)
+        return result
+
+
 def _normalize_planner_task(raw: object) -> dict[str, object]:
     if not isinstance(raw, dict):
         raise ValueError('invalid planner task')
@@ -472,6 +491,29 @@ def _update_project_key_file(markdown: str, project_id: str, path: str, pinned: 
     return markdown[:match.end()] + ''.join(lines) + markdown[section_end:]
 
 
+def _append_project_next_task(markdown: str, value: object) -> tuple[str, bool]:
+    if not isinstance(value, str):
+        raise ValueError('invalid project task')
+    task = ' '.join(value.split()).strip()
+    if not task or len(task) > 1200:
+        raise ValueError('project task must contain 1 to 1200 characters')
+    newline = '\r\n' if '\r\n' in markdown else '\n'
+    task_line = f'- {task}'
+    headings = list(re.finditer(r'^##[ \t]+다음 작업[ \t]*\r?$', markdown, flags=re.MULTILINE))
+    if headings:
+        start = headings[-1].end()
+        next_heading = re.search(r'^##[ \t]+', markdown[start:], flags=re.MULTILINE)
+        end = start + next_heading.start() if next_heading else len(markdown)
+        section = markdown[start:end]
+        if any(line.strip() in {task_line, f'* {task}'} for line in section.splitlines()):
+            return markdown, False
+        prefix = newline if section and not section.endswith(('\n', '\r')) else ''
+        return f'{markdown[:end]}{prefix}{task_line}{newline}{markdown[end:]}', True
+
+    separator = newline if markdown and not markdown.endswith(('\n', '\r')) else ''
+    return f'{markdown}{separator}{newline}## 다음 작업{newline}{task_line}{newline}', True
+
+
 def _update_project_metadata(body: dict[str, object]) -> dict[str, object]:
     project_id = body.get('projectId')
     operation = body.get('operation')
@@ -483,6 +525,7 @@ def _update_project_metadata(body: dict[str, object]) -> dict[str, object]:
         markdown, current_sha, manifest_path, original = _project_manifest_snapshot(project_id)
         if current_sha != expected_sha:
             raise ProjectManifestConflict('project.md changed. Reload the project before saving again.')
+        task_added: bool | None = None
         if operation == 'stage':
             if value not in {'planning', 'collection', 'analysis', 'interpretation', 'writing', 'complete'}:
                 raise ValueError('invalid research stage')
@@ -505,10 +548,15 @@ def _update_project_metadata(body: dict[str, object]) -> dict[str, object]:
             except (OSError, ValueError) as exc:
                 raise ValueError('project file is outside the project folder') from exc
             updated = _update_project_key_file(markdown, normalized_id, value, operation == 'favorite_add')
+        elif operation == 'next_task_add':
+            updated, task_added = _append_project_next_task(markdown, value)
         else:
             raise ValueError('invalid project metadata operation')
         if updated == markdown:
-            return {'ok': True, 'source': 'vault', 'projectId': project_id, 'manifestText': markdown, 'manifestSha': current_sha}
+            result = {'ok': True, 'source': 'vault', 'projectId': project_id, 'manifestText': markdown, 'manifestSha': current_sha}
+            if task_added is not None:
+                result['added'] = task_added
+            return result
         if manifest_path.read_bytes() != original:
             raise ProjectManifestConflict('project.md changed. Reload the project before saving again.')
         newline = '\r\n' if b'\r\n' in original else '\n'
@@ -527,7 +575,10 @@ def _update_project_metadata(body: dict[str, object]) -> dict[str, object]:
             if temporary_path is not None and temporary_path.exists():
                 temporary_path.unlink()
         saved = manifest_path.read_bytes()
-        return {'ok': True, 'source': 'vault', 'projectId': project_id, 'manifestText': saved.decode('utf-8'), 'manifestSha': hashlib.sha256(saved).hexdigest()}
+        result = {'ok': True, 'source': 'vault', 'projectId': project_id, 'manifestText': saved.decode('utf-8'), 'manifestSha': hashlib.sha256(saved).hexdigest()}
+        if task_added is not None:
+            result['added'] = task_added
+        return result
 
 
 def _project_workspace(project_id: object) -> dict[str, object]:
@@ -1328,7 +1379,7 @@ class Handler(BaseHTTPRequestHandler):
         allowed = (
             '/open', '/open-folder', '/launch', '/mail/recent', '/mail/folders',
             '/mail/message', '/mail/open', '/mail/sync', '/mail/analysis/candidate', '/mail/task',
-            '/portal/sync', '/portal/login', '/portal/open-url', '/inbox', '/inbox/organize', '/planner/tasks',
+            '/portal/sync', '/portal/login', '/portal/open-url', '/inbox', '/inbox/delete', '/inbox/organize', '/planner/tasks',
             '/projects/workspace', '/projects/update',
         )
         is_portal_state = path.startswith('/portal/notices/') and path.endswith('/state')
@@ -1338,7 +1389,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_out(404, {'error': 'not found'})
         if not self._origin_allowed():
             return
-        body_limit = MAX_INBOX_BODY_BYTES if path == '/inbox' else MAX_PLANNER_BODY_BYTES if path == '/planner/tasks' else MAX_BODY_BYTES
+        body_limit = MAX_INBOX_BODY_BYTES if path in {'/inbox', '/inbox/delete'} else MAX_PLANNER_BODY_BYTES if path == '/planner/tasks' else MAX_BODY_BYTES
         body = self._read_json_body(body_limit)
         if body is None:
             return
@@ -1347,6 +1398,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == '/inbox':
                 entries = _merge_and_save_inbox_entries(body.get('entries'))
+                return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'entries': entries})
+            if path == '/inbox/delete':
+                entries = _delete_inbox_entry(body.get('entryId'))
                 return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'entries': entries})
             if path == '/planner/tasks':
                 task = body.get('task')
@@ -1373,7 +1427,7 @@ class Handler(BaseHTTPRequestHandler):
             launch(target)
             return self.json_out(200, {'ok': True, 'path': str(target)})
         except FileNotFoundError as exc:
-            if path == '/inbox':
+            if path in {'/inbox', '/inbox/delete'}:
                 return self.json_out(503, {
                     'ok': False,
                     'source': 'vault',
@@ -1403,7 +1457,7 @@ class Handler(BaseHTTPRequestHandler):
         except ProjectManifestConflict as exc:
             return self.json_out(409, {'ok': False, 'source': 'vault', 'error': str(exc)})
         except ValueError as exc:
-            if path == '/inbox':
+            if path in {'/inbox', '/inbox/delete'}:
                 return self.json_out(400, {
                     'ok': False,
                     'source': 'vault',
@@ -1423,7 +1477,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'request_failed'})
             return self.json_out(400, {'error': 'request failed'})
         except OSError:
-            if path == '/inbox':
+            if path in {'/inbox', '/inbox/delete'}:
                 return self.json_out(503, {
                     'ok': False,
                     'source': 'vault',

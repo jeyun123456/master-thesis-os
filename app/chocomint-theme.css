@@ -2111,3 +2111,239 @@ html .shell .section {
     justify-content: flex-start;
   }
 }
+
+/* AI Inbox item actions: compact, Bridge-backed controls. */
+.inbox-entry-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.inbox-entry-meta-content {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.inbox-entry-delete {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  border: 1px solid #e6e3d9;
+  border-radius: 7px;
+  background: #fffefa;
+  color: #756f65;
+  cursor: pointer;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.inbox-entry-delete:hover:not(:disabled) {
+  border-color: #cfe2d3;
+  background: #f2f7ef;
+  color: #466a51;
+}
+
+.inbox-entry-delete:disabled {
+  cursor: default;
+  opacity: .55;
+}
+
+.inbox-delete-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  margin: 5px 0 3px;
+  padding: 7px 8px;
+  border: 1px solid #e6e3d9;
+  border-radius: 8px;
+  background: #f8f7f1;
+  color: #625b51;
+  font-size: 9px;
+}
+
+.inbox-delete-confirm > div {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px;
+}
+
+.inbox-delete-confirm .mini {
+  min-height: 25px;
+  padding: 4px 8px;
+}
+
+.inbox-entry-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 9px;
+}
+
+.inbox-entry-actions .inbox-project-route {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.inbox-project-trigger {
+  min-height: 29px;
+  padding: 5px 9px;
+  border: 1px solid #cfe2d3;
+  border-radius: 8px;
+  background: #eef6ee;
+  color: #376349;
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 740;
+}
+
+.inbox-project-trigger span {
+  margin-left: 3px;
+  color: #668a6c;
+}
+
+.inbox-project-trigger:hover:not(:disabled) {
+  border-color: #a9cdb1;
+  background: #e5f1e5;
+}
+
+.inbox-project-trigger:disabled {
+  cursor: default;
+  opacity: .56;
+}
+
+.inbox-project-popover {
+  position: absolute;
+  z-index: 30;
+  right: 0;
+  bottom: calc(100% + 7px);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: min(290px, calc(100vw - 48px));
+  max-height: 320px;
+  padding: 10px;
+  overflow: hidden;
+  border: 1px solid #e5e1d6;
+  border-radius: 10px;
+  background: #fffefa;
+  box-shadow: 0 10px 26px rgb(48 41 30 / 14%);
+}
+
+.inbox-project-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #463e34;
+  font-size: 10px;
+}
+
+.inbox-project-popover-head > button {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #777064;
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+}
+
+.inbox-project-popover-head > button:hover {
+  background: #f1f2e9;
+}
+
+.inbox-project-search {
+  width: 100%;
+  min-height: 31px;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid #e2ded3;
+  border-radius: 7px;
+  outline-color: #a8cfb4;
+  background: #fff;
+  color: #443d34;
+  font: inherit;
+  font-size: 9px;
+}
+
+.inbox-project-options {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.inbox-project-options > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 7px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #493f34;
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+  text-align: left;
+}
+
+.inbox-project-options > button:hover:not(:disabled) {
+  background: #f0f5ec;
+}
+
+.inbox-project-options > button:disabled {
+  color: #8b887e;
+  cursor: default;
+}
+
+.inbox-project-options > button small {
+  flex: 0 0 auto;
+  color: #8b887e;
+  font-size: 8px;
+}
+
+.inbox-project-no-results {
+  padding: 10px 7px;
+  color: #817a6e;
+  font-size: 9px;
+}
+
+@media (max-width: 760px) {
+  .inbox-entry-actions .inbox-project-route {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .inbox-project-trigger {
+    width: auto;
+  }
+
+  .inbox-entry-actions .inbox-project-route > .inbox-project-trigger {
+    width: auto;
+  }
+}

@@ -25,13 +25,13 @@ function bridgeUrl(): string {
   return (process.env.NEXT_PUBLIC_LOCAL_BRIDGE_URL || 'http://127.0.0.1:38471').replace(/\/+$/, '');
 }
 
-function requestInit(token: string, method: 'GET' | 'POST', entries?: InboxEntry[], signal?: AbortSignal): BridgeRequestInit {
+function requestInit(token: string, method: 'GET' | 'POST', entries?: InboxEntry[], signal?: AbortSignal, entryId?: string): BridgeRequestInit {
   const init: BridgeRequestInit = {
     method,
     headers: method === 'GET'
       ? { 'X-Bridge-Token': token }
       : { 'Content-Type': 'application/json' },
-    ...(method === 'POST' ? { body: JSON.stringify({ token, entries }) } : {}),
+    ...(method === 'POST' ? { body: JSON.stringify({ token, ...(entries !== undefined ? { entries } : {}), ...(entryId !== undefined ? { entryId } : {}) }) } : {}),
     ...(signal ? { signal } : {}),
   };
   if (typeof navigator !== 'undefined' && navigator.userAgent.startsWith('Sucrose')) {
@@ -54,6 +54,7 @@ async function requestInbox(
   entries: InboxEntry[] | undefined,
   token: string,
   fetchImpl: typeof fetch,
+  entryId?: string,
 ): Promise<InboxEntry[]> {
   if (!token.trim()) {
     throw new InboxPersistenceError('bridge_auth', 'Local Bridge token이 없습니다. Settings > 로컬 브리지에서 token을 저장해야 Vault 인박스를 읽고 쓸 수 있어요.');
@@ -62,7 +63,8 @@ async function requestInbox(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetchImpl(`${bridgeUrl()}/inbox`, requestInit(token, method, entries, controller.signal));
+    const path = entryId === undefined ? '/inbox' : '/inbox/delete';
+    const response = await fetchImpl(`${bridgeUrl()}${path}`, requestInit(token, method, entries, controller.signal, entryId));
     const data = await readResponse(response);
     if (!response.ok) {
       if (response.status === 404) {
@@ -100,4 +102,11 @@ export function loadPersistedInbox(token = readBridgeToken(), fetchImpl: typeof 
 
 export function savePersistedInbox(entries: InboxEntry[], token = readBridgeToken(), fetchImpl: typeof fetch = fetch): Promise<InboxEntry[]> {
   return requestInbox('POST', entries, token, fetchImpl);
+}
+
+export function deletePersistedInboxEntry(entryId: string, token = readBridgeToken(), fetchImpl: typeof fetch = fetch): Promise<InboxEntry[]> {
+  if (!entryId.trim() || entryId.length > 256) {
+    return Promise.reject(new InboxPersistenceError('malformed_response', '삭제할 인박스 항목을 확인할 수 없어요.'));
+  }
+  return requestInbox('POST', undefined, token, fetchImpl, entryId);
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   INBOX_MAX_RAW_CHARS,
   type InboxEntry,
@@ -29,7 +29,9 @@ type InboxPanelProps = Pick<QuickCapturePanelProps, 'entries' | 'loaded' | 'busy
   routeMessage: string;
   projects: ResearchProject[];
   projectTaskSavingId: string | null;
+  deleteSavingId: string | null;
   onAddToProject: (entryId: string, projectId: string) => void;
+  onDelete: (entryId: string) => Promise<boolean>;
 };
 
 const categoryLabels: Record<InboxSuggestion['category'], string> = {
@@ -134,7 +136,7 @@ export function QuickCapturePanel({ entries, loaded, busy, storageStatus, storag
   </section>;
 }
 
-export function InboxPanel({ entries, loaded, busy, storageStatus, storageError, bridgeApiWarning, bridgeTokenWarning, onAdd, onOrganize, onRetrySave, error, routeMessage, projects, projectTaskSavingId, onAddToProject }: InboxPanelProps) {
+export function InboxPanel({ entries, loaded, busy, storageStatus, storageError, bridgeApiWarning, bridgeTokenWarning, onAdd, onOrganize, onRetrySave, error, routeMessage, projects, projectTaskSavingId, deleteSavingId, onAddToProject, onDelete }: InboxPanelProps) {
   const [filter, setFilter] = useState<InboxFilter>('all');
   const pendingCount = entries.filter((entry) => !entry.processed).length;
   const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
@@ -149,7 +151,7 @@ export function InboxPanel({ entries, loaded, busy, storageStatus, storageError,
         </div>
         <span>원문은 그대로 보존됩니다</span>
       </div>
-      <CaptureForm onAdd={onAdd} disabled={!loaded} />
+      <CaptureForm onAdd={onAdd} disabled={!loaded || busy || storageStatus === 'saving'} />
       <StorageStatus status={storageStatus} error={storageError} onRetry={onRetrySave} />
     </section>
 
@@ -161,7 +163,7 @@ export function InboxPanel({ entries, loaded, busy, storageStatus, storageError,
         </div>
         <div className="inbox-list-actions">
           <span>{visibleEntries.length}개 표시 · 미정리 {pendingCount}개</span>
-          <button className="capture-ai-button" type="button" onClick={onOrganize} disabled={busy || pendingCount === 0}>
+          <button className="capture-ai-button" type="button" onClick={onOrganize} disabled={busy || storageStatus === 'saving' || pendingCount === 0}>
             <span aria-hidden="true">✦</span> {busy ? 'GPT가 정리하는 중…' : 'GPT로 정리'}
           </button>
         </div>
@@ -178,29 +180,81 @@ export function InboxPanel({ entries, loaded, busy, storageStatus, storageError,
           type="button"
         >{label}</button>)}
       </div>
-      {!entries.length ? <div className="inbox-empty">아직 저장된 항목이 없습니다.</div> : visibleEntries.length ? <div className="inbox-entry-list">{visibleEntries.map((entry) => <article className={entry.processed ? 'inbox-entry is-processed' : 'inbox-entry'} key={entry.id}>
-        <div className="inbox-entry-meta">
-          <time dateTime={entry.createdAt}>{formatInboxDate(entry.createdAt)}</time>
-          {!entry.ai && <span className="inbox-pending-tag">미정리</span>}
-        </div>
-        <p className="inbox-entry-raw">{entry.rawText}</p>
-        {entry.ai && <div className="inbox-entry-ai">
-          <strong>{entry.ai.title}</strong>
-          {entry.ai.summary && <p>{entry.ai.summary}</p>}
-          {entry.ai.category === 'todo' && entry.ai.nextAction && <div><b>다음 행동</b><span>{entry.ai.nextAction}</span></div>}
-          {entry.ai.dueDate && <div><b>날짜</b><time dateTime={entry.ai.dueDate}>{entry.ai.dueDate}</time></div>}
-          {entry.ai.relatedEntryIds.length > 0 && <div className="inbox-entry-related"><b>유사 항목</b><span>{entry.ai.relatedEntryIds.map((id) => entriesById.get(id)?.rawText).filter(Boolean).join(' · ')}</span></div>}
-        </div>}
-        {entry.ai && <div className="inbox-entry-category"><span className="inbox-category-tag">{categoryLabels[entry.ai.category]}</span></div>}
-        {entry.ai?.category === 'todo' && <ProjectTaskRoute
-          entry={entry}
-          projects={projects}
-          busy={projectTaskSavingId === entry.id}
-          onAdd={(projectId) => onAddToProject(entry.id, projectId)}
-        />}
-      </article>)}</div> : <div className="inbox-empty">이 분류에 저장된 항목이 없습니다.</div>}
+      {!entries.length ? <div className="inbox-empty">아직 저장된 항목이 없습니다.</div> : visibleEntries.length ? <div className="inbox-entry-list">{visibleEntries.map((entry) => <InboxEntryCard
+        key={entry.id}
+        entry={entry}
+        entriesById={entriesById}
+        projects={projects}
+        loaded={loaded}
+        busy={busy}
+        storageStatus={storageStatus}
+        projectTaskSaving={projectTaskSavingId === entry.id}
+        deleting={deleteSavingId === entry.id}
+        onAddToProject={(projectId) => onAddToProject(entry.id, projectId)}
+        onDelete={() => onDelete(entry.id)}
+      />)}</div> : <div className="inbox-empty">이 분류에 저장된 항목이 없습니다.</div>}
     </section>
   </section>;
+}
+
+function InboxEntryCard({ entry, entriesById, projects, loaded, busy, storageStatus, projectTaskSaving, deleting, onAddToProject, onDelete }: {
+  entry: InboxEntry;
+  entriesById: Map<string, InboxEntry>;
+  projects: ResearchProject[];
+  loaded: boolean;
+  busy: boolean;
+  storageStatus: InboxStorageStatus;
+  projectTaskSaving: boolean;
+  deleting: boolean;
+  onAddToProject: (projectId: string) => void;
+  onDelete: () => Promise<boolean>;
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState(false);
+  const saving = storageStatus === 'saving';
+  const deleteDisabled = !loaded || busy || saving || projectTaskSaving || deleting;
+  async function confirmAndDelete() {
+    if (deleteDisabled) return;
+    setDeleteError(false);
+    const deleted = await onDelete();
+    setDeleteError(!deleted);
+    if (deleted) setConfirmDelete(false);
+  }
+  return <article className={entry.processed ? 'inbox-entry is-processed' : 'inbox-entry'}>
+    <div className="inbox-entry-meta">
+      <div className="inbox-entry-meta-content">
+        <time dateTime={entry.createdAt}>{formatInboxDate(entry.createdAt)}</time>
+        {!entry.ai && <span className="inbox-pending-tag">미정리</span>}
+      </div>
+      <button className="inbox-entry-delete" type="button" aria-label="Inbox 항목 삭제" title="항목 삭제" disabled={deleteDisabled} onClick={() => { setDeleteError(false); setConfirmDelete((open) => !open); }}>
+        {deleting ? '삭제 중…' : '×'}
+      </button>
+    </div>
+    {confirmDelete && <div className="inbox-delete-confirm" role="group" aria-label="Inbox 항목 삭제 확인">
+      <span>{deleteError ? '삭제를 확인하지 못했어. 다시 시도할까?' : '이 항목을 삭제할까요?'}</span>
+      <div>
+        <button className="mini" type="button" disabled={deleting} onClick={() => { setConfirmDelete(false); setDeleteError(false); }}>취소</button>
+        <button className="mini" type="button" disabled={deleteDisabled} onClick={() => void confirmAndDelete()}>{deleting ? '삭제 중…' : '삭제'}</button>
+      </div>
+    </div>}
+    <p className="inbox-entry-raw">{entry.rawText}</p>
+    {entry.ai && <div className="inbox-entry-ai">
+      <strong>{entry.ai.title}</strong>
+      {entry.ai.summary && <p>{entry.ai.summary}</p>}
+      {entry.ai.category === 'todo' && entry.ai.nextAction && <div><b>다음 행동</b><span>{entry.ai.nextAction}</span></div>}
+      {entry.ai.dueDate && <div><b>날짜</b><time dateTime={entry.ai.dueDate}>{entry.ai.dueDate}</time></div>}
+      {entry.ai.relatedEntryIds.length > 0 && <div className="inbox-entry-related"><b>유사 항목</b><span>{entry.ai.relatedEntryIds.map((id) => entriesById.get(id)?.rawText).filter(Boolean).join(' · ')}</span></div>}
+    </div>}
+    {entry.ai && <div className="inbox-entry-actions">
+      <span className="inbox-category-tag">{categoryLabels[entry.ai.category]}</span>
+      {entry.ai.category === 'todo' && <ProjectTaskRoute
+        entry={entry}
+        projects={projects}
+        busy={!loaded || projectTaskSaving || busy || saving || deleting}
+        onAdd={onAddToProject}
+      />}
+    </div>}
+  </article>;
 }
 
 function ProjectTaskRoute({ entry, projects, busy, onAdd }: {
@@ -209,21 +263,51 @@ function ProjectTaskRoute({ entry, projects, busy, onAdd }: {
   busy: boolean;
   onAdd: (projectId: string) => void;
 }) {
-  const [projectId, setProjectId] = useState('');
-  const task = entry.ai?.title || entry.ai?.nextAction || entry.rawText;
-  const selectedProject = projects.find((project) => project.id === projectId);
-  const alreadyAdded = selectedProject?.nextTasks.includes(task) === true;
-  if (!projects.length) return null;
-  return <div className="inbox-project-route">
-    <label>
-      <span className="sr-only">할 일을 추가할 연구 프로젝트</span>
-      <select aria-label="할 일을 추가할 연구 프로젝트" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-        <option value="">프로젝트 선택</option>
-        {projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
-      </select>
-    </label>
-    <button className="mini" type="button" disabled={!selectedProject || alreadyAdded || busy} onClick={() => onAdd(projectId)}>
-      {busy ? '추가 중…' : alreadyAdded ? '프로젝트에 추가됨' : '프로젝트에 추가'}
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const rootRef = useRef<HTMLDivElement>(null);
+  const task = entry.ai?.nextAction || entry.ai?.title || entry.rawText;
+  const matches = projects.filter((project) => `${project.title} ${project.id}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [open]);
+
+  function closeMenu() {
+    setOpen(false);
+    setQuery('');
+  }
+
+  return <div className="inbox-project-route" ref={rootRef}>
+    <button className="inbox-project-trigger" type="button" disabled={busy || !projects.length} aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen((value) => !value)}>
+      {busy ? '추가 중…' : <>프로젝트에 추가 <span aria-hidden="true">▾</span></>}
     </button>
+    {open && <div className="inbox-project-popover" role="dialog" aria-label="할 일을 추가할 프로젝트 선택">
+      <div className="inbox-project-popover-head">
+        <b>프로젝트 선택</b>
+        <button type="button" aria-label="프로젝트 선택 닫기" onClick={closeMenu}>×</button>
+      </div>
+      <input className="inbox-project-search" type="search" autoFocus aria-label="프로젝트 검색" placeholder="프로젝트 검색" value={query} onChange={(event) => setQuery(event.target.value)} />
+      <div className="inbox-project-options">
+        {matches.length ? matches.map((project) => {
+          const alreadyAdded = project.nextTasks.includes(task);
+          return <button key={project.id} type="button" disabled={busy || alreadyAdded} onClick={() => { onAdd(project.id); closeMenu(); }}>
+            <span>{project.title}</span><small>{alreadyAdded ? '이미 추가됨' : '다음 작업에 추가'}</small>
+          </button>;
+        }) : <div className="inbox-project-no-results">일치하는 프로젝트가 없어.</div>}
+      </div>
+    </div>}
   </div>;
 }

@@ -19,7 +19,7 @@ import { dashboardApi, type CalendarApiResponse, type RepositorySource, type Sho
 import type { CalendarEvent } from '@/lib/calendar';
 import { daysUntil, groupCalendarEvents } from '@/lib/calendar-view';
 import type { GitHubCommitSummary } from '@/lib/github';
-import { projectStatusLabel, stageLabel, type ResearchProject } from '@/lib/projects';
+import { parseProjectManifest, projectStatusLabel, stageLabel, type ResearchProject } from '@/lib/projects';
 import type { RepositoryItem } from '@/lib/repository';
 import type { ResearchStatus } from '@/lib/research-status';
 import type { DashboardBundle } from '@/lib/results';
@@ -27,7 +27,8 @@ import { BRIDGE_OFFLINE_MESSAGE, BRIDGE_TIMEOUT_MESSAGE, BridgeApiVersionMismatc
 import { getEnabledShortcuts, getHomeShortcuts, loadShortcutState, shortcuts, type Shortcut } from '@/lib/shortcuts';
 import { applyInboxSuggestions, createInboxEntry, INBOX_AI_BATCH_SIZE, loadInboxEntries, mergeInboxEntries, saveInboxEntries, type InboxEntry } from '@/lib/inbox';
 import { organizeInboxEntries } from '@/lib/inbox-ai-client';
-import { InboxPersistenceError, loadPersistedInbox, savePersistedInbox } from '@/lib/inbox-persistence-client';
+import { deletePersistedInboxEntry, InboxPersistenceError, loadPersistedInbox, savePersistedInbox } from '@/lib/inbox-persistence-client';
+import { getProjectWorkspace, updateProjectMetadata } from '@/lib/project-workspace-client';
 import { addPlannerTask } from '@/lib/planner-tasks-client';
 import { calendarInputForInboxEntry } from '@/lib/inbox-calendar';
 import { addCalendarEvent } from '@/lib/calendar-client';
@@ -175,10 +176,12 @@ export default function Page() {
   const [bridgeTokenWarning, setBridgeTokenWarning] = useState('');
   const [inboxLoadAttempt, setInboxLoadAttempt] = useState(0);
   const inboxSaveRevision = useRef(0);
+  const inboxWriteQueue = useRef<Promise<void>>(Promise.resolve());
   const [inboxOrganizing, setInboxOrganizing] = useState(false);
   const [inboxAIError, setInboxAIError] = useState('');
   const [inboxRouteMessage, setInboxRouteMessage] = useState('');
   const [projectTaskSavingId, setProjectTaskSavingId] = useState<string | null>(null);
+  const [inboxDeleteSavingId, setInboxDeleteSavingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [toast, setToast] = useState('');
   const [todayLabel, setTodayLabel] = useState('');
@@ -304,12 +307,18 @@ export default function Page() {
     window.setTimeout(() => setToast(''), 1700);
   }
 
+  function queueInboxWrite<T>(write: () => Promise<T>): Promise<T> {
+    const operation = inboxWriteQueue.current.then(write, write);
+    inboxWriteQueue.current = operation.then(() => undefined, () => undefined);
+    return operation;
+  }
+
   async function persistInboxToVault(entries: InboxEntry[]) {
     const revision = ++inboxSaveRevision.current;
     setInboxStorageStatus('saving');
     setInboxStorageError('');
     try {
-      const persisted = await savePersistedInbox(entries);
+      const persisted = await queueInboxWrite(() => savePersistedInbox(entries));
       if (revision !== inboxSaveRevision.current) return;
       setInboxEntries(persisted);
       const cacheSaved = saveInboxEntries(persisted);
@@ -460,6 +469,34 @@ export default function Page() {
     void persistInboxToVault(inboxEntries);
   }
 
+  async function deleteInboxEntry(entryId: string): Promise<boolean> {
+    if (!inboxLoaded || inboxOrganizing || inboxStorageStatus === 'saving' || inboxDeleteSavingId !== null) return false;
+    const revision = ++inboxSaveRevision.current;
+    setInboxDeleteSavingId(entryId);
+    setInboxStorageStatus('saving');
+    setInboxStorageError('');
+    try {
+      const persisted = await queueInboxWrite(() => deletePersistedInboxEntry(entryId));
+      if (revision !== inboxSaveRevision.current) return false;
+      setInboxEntries(persisted);
+      const cacheSaved = saveInboxEntries(persisted);
+      setInboxStorageStatus(cacheSaved ? 'saved' : 'failed');
+      setInboxStorageError(cacheSaved ? '' : 'Vault에서는 삭제됐지만 브라우저 캐시를 갱신하지 못했어요.');
+      setBridgeTokenWarning('');
+      setBridgeApiWarning('');
+      pop('Inbox 항목을 삭제했어.');
+      return true;
+    } catch (error) {
+      if (revision !== inboxSaveRevision.current) return false;
+      setInboxStorageStatus('failed');
+      setInboxStorageError(error instanceof Error ? error.message : 'Inbox 항목을 삭제하지 못했어요.');
+      pop(error instanceof Error ? error.message : 'Inbox 항목을 삭제하지 못했어.');
+      return false;
+    } finally {
+      if (revision === inboxSaveRevision.current) setInboxDeleteSavingId(null);
+    }
+  }
+
   function focusTodaySchedule() {
     const target = document.getElementById('today-schedule-card');
     target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -478,8 +515,12 @@ export default function Page() {
     try {
       const title = entry.ai.nextAction || entry.ai.title || entry.rawText;
       const project = projects.find((value) => value.id === projectId);
-      const result = await dashboardApi.addProjectTask(projectId, title, project?.sourceSha);
-      setProjects((current) => current.map((value) => value.id === result.project.id ? result.project : value));
+      if (!project) throw new Error('선택한 프로젝트를 찾지 못했어.');
+      const workspace = await getProjectWorkspace(projectId);
+      if (!workspace.manifestSha) throw new Error('프로젝트 project.md 정보를 불러오지 못했어.');
+      const result = await updateProjectMetadata(projectId, 'next_task_add', title, workspace.manifestSha);
+      const updatedProject = parseProjectManifest(result.manifestText, project.sourcePath);
+      setProjects((current) => current.map((value) => value.id === projectId ? { ...value, ...updatedProject, sourceSha: value.sourceSha } : value));
       pop(result.added ? '프로젝트의 다음 작업에 추가했어.' : '이미 프로젝트에 있는 작업이야.');
     } catch (error) {
       pop(error instanceof Error ? error.message : '프로젝트에 추가하지 못했어. Inbox 원문은 유지돼.');
@@ -584,7 +625,9 @@ export default function Page() {
           routeMessage={inboxRouteMessage}
           projects={projects}
           projectTaskSavingId={projectTaskSavingId}
+          deleteSavingId={inboxDeleteSavingId}
           onAddToProject={(entryId, projectId) => void addInboxTaskToProject(entryId, projectId)}
+          onDelete={deleteInboxEntry}
         /></section>}
 
         {page === 'settings' && <section className="page active">

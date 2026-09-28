@@ -23,11 +23,12 @@ export type ProjectWorkspace = {
   manifestSha: string | null;
 };
 
-export type ProjectMetadataOperation = 'stage' | 'status' | 'favorite_add' | 'favorite_remove';
+export type ProjectMetadataOperation = 'stage' | 'status' | 'favorite_add' | 'favorite_remove' | 'next_task_add';
 export type ProjectMetadataUpdate = {
   projectId: string;
   manifestText: string;
   manifestSha: string;
+  added?: boolean;
 };
 
 export class ProjectWorkspaceError extends Error {

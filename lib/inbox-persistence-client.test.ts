@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createInboxEntry } from './inbox';
-import { loadPersistedInbox, savePersistedInbox } from './inbox-persistence-client';
+import { deletePersistedInboxEntry, loadPersistedInbox, savePersistedInbox } from './inbox-persistence-client';
 
 function jsonResponse(status: number, value: unknown) {
   return new Response(JSON.stringify(value), {
@@ -40,6 +40,23 @@ describe('Inbox Vault persistence client', () => {
     expect(url).toBe('http://127.0.0.1:38471/inbox');
     expect(init?.method).toBe('POST');
     expect(JSON.parse(String(init?.body))).toMatchObject({ token: 'bridge-secret', entries: [entry] });
+  });
+
+  it('deletes one persistent entry through the Bridge delete endpoint', async () => {
+    const remaining = createInboxEntry('keep this entry', new Date('2026-09-28T08:00:00.000Z'), 'keep-1');
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(200, {
+      ok: true,
+      apiVersion: 5,
+      source: 'vault',
+      version: 1,
+      entries: [remaining],
+    }));
+
+    await expect(deletePersistedInboxEntry('remove-1', 'bridge-secret', fetchImpl)).resolves.toEqual([remaining]);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe('http://127.0.0.1:38471/inbox/delete');
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(String(init?.body))).toEqual({ token: 'bridge-secret', entryId: 'remove-1' });
   });
 
   it('explains that a 404 leaves the Bridge API version unknown', async () => {
