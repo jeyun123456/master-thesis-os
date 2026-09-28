@@ -216,9 +216,14 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
 
       <div className="research-recent-files">
         <div className="research-section-heading"><h3>최근 작업 파일</h3><span>Local Bridge 실제 수정 시각</span></div>
-        {recentFiles.length ? <div className="research-recent-list">{latestRecentFiles(recentFiles).map((file) => <div className="research-recent-row" key={file.path}>
-          <span className="research-file-type">{file.extension.toUpperCase().slice(1)}</span><div><b>{file.name}</b><small>{file.path} · {formatModifiedAt(file.modifiedAt)}</small></div><button className="mini" type="button" onClick={() => onOpen(file.path)}>열기</button>
-        </div>)}</div> : <div className="empty compact-empty">{workspaceState === 'loading' ? '최근 문서 목록을 불러오는 중…' : workspaceState === 'offline' ? 'Local Bridge 사용 불가 · 저장소 파일 목록을 표시 중' : workspaceMessage || '최근 수정한 발표자료나 문서가 없어.'}</div>}
+        <div className="research-recent-list">{latestRecentFiles(recentFiles).map(({ id, label, file }) => <div className="research-recent-row" key={id}>
+          <span className="research-file-type">{label}</span>
+          <div>
+            <b>{file?.name ?? (workspaceState === 'loading' ? '불러오는 중…' : '없음')}</b>
+            <small title={file?.path}>{file ? `${file.path} · ${formatModifiedAt(file.modifiedAt)}` : workspaceState === 'offline' ? 'Local Bridge를 사용할 수 없습니다' : '해당 유형의 파일이 없습니다.'}</small>
+          </div>
+          {file ? <button className="mini" type="button" onClick={() => onOpen(file.path)}>열기</button> : <span aria-hidden="true" />}
+        </div>)}</div>
       </div>
 
       <div className="grid2 section-gap">
@@ -408,11 +413,27 @@ function normalizeProject(value: unknown): ResearchProject[] {
 }
 
 function latestRecentFiles(files: RecentProjectFile[]) {
-  const allowed = new Set(['.ppt', '.pptx', '.md', '.doc', '.docx']);
-  return files
-    .filter((file) => allowed.has(file.extension.toLowerCase()))
-    .sort((a, b) => Date.parse(b.modifiedAt || '') - Date.parse(a.modifiedAt || ''))
-    .slice(0, 5);
+  const groups = [
+    { id: 'markdown', fallbackLabel: 'MD', extensions: new Set(['.md']) },
+    { id: 'powerpoint', fallbackLabel: 'PPTX', extensions: new Set(['.ppt', '.pptx']) },
+    { id: 'word', fallbackLabel: 'DOCX', extensions: new Set(['.doc', '.docx']) },
+  ];
+
+  return groups.map(({ id, fallbackLabel, extensions }) => {
+    const file = files
+      .filter((candidate) => extensions.has(candidate.extension.toLowerCase()))
+      .sort((a, b) => modifiedTimestamp(b.modifiedAt) - modifiedTimestamp(a.modifiedAt))[0];
+    return {
+      id,
+      label: file ? file.extension.replace(/^\./, '').toUpperCase() : fallbackLabel,
+      file,
+    };
+  });
+}
+
+function modifiedTimestamp(value?: string) {
+  const timestamp = Date.parse(value || '');
+  return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
 }
 
 function formatModifiedAt(value?: string) {
