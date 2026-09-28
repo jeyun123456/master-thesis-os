@@ -1,9 +1,13 @@
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.error
+import urllib.request
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -311,6 +315,161 @@ class BridgeConfigurationTests(unittest.TestCase):
         self.assertTrue(allows_private_network('TRUE'))
         self.assertFalse(allows_private_network('false'))
         self.assertFalse(allows_private_network(''))
+
+
+class InboxBridgeEndpointTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory()
+        cls.root = Path(cls.temp.name).resolve()
+        cls.token = 'inbox-bridge-test-token-' + 'x' * 32
+        (cls.root / 'data').mkdir()
+        cls.config_path = cls.root / 'config.json'
+        with socket.socket() as listener:
+            listener.bind(('127.0.0.1', 0))
+            cls.port = listener.getsockname()[1]
+        cls.config_path.write_text(json.dumps({
+            'master_path': str(cls.root),
+            'token': cls.token,
+            'port': cls.port,
+            'allowed_origins': [PRODUCTION_ORIGIN, 'http://localhost:3000'],
+        }), encoding='utf-8')
+        cls.inbox_path = cls.root / 'shared' / 'inbox' / 'inbox.json'
+        cls.process = subprocess.Popen(
+            [sys.executable, str(Path(__file__).with_name('bridge.py'))],
+            cwd=Path(__file__).parent,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env={
+                **os.environ,
+                'MTO_BRIDGE_CONFIG': str(cls.config_path),
+                'MAIL_ANALYSIS_DB_PATH': str(cls.root / 'data' / 'mail.db'),
+                'PORTAL_NOTICES_DB_PATH': str(cls.root / 'data' / 'portal.db'),
+                'PYTHONUTF8': '1',
+                'PYTHONIOENCODING': 'utf-8',
+            },
+        )
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            if cls.process.poll() is not None:
+                raise RuntimeError('test bridge exited before becoming ready')
+            try:
+                with urllib.request.urlopen(f'http://127.0.0.1:{cls.port}/health', timeout=0.3) as response:
+                    if response.status == 200:
+                        break
+            except (OSError, urllib.error.URLError):
+                time.sleep(0.05)
+        else:
+            cls.process.terminate()
+            cls.process.wait(timeout=3)
+            raise RuntimeError('test bridge did not become ready')
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls.process.poll() is None:
+            cls.process.terminate()
+            cls.process.wait(timeout=3)
+        cls.temp.cleanup()
+
+    def setUp(self):
+        if self.inbox_path.exists():
+            if self.inbox_path.is_dir():
+                shutil.rmtree(self.inbox_path)
+            else:
+                self.inbox_path.unlink()
+
+    def request(self, method, path, payload=None):
+        headers = {'Origin': PRODUCTION_ORIGIN}
+        data = None
+        if method == 'GET':
+            headers['X-Bridge-Token'] = self.token
+        else:
+            headers['Content-Type'] = 'application/json'
+            data = json.dumps({'token': self.token, **(payload or {})}).encode('utf-8')
+        request = urllib.request.Request(
+            f'http://127.0.0.1:{self.port}{path}', data=data, headers=headers, method=method,
+        )
+        try:
+            response = urllib.request.urlopen(request, timeout=3)
+        except urllib.error.HTTPError as error:
+            response = error
+        with response:
+            return response.status, json.loads(response.read().decode('utf-8'))
+
+    @staticmethod
+    def raw_entry(entry_id='entry-1', raw_text='교수님께 결과 보내야 함', created_at='2026-09-28T10:00:00+09:00'):
+        return {
+            'id': entry_id,
+            'rawText': raw_text,
+            'createdAt': created_at,
+            'processed': False,
+            'ai': None,
+        }
+
+    def test_inbox_get_and_post_persist_to_vault_json(self):
+        health_status, health = self.request('GET', '/health')
+        self.assertEqual(health_status, 200)
+        self.assertEqual(health['apiVersion'], 2)
+
+        status, data = self.request('GET', '/inbox')
+        self.assertEqual(status, 200)
+        self.assertEqual(data['source'], 'vault')
+        self.assertEqual(data['entries'], [])
+
+        status, data = self.request('POST', '/inbox', {'entries': [self.raw_entry()]})
+        self.assertEqual(status, 200)
+        self.assertEqual(data['entries'][0]['rawText'], '교수님께 결과 보내야 함')
+        stored = json.loads(self.inbox_path.read_text(encoding='utf-8'))
+        self.assertEqual(stored['version'], 1)
+        self.assertEqual(stored['entries'][0]['id'], 'entry-1')
+        self.assertEqual(list(self.inbox_path.parent.glob('.inbox-*.tmp')), [])
+
+    def test_ai_apply_cannot_replace_raw_fields_or_remove_existing_entries(self):
+        original = self.raw_entry()
+        self.request('POST', '/inbox', {'entries': [original, self.raw_entry('entry-2', '산업연관표 정리')]})
+        applied = {
+            **self.raw_entry('entry-1', '변조한 원문', '2026-09-29T10:00:00+09:00'),
+            'processed': True,
+            'ai': {
+                'entryId': 'entry-1',
+                'category': 'Todo',
+                'title': '결과 전달',
+                'summary': '교수님께 결과를 보낸다.',
+                'nextAction': '결과 파일을 교수님께 보내기',
+                'dueDate': None,
+                'relatedEntryIds': [],
+                'processedAt': '2026-09-28T11:00:00+09:00',
+            },
+        }
+        status, data = self.request('POST', '/inbox', {'entries': [applied]})
+        self.assertEqual(status, 200)
+        saved = {entry['id']: entry for entry in data['entries']}
+        self.assertEqual(saved['entry-1']['rawText'], original['rawText'])
+        self.assertEqual(saved['entry-1']['createdAt'], original['createdAt'])
+        self.assertEqual(saved['entry-1']['ai']['title'], '결과 전달')
+        self.assertIn('entry-2', saved)
+
+    def test_invalid_post_does_not_change_vault_data(self):
+        self.request('POST', '/inbox', {'entries': [self.raw_entry()]})
+        status, data = self.request('POST', '/inbox', {'entries': [{**self.raw_entry(), 'rawText': '  '}]})
+        self.assertEqual(status, 400)
+        self.assertEqual(data['errorCode'], 'invalid_inbox_data')
+        stored = json.loads(self.inbox_path.read_text(encoding='utf-8'))
+        self.assertEqual(stored['entries'][0]['rawText'], '교수님께 결과 보내야 함')
+
+    def test_write_failure_keeps_existing_data_and_returns_recoverable_error(self):
+        self.request('POST', '/inbox', {'entries': [self.raw_entry()]})
+        self.inbox_path.unlink()
+        self.inbox_path.mkdir()
+        status, data = self.request('POST', '/inbox', {'entries': [self.raw_entry('entry-2', '새 항목')]})
+        self.assertEqual(status, 503)
+        self.assertEqual(data['errorCode'], 'inbox_persist_failed')
+        self.assertTrue(self.inbox_path.is_dir())
+
+    def test_organize_path_is_registered_and_validates_payload(self):
+        status, data = self.request('POST', '/inbox/organize', {'entries': []})
+        self.assertEqual(status, 400)
+        self.assertEqual(data['errorCode'], 'inbox_entries_invalid')
 
 
 if __name__ == '__main__':

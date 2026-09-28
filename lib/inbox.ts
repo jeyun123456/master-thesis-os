@@ -72,6 +72,31 @@ export function parseInboxEntries(value: unknown): InboxEntry[] {
   }).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 }
 
+/** Merge the Vault source with the browser cache without replacing canonical raw fields. */
+export function mergeInboxEntries(persistent: InboxEntry[], cached: InboxEntry[]): InboxEntry[] {
+  const merged = new Map(persistent.map((entry) => [entry.id, entry]));
+
+  for (const cachedEntry of cached) {
+    const persistedEntry = merged.get(cachedEntry.id);
+    if (!persistedEntry) {
+      merged.set(cachedEntry.id, cachedEntry);
+      continue;
+    }
+
+    const cachedAIIsNewer = cachedEntry.processed
+      && cachedEntry.ai !== null
+      && (!persistedEntry.processed
+        || persistedEntry.ai === null
+        || Date.parse(cachedEntry.ai.processedAt) > Date.parse(persistedEntry.ai.processedAt));
+    merged.set(cachedEntry.id, {
+      ...persistedEntry,
+      ...(cachedAIIsNewer ? { processed: true, ai: cachedEntry.ai } : {}),
+    });
+  }
+
+  return Array.from(merged.values()).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+}
+
 function resolveStorage(storage?: StorageLike): StorageLike | null {
   if (storage) return storage;
   try {
@@ -131,4 +156,3 @@ export function applyInboxSuggestions(
     return { ...entry, processed: true, ai };
   });
 }
-

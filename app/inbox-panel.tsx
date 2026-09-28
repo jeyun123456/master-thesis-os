@@ -7,16 +7,23 @@ import {
   type InboxSuggestion,
 } from '@/lib/inbox';
 
+export type InboxStorageStatus = 'loading' | 'saved' | 'saving' | 'failed';
+
 type QuickCapturePanelProps = {
   entries: InboxEntry[];
   loaded: boolean;
   busy: boolean;
+  storageStatus: InboxStorageStatus;
+  storageError: string;
+  bridgeApiWarning: string;
+  bridgeTokenWarning: string;
   onAdd: (rawText: string) => boolean;
   onOrganize: () => void;
   onOpenInbox: () => void;
+  onRetrySave: () => void;
 };
 
-type InboxPanelProps = Pick<QuickCapturePanelProps, 'entries' | 'loaded' | 'busy' | 'onAdd' | 'onOrganize'> & {
+type InboxPanelProps = Pick<QuickCapturePanelProps, 'entries' | 'loaded' | 'busy' | 'storageStatus' | 'storageError' | 'bridgeApiWarning' | 'bridgeTokenWarning' | 'onAdd' | 'onOrganize' | 'onRetrySave'> & {
   preview: InboxSuggestion[] | null;
   error: string;
   onApply: () => void;
@@ -29,6 +36,27 @@ const categoryLabels: Record<InboxSuggestion['category'], string> = {
   'Research Note': 'Research Note',
   'Later / Reference': 'Later / Reference',
 };
+
+const storageStatusText: Record<InboxStorageStatus, string> = {
+  loading: 'Vault 불러오는 중',
+  saved: 'Vault에 보존됨',
+  saving: 'Vault 저장 중…',
+  failed: 'Vault 저장 확인 필요',
+};
+
+function StorageStatus({ status, error, onRetry }: { status: InboxStorageStatus; error: string; onRetry: () => void }) {
+  return <div className={`capture-storage-status is-${status}`} role={status === 'failed' ? 'alert' : 'status'}>
+    <span>{error || storageStatusText[status]}</span>
+    {status === 'failed' && <button type="button" className="text-link" onClick={onRetry}>저장 다시 시도</button>}
+  </div>;
+}
+
+function BridgeWarnings({ api, token }: { api: string; token: string }) {
+  return <>
+    {api && <div className="inbox-ai-error local-bridge-warning" role="alert">{api}</div>}
+    {token && <div className="inbox-ai-error local-bridge-warning" role="alert">{token}</div>}
+  </>;
+}
 
 function formatInboxDate(value: string) {
   const date = new Date(value);
@@ -68,8 +96,8 @@ function CaptureForm({ onAdd, disabled = false }: { onAdd: (rawText: string) => 
   </form>;
 }
 
-export function QuickCapturePanel({ entries, loaded, busy, onAdd, onOrganize, onOpenInbox }: QuickCapturePanelProps) {
-  const recent = entries.slice(0, 4);
+export function QuickCapturePanel({ entries, loaded, busy, storageStatus, storageError, bridgeApiWarning, bridgeTokenWarning, onAdd, onOrganize, onOpenInbox, onRetrySave }: QuickCapturePanelProps) {
+  const recent = entries.slice(0, 3);
   const pendingCount = entries.filter((entry) => !entry.processed).length;
   return <section className="card section quick-capture-card" aria-labelledby="quick-capture-title">
     <div className="head quick-capture-head">
@@ -77,8 +105,12 @@ export function QuickCapturePanel({ entries, loaded, busy, onAdd, onOrganize, on
         <span className="capture-eyebrow">QUICK CAPTURE</span>
         <h3 id="quick-capture-title">해야 할 일</h3>
       </div>
-      <span>{pendingCount ? pendingCount + '개 미정리' : '형식 없이 빠르게 기록'}</span>
+      <div className="quick-capture-state">
+        <span>{pendingCount ? pendingCount + '개 미정리' : '형식 없이 빠르게 기록'}</span>
+        <StorageStatus status={storageStatus} error={storageError} onRetry={onRetrySave} />
+      </div>
     </div>
+    <BridgeWarnings api={bridgeApiWarning} token={bridgeTokenWarning} />
     <CaptureForm onAdd={onAdd} disabled={!loaded} />
     <div className="capture-recent-head">
       <b>최근 기록</b>
@@ -98,10 +130,11 @@ export function QuickCapturePanel({ entries, loaded, busy, onAdd, onOrganize, on
   </section>;
 }
 
-export function InboxPanel({ entries, loaded, busy, onAdd, onOrganize, preview, error, onApply, onDiscardPreview }: InboxPanelProps) {
+export function InboxPanel({ entries, loaded, busy, storageStatus, storageError, bridgeApiWarning, bridgeTokenWarning, onAdd, onOrganize, onRetrySave, preview, error, onApply, onDiscardPreview }: InboxPanelProps) {
   const pendingCount = entries.filter((entry) => !entry.processed).length;
   const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
   return <section className="inbox-page">
+    <BridgeWarnings api={bridgeApiWarning} token={bridgeTokenWarning} />
     <section className="card section inbox-capture-card" aria-labelledby="inbox-capture-title">
       <div className="head">
         <div>
@@ -111,6 +144,7 @@ export function InboxPanel({ entries, loaded, busy, onAdd, onOrganize, preview, 
         <span>원문은 그대로 보존됩니다</span>
       </div>
       <CaptureForm onAdd={onAdd} disabled={!loaded} />
+      <StorageStatus status={storageStatus} error={storageError} onRetry={onRetrySave} />
     </section>
 
     <section className="card section inbox-list-card" aria-labelledby="inbox-list-title">

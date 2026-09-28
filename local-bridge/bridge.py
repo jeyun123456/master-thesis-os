@@ -1,9 +1,12 @@
 import json
 import os
 import platform
+import re
 import subprocess
 import sys
+import tempfile
 import threading
+from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -24,6 +27,11 @@ from thunderbird_mail import (
 HERE = Path(__file__).resolve().parent
 CONFIG = resolve_config_path(HERE)
 MAX_BODY_BYTES = 16 * 1024
+MAX_INBOX_BODY_BYTES = 4 * 1024 * 1024
+MAX_INBOX_STORE_BYTES = 8 * 1024 * 1024
+MAX_INBOX_ENTRIES = 10_000
+MAX_INBOX_RAW_CHARS = 1_200
+BRIDGE_API_VERSION = 2
 MAIL_PATH_PREFIX = '/mail/'
 
 
@@ -67,6 +75,183 @@ def _resolve_bridge_db_path():
 
 
 DB_PATH = _resolve_bridge_db_path()
+INBOX_DATA_PATH = ROOT / 'shared' / 'inbox' / 'inbox.json'
+INBOX_STORE_LOCK = threading.Lock()
+
+
+def _valid_iso_timestamp(value: object) -> bool:
+    if not isinstance(value, str) or not value or len(value) > 64:
+        return False
+    try:
+        datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError:
+        return False
+    return True
+
+
+def _explicit_full_year_dates(raw_text: str) -> set[str]:
+    patterns = (
+        re.compile(r'(?<!\d)(\d{4})[-/.]\s*(\d{1,2})[-/.]\s*(\d{1,2})(?!\d)'),
+        re.compile(r'(?<!\d)(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일'),
+    )
+    result: set[str] = set()
+    for pattern in patterns:
+        for match in pattern.finditer(raw_text):
+            try:
+                result.add(date(*(int(part) for part in match.groups())).isoformat())
+            except ValueError:
+                continue
+    return result
+
+
+def _normalize_inbox_entry(raw: object) -> dict[str, object]:
+    if not isinstance(raw, dict):
+        raise ValueError('invalid inbox entry')
+    entry_id = raw.get('id')
+    raw_text = raw.get('rawText')
+    created_at = raw.get('createdAt')
+    processed = raw.get('processed')
+    ai_raw = raw.get('ai')
+    if not isinstance(entry_id, str) or not entry_id.strip() or len(entry_id) > 256:
+        raise ValueError('invalid inbox entry id')
+    if not isinstance(raw_text, str) or not raw_text.strip() or len(raw_text) > MAX_INBOX_RAW_CHARS:
+        raise ValueError('invalid inbox raw text')
+    if not _valid_iso_timestamp(created_at) or not isinstance(processed, bool):
+        raise ValueError('invalid inbox entry metadata')
+
+    ai: dict[str, object] | None = None
+    if ai_raw is not None:
+        if not isinstance(ai_raw, dict):
+            raise ValueError('invalid inbox AI result')
+        category = ai_raw.get('category')
+        if category not in {'Todo', 'Idea', 'Research Note', 'Later / Reference'}:
+            raise ValueError('invalid inbox AI category')
+        if ai_raw.get('entryId') != entry_id or not _valid_iso_timestamp(ai_raw.get('processedAt')):
+            raise ValueError('invalid inbox AI identity')
+        title = ai_raw.get('title')
+        summary = ai_raw.get('summary')
+        next_action = ai_raw.get('nextAction')
+        due_date = ai_raw.get('dueDate')
+        related_ids = ai_raw.get('relatedEntryIds')
+        if not all(isinstance(value, str) for value in (title, summary, next_action)):
+            raise ValueError('invalid inbox AI text')
+        if len(title) > 1_200 or len(summary) > 1_200 or len(next_action) > 1_200:
+            raise ValueError('inbox AI text is too long')
+        if category != 'Todo' and next_action:
+            next_action = ''
+        if due_date is not None:
+            if not isinstance(due_date, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', due_date):
+                raise ValueError('invalid inbox AI date')
+            try:
+                date.fromisoformat(due_date)
+            except ValueError as exc:
+                raise ValueError('invalid inbox AI date') from exc
+            if due_date not in _explicit_full_year_dates(raw_text):
+                due_date = None
+        if not isinstance(related_ids, list) or len(related_ids) > 4 or any(not isinstance(value, str) for value in related_ids):
+            raise ValueError('invalid inbox related entries')
+        ai = {
+            'entryId': entry_id,
+            'category': category,
+            'title': title,
+            'summary': summary,
+            'nextAction': next_action,
+            'dueDate': due_date,
+            'relatedEntryIds': [value for value in related_ids if value != entry_id],
+            'processedAt': ai_raw['processedAt'],
+        }
+    if processed != (ai is not None):
+        raise ValueError('inbox processed state does not match AI result')
+    return {
+        'id': entry_id,
+        'rawText': raw_text,
+        'createdAt': created_at,
+        'processed': processed,
+        'ai': ai,
+    }
+
+
+def _read_inbox_entries_unlocked() -> list[dict[str, object]]:
+    if not INBOX_DATA_PATH.exists():
+        return []
+    if INBOX_DATA_PATH.stat().st_size > MAX_INBOX_STORE_BYTES:
+        raise ValueError('inbox store is too large')
+    with INBOX_DATA_PATH.open('r', encoding='utf-8') as file:
+        payload = json.load(file)
+    if not isinstance(payload, dict) or payload.get('version') != 1 or not isinstance(payload.get('entries'), list):
+        raise ValueError('invalid inbox store')
+    if len(payload['entries']) > MAX_INBOX_ENTRIES:
+        raise ValueError('too many inbox entries')
+    entries = [_normalize_inbox_entry(raw) for raw in payload['entries']]
+    ids = [entry['id'] for entry in entries]
+    if len(ids) != len(set(ids)):
+        raise ValueError('duplicate inbox entry id')
+    return entries
+
+
+def _atomic_write_inbox_entries(entries: list[dict[str, object]]) -> None:
+    INBOX_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps({'version': 1, 'entries': entries}, ensure_ascii=False, indent=2) + '\n'
+    if len(payload.encode('utf-8')) > MAX_INBOX_STORE_BYTES:
+        raise ValueError('inbox store is too large')
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode='w', encoding='utf-8', newline='\n', delete=False,
+            dir=INBOX_DATA_PATH.parent, prefix='.inbox-', suffix='.tmp',
+        ) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+            temporary_file.write(payload)
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+        os.replace(temporary_path, INBOX_DATA_PATH)
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
+
+
+def _merge_and_save_inbox_entries(raw_entries: object) -> list[dict[str, object]]:
+    if not isinstance(raw_entries, list) or len(raw_entries) > MAX_INBOX_ENTRIES:
+        raise ValueError('invalid inbox entries')
+    incoming = [_normalize_inbox_entry(raw) for raw in raw_entries]
+    incoming_ids = [entry['id'] for entry in incoming]
+    if len(incoming_ids) != len(set(incoming_ids)):
+        raise ValueError('duplicate inbox entry id')
+
+    with INBOX_STORE_LOCK:
+        try:
+            existing = _read_inbox_entries_unlocked()
+        except (OSError, ValueError) as exc:
+            raise OSError('inbox store could not be read') from exc
+        merged = {entry['id']: entry for entry in existing}
+        for entry in incoming:
+            previous = merged.get(entry['id'])
+            if previous is None:
+                merged[entry['id']] = entry
+                continue
+
+            next_entry = dict(previous)
+            next_ai = entry['ai']
+            previous_ai = previous['ai']
+            if next_ai is not None and (
+                previous_ai is None
+                or str(next_ai['processedAt']) >= str(previous_ai['processedAt'])
+            ):
+                next_entry['processed'] = True
+                next_entry['ai'] = next_ai
+            # For an existing ID, id/rawText/createdAt always come from the Vault.
+            merged[entry['id']] = next_entry
+
+        entry_ids = set(merged)
+        for entry in merged.values():
+            ai = entry['ai']
+            if isinstance(ai, dict):
+                ai['relatedEntryIds'] = [value for value in ai['relatedEntryIds'] if value in entry_ids]
+        result = sorted(merged.values(), key=lambda entry: str(entry['createdAt']), reverse=True)
+        if len(result) > MAX_INBOX_ENTRIES:
+            raise ValueError('too many inbox entries')
+        _atomic_write_inbox_entries(result)
+        return result
 
 
 def _resolve_portal_db_path():
@@ -343,7 +528,7 @@ class Handler(BaseHTTPRequestHandler):
             return False
         return True
 
-    def _read_json_body(self) -> dict[str, object] | None:
+    def _read_json_body(self, max_bytes: int = MAX_BODY_BYTES) -> dict[str, object] | None:
         if self.headers.get_content_type() != 'application/json':
             self.json_out(415, {'error': 'application/json required'})
             return None
@@ -351,7 +536,7 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get('Content-Length', '0'))
         except (TypeError, ValueError):
             length = 0
-        if length <= 0 or length > MAX_BODY_BYTES:
+        if length <= 0 or length > max_bytes:
             self.json_out(413, {'error': 'invalid request size'})
             return None
         try:
@@ -487,7 +672,21 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self._path()
         if path == '/health':
-            return self.json_out(200, {'ok': True})
+            return self.json_out(200, {'ok': True, 'apiVersion': BRIDGE_API_VERSION})
+        if path == '/inbox':
+            if not self._header_authenticated():
+                return
+            try:
+                with INBOX_STORE_LOCK:
+                    entries = _read_inbox_entries_unlocked()
+            except (OSError, ValueError):
+                return self.json_out(503, {
+                    'ok': False,
+                    'source': 'vault',
+                    'errorCode': 'inbox_read_failed',
+                    'error': 'Vault 인박스 파일을 읽지 못했어요. 기존 원문 파일은 보존했습니다.',
+                })
+            return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'entries': entries})
         if path == '/portal/status':
             if not self._header_authenticated():
                 return
@@ -766,7 +965,7 @@ class Handler(BaseHTTPRequestHandler):
         allowed = (
             '/open', '/open-folder', '/launch', '/mail/recent', '/mail/folders',
             '/mail/message', '/mail/open', '/mail/sync', '/mail/analysis/candidate', '/mail/task',
-            '/portal/sync', '/portal/login', '/portal/open-url', '/inbox/organize',
+            '/portal/sync', '/portal/login', '/portal/open-url', '/inbox', '/inbox/organize',
         )
         is_portal_state = path.startswith('/portal/notices/') and path.endswith('/state')
         is_portal_analyze = path.startswith('/portal/notices/') and path.endswith('/analyze')
@@ -775,12 +974,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_out(404, {'error': 'not found'})
         if not self._origin_allowed():
             return
-        body = self._read_json_body()
+        body = self._read_json_body(MAX_INBOX_BODY_BYTES if path == '/inbox' else MAX_BODY_BYTES)
         if body is None:
             return
         if not token_matches(body.get('token', ''), TOKEN):
             return self.json_out(403, {'error': 'invalid token'})
         try:
+            if path == '/inbox':
+                entries = _merge_and_save_inbox_entries(body.get('entries'))
+                return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'entries': entries})
             portal_response = self._portal_post(path, body)
             if portal_response is not None:
                 return portal_response
@@ -798,6 +1000,13 @@ class Handler(BaseHTTPRequestHandler):
             launch(target)
             return self.json_out(200, {'ok': True, 'path': str(target)})
         except FileNotFoundError as exc:
+            if path == '/inbox':
+                return self.json_out(503, {
+                    'ok': False,
+                    'source': 'vault',
+                    'errorCode': 'inbox_persist_failed',
+                    'error': 'Vault에 인박스를 저장하지 못했어요. 브라우저 캐시는 유지됩니다.',
+                })
             if path.startswith(MAIL_PATH_PREFIX):
                 return self.json_out(503, {'ok': False, 'source': 'thunderbird', 'error': 'profile_not_found'})
             return self.json_out(404, {'error': 'local file not found', 'detail': str(exc)})
@@ -807,6 +1016,28 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_out(503, {'ok': False, 'source': 'sqlite', 'error': 'database_unavailable'})
         except portal_db.PortalDatabaseError:
             return self.json_out(503, {'ok': False, 'source': 'sqlite', 'error': 'database_error'})
+        except ValueError:
+            if path == '/inbox':
+                return self.json_out(400, {
+                    'ok': False,
+                    'source': 'vault',
+                    'errorCode': 'invalid_inbox_data',
+                    'error': '인박스 데이터 형식을 확인해 주세요. 기존 원문은 변경하지 않았습니다.',
+                })
+            if path.startswith(MAIL_PATH_PREFIX):
+                return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'request_failed'})
+            return self.json_out(400, {'error': 'request failed'})
+        except OSError:
+            if path == '/inbox':
+                return self.json_out(503, {
+                    'ok': False,
+                    'source': 'vault',
+                    'errorCode': 'inbox_persist_failed',
+                    'error': 'Vault에 인박스를 저장하지 못했어요. 브라우저 캐시는 유지됩니다.',
+                })
+            if path.startswith(MAIL_PATH_PREFIX):
+                return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'request_failed'})
+            return self.json_out(400, {'error': 'request failed'})
         except Exception:
             if path.startswith(MAIL_PATH_PREFIX):
                 return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'request_failed'})

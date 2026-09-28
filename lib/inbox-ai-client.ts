@@ -1,4 +1,5 @@
 import { INBOX_AI_BATCH_SIZE, INBOX_CATEGORIES, type InboxEntry, type InboxSuggestion } from './inbox';
+import { BridgeApiVersionMismatchError } from './bridge-status';
 
 const REQUEST_TIMEOUT_MS = 210_000;
 const MAX_REQUEST_BYTES = 15_000;
@@ -25,7 +26,7 @@ export async function organizeInboxEntries(
   token = readBridgeToken(),
   fetchImpl: typeof fetch = fetch,
 ): Promise<InboxSuggestion[]> {
-  if (!token.trim()) throw new Error('Settings에서 Local Bridge token을 저장해줘.');
+  if (!token.trim()) throw new Error('Local Bridge token이 없습니다. Settings > 로컬 브리지에서 token을 저장해야 GPT 정리를 사용할 수 있어요.');
   const batch = entries.filter((entry) => !entry.processed).slice(0, INBOX_AI_BATCH_SIZE);
   if (!batch.length) throw new Error('GPT로 정리할 새 항목이 없어.');
 
@@ -53,6 +54,9 @@ export async function organizeInboxEntries(
     const response = await fetchImpl(`${bridgeUrl()}/inbox/organize`, init);
     const data = await response.json().catch(() => ({} as Record<string, unknown>)) as Record<string, unknown>;
     if (!response.ok) {
+      if (response.status === 404) {
+        throw new BridgeApiVersionMismatchError(null);
+      }
       throw new Error(typeof data.error === 'string' ? data.error : 'AI 정리 요청을 처리하지 못했어.');
     }
     if (data.ok !== true || !Array.isArray(data.entries)) throw new Error('AI 정리 응답 형식을 확인해줘.');
@@ -75,9 +79,9 @@ export async function organizeInboxEntries(
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') throw new Error('AI 응답 시간이 초과됐어. 잠시 후 다시 시도해줘.');
     if (error instanceof TypeError) throw new Error('Local Bridge에 연결할 수 없어. 브리지가 실행 중인지 확인해줘.');
+    if (error instanceof BridgeApiVersionMismatchError) throw error;
     throw error instanceof Error ? error : new Error('AI 정리 요청을 처리하지 못했어.');
   } finally {
     clearTimeout(timeoutId);
   }
 }
-

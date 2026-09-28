@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyInboxSuggestions, createInboxEntry, INBOX_STORAGE_KEY, loadInboxEntries, saveInboxEntries } from './inbox';
+import { applyInboxSuggestions, createInboxEntry, INBOX_STORAGE_KEY, loadInboxEntries, mergeInboxEntries, saveInboxEntries } from './inbox';
 
 function memoryStorage() {
   const values = new Map<string, string>();
@@ -43,6 +43,14 @@ describe('inbox', () => {
         processedAt: '2026-09-28T09:00:00.000Z',
       },
     });
+  });
+
+  it('merges the Vault source and cache while keeping Vault raw fields canonical', () => {
+    const original = createInboxEntry('Vault 원문', new Date('2026-09-28T08:00:00.000Z'), 'entry-3');
+    const cachedCopy = { ...original, rawText: '바뀐 캐시 원문', createdAt: '2026-09-29T08:00:00.000Z' };
+    const cacheOnly = createInboxEntry('Vault 저장 전 캐시 항목', new Date('2026-09-28T09:00:00.000Z'), 'entry-4');
+
+    expect(mergeInboxEntries([original], [cachedCopy, cacheOnly])).toEqual([cacheOnly, original]);
   });
 
   it('keeps malformed storage data from breaking inbox loading', () => {

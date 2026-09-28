@@ -743,3 +743,289 @@ html .shell .section {
     grid-template-columns: 1fr;
   }
 }
+
+/* Home workspace cluster: quick capture first, daily checks beside it. */
+.home-page {
+  position: relative;
+  isolation: isolate;
+}
+
+.home-page::before {
+  position: absolute;
+  z-index: -1;
+  inset: -18px -24px 0;
+  border-radius: 24px;
+  background:
+    radial-gradient(ellipse at 84% 7%, rgba(175, 211, 188, .24), transparent 30rem),
+    radial-gradient(ellipse at 8% 48%, rgba(205, 190, 164, .16), transparent 34rem),
+    linear-gradient(140deg, rgba(255, 254, 250, .68), rgba(238, 235, 225, .3)),
+    radial-gradient(circle, rgba(82, 71, 58, .045) 0 .65px, transparent .8px);
+  background-size: auto, auto, auto, 14px 14px;
+  content: '';
+  pointer-events: none;
+}
+
+.home-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.home-page .quick-capture-card,
+.home-page .daily-checklist-card {
+  min-width: 0;
+  margin-bottom: 0;
+  border-color: rgba(215, 207, 196, .92);
+  background: rgba(255, 253, 250, .96);
+  box-shadow: 0 8px 24px rgba(47, 39, 31, .05);
+}
+
+.home-page .quick-capture-card {
+  padding: 17px 18px 15px;
+}
+
+.quick-capture-head {
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.quick-capture-head h3,
+.daily-checklist-head h3 {
+  font-size: 18px;
+}
+
+.quick-capture-state {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  color: #81796f;
+  font-size: 9px;
+  text-align: right;
+}
+
+.capture-storage-status {
+  display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 8px;
+  color: #648574;
+  font-size: 9px;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.capture-storage-status.is-loading,
+.capture-storage-status.is-saving {
+  color: #81796f;
+}
+
+.capture-storage-status.is-failed {
+  color: #a2524d;
+}
+
+.capture-textarea {
+  min-height: 56px;
+  max-height: 104px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.capture-form {
+  gap: 6px;
+}
+
+.capture-recent-head {
+  margin-top: 11px;
+}
+
+.capture-recent-row {
+  gap: 8px;
+  padding: 6px 1px;
+}
+
+.capture-actions {
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.capture-actions > span {
+  font-size: 9px;
+}
+
+.home-page .daily-checklist-card {
+  display: flex;
+  flex-direction: column;
+  padding: 17px 18px 15px;
+}
+
+.daily-checklist-head {
+  align-items: flex-end;
+  margin-bottom: 10px;
+}
+
+.daily-checklist-count {
+  color: #6b8172;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.daily-checklist-items {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.daily-checklist-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid #eee9e1;
+  padding: 8px 0;
+}
+
+.daily-checklist-label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+}
+
+.daily-checklist-label input {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  accent-color: #54826d;
+}
+
+.daily-checklist-label > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.daily-checklist-label strong {
+  overflow: hidden;
+  color: #433e38;
+  font-size: 11px;
+  font-weight: 680;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.daily-checklist-label small {
+  color: #948c82;
+  font-size: 9px;
+}
+
+.daily-checklist-action {
+  flex: 0 0 auto;
+  border: 1px solid #e0dbd2;
+  border-radius: 8px;
+  background: #fffefa;
+  padding: 5px 9px;
+  color: #4a7964;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.daily-checklist-action:hover:not(:disabled) {
+  border-color: #b7cebf;
+  background: #f3f8f4;
+}
+
+.daily-checklist-action:disabled {
+  cursor: wait;
+  opacity: .6;
+}
+
+.daily-checklist-error {
+  margin: 2px 0 7px 24px;
+  color: #a2524d;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.daily-checklist-progress {
+  height: 3px;
+  overflow: hidden;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: #e9e5dd;
+}
+
+.daily-checklist-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #78a489;
+  transition: width .18s ease;
+}
+
+.home-page .home-status-grid,
+.home-page .home-lower-grid {
+  display: grid;
+}
+
+.home-page .home-status-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.home-page .home-lower-grid {
+  grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr);
+}
+
+#today-schedule-card {
+  scroll-margin-top: 28px;
+}
+
+@media (max-width: 980px) {
+  .home-workspace-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .home-page .home-lower-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .home-page::before {
+    inset: -10px -10px 0;
+    opacity: .5;
+    background-size: auto, auto, auto, 18px 18px;
+  }
+
+  .home-page .quick-capture-card,
+  .home-page .daily-checklist-card {
+    padding: 14px;
+  }
+
+  .home-page .home-status-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quick-capture-state {
+    max-width: 48%;
+  }
+
+  .capture-actions {
+    align-items: flex-start;
+  }
+
+  .capture-storage-status {
+    font-size: 8px;
+  }
+}
