@@ -827,22 +827,10 @@ def _analyze_queued(
 
     for offset in range(0, len(ready), MAX_MAIL_BATCH_SIZE):
         batch = ready[offset:offset + MAX_MAIL_BATCH_SIZE]
+        _api_url, _api_key, model = _provider_config()
         try:
             results = analyze_mails(batch)
-            _api_url, _api_key, model = _provider_config()
-            analyzed_at = mail_db.now_iso()
-            for mail in batch:
-                mail_id = str(mail['id'])
-                folder = str(mail['folder'])
-                result = results.get(mail_id)
-                if result is None:
-                    raise MailAnalysisError('AI provider가 메일 결과를 반환하지 않았어.')
-                mail_db.save_completed(mail_id, result, PROMPT_VERSION, model, analyzed_at, db_path)
-                completed += 1
-                folder_completed[folder] += 1
-                processed[folder] += 1
         except Exception as exc:
-            _api_url, _api_key, model = _provider_config()
             safe_error = str(exc) if isinstance(exc, (MailAnalysisError, mail_db.MailDatabaseError)) else 'AI 분석 중 알 수 없는 오류가 발생했어.'
             for mail in batch:
                 mail_id = str(mail['id'])
@@ -850,6 +838,28 @@ def _analyze_queued(
                 mail_db.save_failed(mail_id, safe_error, PROMPT_VERSION, model, db_path)
                 failed += 1
                 folder_failed[folder] += 1
+                processed[folder] += 1
+        else:
+            analyzed_at = mail_db.now_iso()
+            for mail in batch:
+                mail_id = str(mail['id'])
+                folder = str(mail['folder'])
+                try:
+                    result = results.get(mail_id)
+                    if result is None:
+                        raise MailAnalysisError('AI provider가 메일 결과를 반환하지 않았어.')
+                    mail_db.save_completed(mail_id, result, PROMPT_VERSION, model, analyzed_at, db_path)
+                except Exception as exc:
+                    safe_error = str(exc) if isinstance(exc, (MailAnalysisError, mail_db.MailDatabaseError)) else 'AI 분석 결과를 저장하지 못했어.'
+                    try:
+                        mail_db.save_failed(mail_id, safe_error, PROMPT_VERSION, model, db_path)
+                    except mail_db.MailDatabaseError:
+                        pass
+                    failed += 1
+                    folder_failed[folder] += 1
+                else:
+                    completed += 1
+                    folder_completed[folder] += 1
                 processed[folder] += 1
 
         for folder in mail_db.TARGET_FOLDERS:
