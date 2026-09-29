@@ -851,7 +851,12 @@ def _run_sync_job() -> None:
 
 def _run_mail_ai_job() -> None:
     try:
-        mail_cli.analyze_new(mail_cli.load_settings(), DB_PATH)
+        settings = mail_cli.load_settings()
+        while True:
+            mail_cli.analyze_new(settings, DB_PATH)
+            status = mail_db.sync_status(DB_PATH)
+            if int(status.get('counts', {}).get('queued', 0)) <= 0:
+                break
     except Exception:
         _remember_mail_ai_end('메일 AI 분석 작업이 중단되었어.')
     else:
