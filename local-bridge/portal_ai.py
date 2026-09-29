@@ -823,7 +823,10 @@ def analyze_notices(
     raw = _request_batch_provider(notices)
     if not isinstance(raw, Mapping) or not isinstance(raw.get("results"), list):
         raise PortalAIError("AI provider가 batch JSON을 반환하지 않았어.", "ai_response_invalid")
-    by_id = {_text(notice.get("notice_id")): notice for notice in notices}
+    by_id = {
+        _text(_notice_field(notice, "notice_id", "noticeId")): notice
+        for notice in notices
+    }
     raw_by_id: dict[str, Mapping[str, object]] = {}
     for result in raw["results"]:
         if not isinstance(result, Mapping):

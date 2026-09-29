@@ -1004,14 +1004,27 @@ def _run_portal_ai_worker() -> None:
                         PORTAL_DB_PATH,
                     )
                     continue
-                portal_db.save_notice_analysis(
-                    notice_id,
-                    result,
-                    portal_ai.PROMPT_VERSION,
-                    model,
-                    analyzed_at,
-                    PORTAL_DB_PATH,
-                )
+                try:
+                    portal_db.save_notice_analysis(
+                        notice_id,
+                        result,
+                        portal_ai.PROMPT_VERSION,
+                        model,
+                        analyzed_at,
+                        PORTAL_DB_PATH,
+                    )
+                except Exception as exc:
+                    last_error = str(exc) or '공지 AI 분석 결과를 저장하지 못했어.'
+                    last_error_code = getattr(exc, 'code', 'ai_storage_failed')
+                    try:
+                        portal_db.save_notice_analysis_failed(
+                            notice_id,
+                            last_error_code,
+                            last_error,
+                            PORTAL_DB_PATH,
+                        )
+                    except Exception:
+                        pass
     except Exception as exc:
         last_error = getattr(exc, 'message', str(exc) or '공지 AI worker가 중단되었어.')
         last_error_code = getattr(exc, 'code', 'ai_provider_failed')
