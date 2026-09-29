@@ -21,6 +21,8 @@ function notice(overrides: Partial<PortalNoticeSummary>): PortalNoticeSummary {
     deadline: '',
     importance: '',
     category: '',
+    academicYear: 2026,
+    semester: 'spring',
     sourceUrl: '',
     syncedAt: '2026-09-18T09:00:00Z',
     lastChangedAt: null,
