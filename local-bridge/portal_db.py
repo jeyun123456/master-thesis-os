@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sqlite3
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -18,6 +19,8 @@ from pathlib import Path
 
 
 NOTICE_TYPES = ("ALL", "DM")
+SEMESTERS = ("spring", "fall")
+FALL_SEMESTER_START = (9, 26)
 SYNC_STATUSES = ("idle", "running", "completed", "failed")
 AI_STATUSES = ("idle", "queued", "processing", "completed", "failed")
 CANDIDATE_STATUSES = ("pending", "added", "ignored")
@@ -49,6 +52,8 @@ CREATE TABLE IF NOT EXISTS portal_notices (
     deadline TEXT NOT NULL DEFAULT '',
     importance TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT '',
+    academic_year INTEGER NOT NULL DEFAULT 0,
+    semester TEXT NOT NULL DEFAULT '' CHECK(semester IN ('', 'spring', 'fall')),
     body TEXT NOT NULL DEFAULT '',
     source_url TEXT NOT NULL DEFAULT '',
     synced_at TEXT NOT NULL,
@@ -83,6 +88,7 @@ CREATE TABLE IF NOT EXISTS portal_notice_ai (
     analyzed_at TEXT,
     prompt_version TEXT,
     model TEXT,
+    content_hash TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL
 );
 
@@ -201,6 +207,30 @@ def _text(value: object) -> str:
     return str(value or "").strip()
 
 
+def academic_term_for_published_at(value: object) -> tuple[int, str]:
+    """Map a portal publication date to the academic year and semester."""
+    text = _text(value)
+    match = re.search(r"(?<!\d)(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?!\d)", text)
+    if not match:
+        return 0, ""
+    try:
+        year, month, day = (int(part) for part in match.groups())
+        datetime(year, month, day)
+    except ValueError:
+        return 0, ""
+    if month < 4:
+        return year - 1, "fall"
+    if (month, day) >= FALL_SEMESTER_START:
+        return year, "fall"
+    return year, "spring"
+
+
+def academic_term_label(academic_year: int, semester: str) -> str:
+    if academic_year <= 0 or semester not in SEMESTERS:
+        return "학기 미분류"
+    return f"{academic_year} {'봄' if semester == 'spring' else '가을'}"
+
+
 def _notice_id(value: object) -> str:
     notice_id = _text(value)
     if not notice_id or len(notice_id) > 512:
@@ -263,6 +293,30 @@ def _connect(path: str | Path | None = None) -> sqlite3.Connection:
             connection.execute("ALTER TABLE portal_notices ADD COLUMN last_changed_at TEXT")
         if "change_count" not in existing_columns:
             connection.execute("ALTER TABLE portal_notices ADD COLUMN change_count INTEGER NOT NULL DEFAULT 0")
+        if "academic_year" not in existing_columns:
+            connection.execute("ALTER TABLE portal_notices ADD COLUMN academic_year INTEGER NOT NULL DEFAULT 0")
+        if "semester" not in existing_columns:
+            connection.execute("ALTER TABLE portal_notices ADD COLUMN semester TEXT NOT NULL DEFAULT ''")
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_portal_notices_term_type_published "
+            "ON portal_notices(academic_year DESC, semester, type, published_at DESC)"
+        )
+        ai_columns = {
+            str(row["name"])
+            for row in connection.execute("PRAGMA table_info(portal_notice_ai)").fetchall()
+        }
+        if "content_hash" not in ai_columns:
+            connection.execute("ALTER TABLE portal_notice_ai ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''")
+        for term_row in connection.execute(
+            "SELECT notice_id, published_at FROM portal_notices "
+            "WHERE academic_year = 0 OR semester = ''"
+        ).fetchall():
+            academic_year, semester = academic_term_for_published_at(term_row["published_at"])
+            if academic_year and semester:
+                connection.execute(
+                    "UPDATE portal_notices SET academic_year = ?, semester = ? WHERE notice_id = ?",
+                    (academic_year, semester, str(term_row["notice_id"])),
+                )
         state_columns = {
             str(row["name"])
             for row in connection.execute("PRAGMA table_info(portal_notice_user_state)").fetchall()
@@ -382,6 +436,8 @@ def _notice_payload(
         "deadline": str(row["deadline"] or ""),
         "importance": str(row["importance"] or ""),
         "category": str(row["category"] or ""),
+        "academicYear": int(row["academic_year"] or 0) if "academic_year" in row_keys else 0,
+        "semester": str(row["semester"] or "") if "semester" in row_keys else "",
         "sourceUrl": str(row["source_url"] or ""),
         "syncedAt": str(row["synced_at"] or ""),
         "isRead": state_bool("is_read"),
@@ -505,6 +561,15 @@ def upsert_notice_summary(
             """,
             values,
         )
+        effective_published_at = _text(notice.get("published_at"))
+        if not effective_published_at and existing is not None:
+            effective_published_at = str(existing["published_at"] or "")
+        academic_year, semester = academic_term_for_published_at(effective_published_at)
+        if academic_year and semester:
+            connection.execute(
+                "UPDATE portal_notices SET academic_year = ?, semester = ? WHERE notice_id = ?",
+                (academic_year, semester, values[0]),
+            )
         if summary_changed:
             connection.execute(
                 """
@@ -588,6 +653,15 @@ def upsert_notice_detail(
             """,
             (*values[:9], body, values[9], summary_hash_value, content_hash_value, values[11]),
         )
+        effective_published_at = _text(notice.get("published_at"))
+        if not effective_published_at and existing is not None:
+            effective_published_at = str(existing["published_at"] or "")
+        academic_year, semester = academic_term_for_published_at(effective_published_at)
+        if academic_year and semester:
+            connection.execute(
+                "UPDATE portal_notices SET academic_year = ?, semester = ? WHERE notice_id = ?",
+                (academic_year, semester, values[0]),
+            )
         if changed:
             connection.execute(
                 """
@@ -698,6 +772,152 @@ def mark_detail_error(
     except sqlite3.Error as exc:
         connection.rollback()
         raise PortalDatabaseError("portal detail error could not be saved") from exc
+    finally:
+        connection.close()
+
+
+def notices_needing_analysis(
+    prompt_version: str,
+    model: str,
+    path: str | Path | None = None,
+    *,
+    include_failed: bool = False,
+) -> list[str]:
+    connection = _connect(path)
+    try:
+        rows = connection.execute(
+            """
+            SELECT n.notice_id
+              FROM portal_notices AS n
+              LEFT JOIN portal_notice_ai AS a ON a.notice_id = n.notice_id
+             WHERE TRIM(n.body) <> ''
+               AND TRIM(n.content_hash) <> ''
+               AND (
+                    a.notice_id IS NULL
+                    OR (
+                        a.status = 'completed'
+                        AND (
+                            COALESCE(a.prompt_version, '') <> ?
+                            OR COALESCE(a.model, '') <> ?
+                            OR COALESCE(a.content_hash, '') <> n.content_hash
+                        )
+                    )
+                    OR (? = 1 AND a.status = 'failed')
+               )
+             ORDER BY n.published_at DESC, n.notice_id DESC
+            """,
+            (_text(prompt_version), _text(model), 1 if include_failed else 0),
+        ).fetchall()
+        return [str(row["notice_id"]) for row in rows]
+    finally:
+        connection.close()
+
+
+def queue_notice_analyses(
+    notice_ids: Iterable[str],
+    path: str | Path | None = None,
+    *,
+    force: bool = False,
+) -> int:
+    normalized = list(dict.fromkeys(_notice_id(value) for value in notice_ids))
+    if not normalized:
+        return 0
+    connection = _connect(path)
+    queued = 0
+    try:
+        observed_at = now_iso()
+        for notice_id in normalized:
+            exists = connection.execute(
+                "SELECT 1 FROM portal_notices WHERE notice_id = ? AND TRIM(body) <> ''",
+                (notice_id,),
+            ).fetchone()
+            if exists is None:
+                continue
+            current = connection.execute(
+                "SELECT status FROM portal_notice_ai WHERE notice_id = ?",
+                (notice_id,),
+            ).fetchone()
+            current_status = str(current["status"]) if current else "idle"
+            if current_status in {"queued", "processing"}:
+                continue
+            if current_status == "completed" and not force:
+                continue
+            connection.execute(
+                """
+                INSERT INTO portal_notice_ai(
+                    notice_id, status, summary, translation, error_code, error,
+                    analyzed_at, prompt_version, model, content_hash, updated_at
+                ) VALUES (?, 'queued', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '', ?)
+                ON CONFLICT(notice_id) DO UPDATE SET
+                    status = 'queued',
+                    error_code = NULL,
+                    error = NULL,
+                    updated_at = excluded.updated_at
+                """,
+                (notice_id, observed_at),
+            )
+            queued += 1
+        connection.commit()
+        return queued
+    except sqlite3.Error as exc:
+        connection.rollback()
+        raise PortalDatabaseError("portal notice AI analyses could not be queued") from exc
+    finally:
+        connection.close()
+
+
+def claim_notice_analysis_batch(
+    limit: int,
+    path: str | Path | None = None,
+) -> list[str]:
+    capped = max(1, min(8, int(limit)))
+    connection = _connect(path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        rows = connection.execute(
+            """
+            SELECT notice_id
+              FROM portal_notice_ai
+             WHERE status = 'queued'
+             ORDER BY updated_at DESC, notice_id DESC
+             LIMIT ?
+            """,
+            (capped,),
+        ).fetchall()
+        notice_ids = [str(row["notice_id"]) for row in rows]
+        if notice_ids:
+            placeholders = ",".join("?" for _ in notice_ids)
+            connection.execute(
+                f"UPDATE portal_notice_ai SET status = 'processing', error_code = NULL, error = NULL, updated_at = ? "
+                f"WHERE notice_id IN ({placeholders}) AND status = 'queued'",
+                [now_iso(), *notice_ids],
+            )
+        connection.commit()
+        return notice_ids
+    except sqlite3.Error as exc:
+        connection.rollback()
+        raise PortalDatabaseError("portal notice AI batch could not start") from exc
+    finally:
+        connection.close()
+
+
+def ai_progress(path: str | Path | None = None) -> dict[str, int]:
+    connection = _connect(path)
+    try:
+        eligible = int(connection.execute(
+            "SELECT COUNT(*) FROM portal_notices WHERE TRIM(body) <> '' AND TRIM(content_hash) <> ''"
+        ).fetchone()[0])
+        rows = connection.execute(
+            "SELECT status, COUNT(*) AS count FROM portal_notice_ai GROUP BY status"
+        ).fetchall()
+        counts = {str(row["status"]): int(row["count"] or 0) for row in rows}
+        return {
+            "total": eligible,
+            "completed": counts.get("completed", 0),
+            "queued": counts.get("queued", 0),
+            "processing": counts.get("processing", 0),
+            "failed": counts.get("failed", 0),
+        }
     finally:
         connection.close()
 
@@ -814,7 +1034,7 @@ def save_notice_analysis(
     try:
         connection.execute("BEGIN IMMEDIATE")
         exists = connection.execute(
-            "SELECT 1 FROM portal_notices WHERE notice_id = ?",
+            "SELECT content_hash FROM portal_notices WHERE notice_id = ?",
             (normalized,),
         ).fetchone()
         if exists is None:
@@ -824,10 +1044,19 @@ def save_notice_analysis(
             UPDATE portal_notice_ai
                SET status = 'completed', summary = ?, translation = ?,
                    error_code = NULL, error = NULL, analyzed_at = ?,
-                   prompt_version = ?, model = ?, updated_at = ?
+                   prompt_version = ?, model = ?, content_hash = ?, updated_at = ?
              WHERE notice_id = ?
             """,
-            (summary, translation, _text(analyzed_at), _text(prompt_version), _text(model), now_iso(), normalized),
+            (
+                summary,
+                translation,
+                _text(analyzed_at),
+                _text(prompt_version),
+                _text(model),
+                str(exists["content_hash"] or ""),
+                now_iso(),
+                normalized,
+            ),
         )
         candidate_ids: list[str] = []
         for candidate in candidates:
@@ -1000,10 +1229,16 @@ def list_notices(
     *,
     notice_type: str | None = None,
     department: str | None = None,
+    academic_year: int | None = None,
+    semester: str | None = None,
     limit: int = 100,
 ) -> list[dict[str, object]]:
     normalized_type = _notice_type(notice_type) if notice_type else None
     normalized_department = _text(department) if department is not None else None
+    normalized_year = int(academic_year) if academic_year is not None else None
+    normalized_semester = _text(semester).lower() if semester is not None else None
+    if normalized_semester is not None and normalized_semester not in SEMESTERS:
+        raise PortalDatabaseError("unsupported portal notice semester")
     capped_limit = max(1, min(500, int(limit)))
     connection = _connect(path)
     try:
@@ -1015,6 +1250,12 @@ def list_notices(
         if normalized_department is not None:
             conditions.append("n.department = ?")
             parameters.append(normalized_department)
+        if normalized_year is not None:
+            conditions.append("n.academic_year = ?")
+            parameters.append(normalized_year)
+        if normalized_semester is not None:
+            conditions.append("n.semester = ?")
+            parameters.append(normalized_semester)
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ''
         parameters.append(capped_limit)
         rows = connection.execute(
@@ -1022,7 +1263,7 @@ def list_notices(
             SELECT n.notice_id, n.type, n.title, n.department, n.published_at,
                    n.expires_at, n.deadline, n.importance, n.category, n.body,
                    n.source_url, n.synced_at,
-                   n.last_changed_at, n.change_count,
+                   n.last_changed_at, n.change_count, n.academic_year, n.semester,
                    s.is_read, s.is_important, s.interest, s.is_interested, s.is_archived, s.first_seen_at,
                    s.read_at, s.updated_at,
                    a.status AS ai_status, a.summary AS ai_summary, a.translation AS ai_translation,
@@ -1046,15 +1287,28 @@ def notice_departments(
     path: str | Path | None = None,
     *,
     notice_type: str | None = None,
+    academic_year: int | None = None,
+    semester: str | None = None,
 ) -> list[dict[str, object]]:
     normalized_type = _notice_type(notice_type) if notice_type else None
+    normalized_year = int(academic_year) if academic_year is not None else None
+    normalized_semester = _text(semester).lower() if semester is not None else None
+    if normalized_semester is not None and normalized_semester not in SEMESTERS:
+        raise PortalDatabaseError("unsupported portal notice semester")
     connection = _connect(path)
     try:
         parameters: list[object] = []
-        where = ''
+        conditions: list[str] = []
         if normalized_type:
-            where = 'WHERE type = ?'
+            conditions.append('type = ?')
             parameters.append(normalized_type)
+        if normalized_year is not None:
+            conditions.append('academic_year = ?')
+            parameters.append(normalized_year)
+        if normalized_semester is not None:
+            conditions.append('semester = ?')
+            parameters.append(normalized_semester)
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ''
         rows = connection.execute(
             f"""
             SELECT department AS value,
@@ -1085,6 +1339,38 @@ def notice_departments(
         connection.close()
 
 
+def academic_terms(path: str | Path | None = None) -> list[dict[str, object]]:
+    connection = _connect(path)
+    try:
+        rows = connection.execute(
+            """
+            SELECT academic_year, semester, COUNT(*) AS count,
+                   SUM(CASE WHEN type = 'ALL' THEN 1 ELSE 0 END) AS all_count,
+                   SUM(CASE WHEN type = 'DM' THEN 1 ELSE 0 END) AS dm_count
+              FROM portal_notices
+             WHERE academic_year > 0 AND semester IN ('spring', 'fall')
+             GROUP BY academic_year, semester
+             ORDER BY academic_year DESC,
+                      CASE semester WHEN 'fall' THEN 1 ELSE 0 END DESC
+            """
+        ).fetchall()
+        return [
+            {
+                "academicYear": int(row["academic_year"]),
+                "semester": str(row["semester"]),
+                "label": academic_term_label(int(row["academic_year"]), str(row["semester"])),
+                "count": int(row["count"] or 0),
+                "counts": {
+                    "ALL": int(row["all_count"] or 0),
+                    "DM": int(row["dm_count"] or 0),
+                },
+            }
+            for row in rows
+        ]
+    finally:
+        connection.close()
+
+
 def get_notice(notice_id: str, path: str | Path | None = None) -> dict[str, object] | None:
     normalized = _notice_id(notice_id)
     connection = _connect(path)
@@ -1094,7 +1380,7 @@ def get_notice(notice_id: str, path: str | Path | None = None) -> dict[str, obje
             SELECT n.notice_id, n.type, n.title, n.department, n.published_at,
                    n.expires_at, n.deadline, n.importance, n.category, n.body,
                    n.source_url, n.synced_at,
-                   n.last_changed_at, n.change_count,
+                   n.last_changed_at, n.change_count, n.academic_year, n.semester,
                    s.is_read, s.is_important, s.interest, s.is_interested, s.is_archived, s.first_seen_at,
                    s.read_at, s.updated_at,
                    a.status AS ai_status, a.summary AS ai_summary,
@@ -1189,7 +1475,7 @@ def update_notice_state(
             SELECT n.notice_id, n.type, n.title, n.department, n.published_at,
                    n.expires_at, n.deadline, n.importance, n.category, n.body,
                    n.source_url, n.synced_at,
-                   n.last_changed_at, n.change_count,
+                   n.last_changed_at, n.change_count, n.academic_year, n.semester,
                    s.is_read, s.is_important, s.interest, s.is_interested, s.is_archived, s.first_seen_at,
                    s.read_at, s.updated_at,
                    a.status AS ai_status, a.summary AS ai_summary,
