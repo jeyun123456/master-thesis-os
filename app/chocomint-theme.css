@@ -1576,6 +1576,75 @@ html .shell .section {
   font-size: 9px;
 }
 
+.portal-notice-ai-progress {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+}
+
+.portal-notice-ai-progress-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 150px;
+  font-size: 9px;
+}
+
+.portal-notice-ai-progress-copy small {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.portal-notice-ai-progress-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #ece9e1;
+}
+
+.portal-notice-ai-progress-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #8eb9a0;
+  transition: width .2s ease;
+}
+
+.portal-notice-toolbar-left {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.portal-notice-term-select select {
+  min-height: 31px;
+  padding: 5px 28px 5px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel-elevated);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .portal-notice-ai-progress {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .portal-notice-toolbar-left {
+    width: 100%;
+  }
+}
+
 .portal-notice-row-wrap {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

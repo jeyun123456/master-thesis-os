@@ -1,4 +1,5 @@
 export type PortalNoticeType = 'ALL' | 'DM';
+export type PortalNoticeSemester = 'spring' | 'fall';
 export type PortalSyncState = 'idle' | 'running' | 'completed' | 'failed';
 export type PortalSessionState = 'login_required' | 'session_expired' | 'saved' | 'unknown';
 export type PortalNoticeAIStatus = 'idle' | 'queued' | 'processing' | 'completed' | 'failed';
@@ -16,6 +17,25 @@ export interface PortalNoticeAttachment {
   noticeId: string;
   filename: string;
   url: string;
+}
+
+export interface PortalAcademicTerm {
+  academicYear: number;
+  semester: PortalNoticeSemester;
+  label: string;
+  count: number;
+  counts: { ALL: number; DM: number };
+}
+
+export interface PortalAIProgress {
+  total: number;
+  completed: number;
+  queued: number;
+  processing: number;
+  failed: number;
+  running: boolean;
+  error?: string;
+  errorCode?: string;
 }
 
 export interface PortalNoticeDepartment {
@@ -68,6 +88,8 @@ export interface PortalNoticeSummary {
   deadline: string;
   importance: string;
   category: string;
+  academicYear: number;
+  semester: PortalNoticeSemester | '';
   sourceUrl: string;
   syncedAt: string;
   lastChangedAt: string | null;
@@ -109,6 +131,7 @@ export interface PortalSyncStatus {
   jobKind?: 'sync' | 'login' | 'ai';
   jobError?: string;
   jobErrorCode?: string;
+  ai?: PortalAIProgress;
   history?: PortalSyncRun[];
 }
 
@@ -307,6 +330,8 @@ function normalizeNotice(raw: unknown, includeBody: boolean): PortalNoticeSummar
     deadline: textValue(value.deadline),
     importance: textValue(value.importance),
     category: textValue(value.category),
+    academicYear: numberValue(value.academicYear),
+    semester: value.semester === 'spring' || value.semester === 'fall' ? value.semester : '',
     sourceUrl: textValue(value.sourceUrl),
     syncedAt: textValue(value.syncedAt),
     lastChangedAt: typeof value.lastChangedAt === 'string' ? value.lastChangedAt : null,
@@ -361,6 +386,35 @@ function normalizeDepartment(raw: unknown): PortalNoticeDepartment {
   };
 }
 
+function normalizeAcademicTerm(raw: unknown): PortalAcademicTerm | null {
+  if (!isRecord(raw)) return null;
+  const academicYear = numberValue(raw.academicYear);
+  const semester = raw.semester === 'spring' || raw.semester === 'fall' ? raw.semester : null;
+  if (!academicYear || !semester) return null;
+  const counts = isRecord(raw.counts) ? raw.counts : {};
+  return {
+    academicYear,
+    semester,
+    label: textValue(raw.label) || `${academicYear} ${semester === 'spring' ? '봄' : '가을'}`,
+    count: numberValue(raw.count),
+    counts: { ALL: numberValue(counts.ALL), DM: numberValue(counts.DM) },
+  };
+}
+
+function normalizeAIProgress(raw: unknown): PortalAIProgress | undefined {
+  if (!isRecord(raw)) return undefined;
+  return {
+    total: numberValue(raw.total),
+    completed: numberValue(raw.completed),
+    queued: numberValue(raw.queued),
+    processing: numberValue(raw.processing),
+    failed: numberValue(raw.failed),
+    running: raw.running === true,
+    ...(textValue(raw.error) ? { error: textValue(raw.error) } : {}),
+    ...(textValue(raw.errorCode) ? { errorCode: textValue(raw.errorCode) } : {}),
+  };
+}
+
 function normalizePortalSyncRun(raw: unknown): PortalSyncRun {
   const value = isRecord(raw) ? raw : {};
   const status = value.status === 'running' || value.status === 'failed' ? value.status : 'completed';
@@ -383,6 +437,7 @@ export function normalizePortalSyncStatus(raw: unknown): PortalSyncStatus {
   if (!isRecord(raw)) throw new PortalNoticesClientError('malformed_response', '학교 공지 동기화 상태 응답 형식을 확인해줘.');
   const counts = isRecord(raw.counts) ? raw.counts : {};
   const session = isRecord(raw.session) ? { state: sessionState(raw.session.state) } : undefined;
+  const ai = normalizeAIProgress(raw.ai);
   const result: PortalSyncStatus = {
     source: 'ritsumei',
     lastSyncAt: typeof raw.lastSyncAt === 'string' ? raw.lastSyncAt : null,
@@ -400,6 +455,7 @@ export function normalizePortalSyncStatus(raw: unknown): PortalSyncStatus {
     ...(raw.jobKind === 'sync' || raw.jobKind === 'login' || raw.jobKind === 'ai' ? { jobKind: raw.jobKind } : {}),
     ...(textValue(raw.jobError) ? { jobError: textValue(raw.jobError) } : {}),
     ...(textValue(raw.jobErrorCode) ? { jobErrorCode: textValue(raw.jobErrorCode) } : {}),
+    ...(ai ? { ai } : {}),
     ...(Array.isArray(raw.history) ? { history: raw.history.map(normalizePortalSyncRun) } : {}),
   };
   return result;
@@ -423,12 +479,14 @@ export async function getPortalStatus(token = readBridgeTokenFromStorage(), fetc
 
 export async function getPortalNotices(
   token = readBridgeTokenFromStorage(),
-  options: { type?: PortalNoticeType; department?: string; limit?: number } = {},
+  options: { type?: PortalNoticeType; department?: string; academicYear?: number; semester?: PortalNoticeSemester; limit?: number } = {},
   fetchImpl: typeof fetch = fetch,
-): Promise<{ items: PortalNoticeSummary[]; departments: PortalNoticeDepartment[]; sync: PortalSyncStatus }> {
+): Promise<{ items: PortalNoticeSummary[]; departments: PortalNoticeDepartment[]; terms: PortalAcademicTerm[]; sync: PortalSyncStatus }> {
   const params = new URLSearchParams();
   if (options.type) params.set('type', options.type);
   if (options.department) params.set('department', options.department);
+  if (options.academicYear) params.set('academicYear', String(options.academicYear));
+  if (options.semester) params.set('semester', options.semester);
   params.set('limit', String(Math.max(1, Math.min(500, options.limit || 500))));
   const raw = await requestBridge(`/portal/notices?${params.toString()}`, token, 'GET', undefined, fetchImpl);
   if (!isRecord(raw) || raw.ok !== true || raw.source !== 'sqlite' || !Array.isArray(raw.items)) {
@@ -438,6 +496,7 @@ export async function getPortalNotices(
   return {
     items: raw.items.map((item) => normalizeNotice(item, false) as PortalNoticeSummary),
     departments: Array.isArray(raw.departments) ? raw.departments.map(normalizeDepartment) : [],
+    terms: Array.isArray(raw.terms) ? raw.terms.map(normalizeAcademicTerm).filter((term): term is PortalAcademicTerm => term !== null) : [],
     sync: normalizePortalSyncStatus(syncRaw),
   };
 }
@@ -456,6 +515,13 @@ export async function getPortalNotice(
 
 export async function startPortalSync(token = readBridgeTokenFromStorage(), fetchImpl: typeof fetch = fetch): Promise<void> {
   await requestBridge('/portal/sync', token, 'POST', {}, fetchImpl);
+}
+
+export async function startPortalAIBackfill(
+  token = readBridgeTokenFromStorage(),
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  await requestBridge('/portal/ai/backfill', token, 'POST', {}, fetchImpl);
 }
 
 export async function startPortalLogin(token = readBridgeTokenFromStorage(), fetchImpl: typeof fetch = fetch): Promise<void> {

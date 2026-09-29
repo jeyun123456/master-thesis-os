@@ -12,11 +12,13 @@ import {
   PORTAL_ENTRY_URL,
   PortalNoticesClientError,
   readPortalBridgeToken,
+  startPortalAIBackfill,
   startPortalLogin,
   startPortalNoticeAnalysis,
   startPortalSync,
   updatePortalNoticeCandidate,
   updatePortalNoticeState,
+  type PortalAcademicTerm,
   type PortalNoticeCalendarCandidate,
   type PortalNotice,
   type PortalNoticeDepartment,
@@ -212,10 +214,20 @@ function noticeUpdatedInSync(notice: PortalNoticeSummary, status: PortalSyncStat
     && notice.lastChangedAt === status.lastSyncAt;
 }
 
+function portalTermKey(term: Pick<PortalAcademicTerm, 'academicYear' | 'semester'>): string {
+  return `${term.academicYear}:${term.semester}`;
+}
+
+function noticeTermKey(notice: Pick<PortalNoticeSummary, 'academicYear' | 'semester'>): string {
+  return notice.academicYear && notice.semester ? `${notice.academicYear}:${notice.semester}` : '';
+}
+
 export function PortalNoticesPanel() {
   const [status, setStatus] = useState<PortalSyncStatus>(INITIAL_STATUS);
   const [items, setItems] = useState<PortalNoticeSummary[]>([]);
   const [departments, setDepartments] = useState<PortalNoticeDepartment[]>([]);
+  const [terms, setTerms] = useState<PortalAcademicTerm[]>([]);
+  const [termKey, setTermKey] = useState('');
   const [tab, setTab] = useState<PortalNoticeType>('ALL');
   const [viewFilter, setViewFilter] = useState<PortalNoticeViewFilter>('all');
   const [departmentFilter, setDepartmentFilter] = useState('');
@@ -231,6 +243,7 @@ export function PortalNoticesPanel() {
   const [externalAction, setExternalAction] = useState<string | null>(null);
   const [action, setAction] = useState<'idle' | 'sync' | 'login'>('idle');
   const [aiAction, setAiAction] = useState<'idle' | 'analyze'>('idle');
+  const [aiBackfillBusy, setAiBackfillBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
   const loadStored = useCallback(async () => {
@@ -242,6 +255,8 @@ export function PortalNoticesPanel() {
     setStatus(noticeResponse.sync || nextStatus);
     setItems(noticeResponse.items);
     setDepartments(noticeResponse.departments);
+    setTerms(noticeResponse.terms);
+    setTermKey((current) => current || (noticeResponse.terms[0] ? portalTermKey(noticeResponse.terms[0]) : ''));
   }, []);
 
   useEffect(() => {
@@ -259,9 +274,20 @@ export function PortalNoticesPanel() {
     };
   }, [loadStored]);
 
+  const termItems = useMemo(
+    () => termKey ? items.filter((item) => noticeTermKey(item) === termKey) : items,
+    [items, termKey],
+  );
+  const termCounts = useMemo(
+    () => ({
+      ALL: termItems.filter((item) => item.type === 'ALL').length,
+      DM: termItems.filter((item) => item.type === 'DM').length,
+    }),
+    [termItems],
+  );
   const visibleItems = useMemo(
-    () => sortPortalNotices(filterPortalNotices(items, tab, viewFilter, departmentFilter, searchQuery), sort),
-    [items, tab, viewFilter, departmentFilter, searchQuery, sort],
+    () => sortPortalNotices(filterPortalNotices(termItems, tab, viewFilter, departmentFilter, searchQuery), sort),
+    [termItems, tab, viewFilter, departmentFilter, searchQuery, sort],
   );
   const pageCount = Math.max(1, Math.ceil(visibleItems.length / pageSize));
   const pageItems = useMemo(
@@ -269,13 +295,25 @@ export function PortalNoticesPanel() {
     [currentPage, pageSize, visibleItems],
   );
 
-  useEffect(() => { setCurrentPage(1); }, [tab, viewFilter, departmentFilter, searchQuery, sort, pageSize]);
+  useEffect(() => { setCurrentPage(1); }, [termKey, tab, viewFilter, departmentFilter, searchQuery, sort, pageSize]);
   useEffect(() => { setCurrentPage((page) => Math.min(page, pageCount)); }, [pageCount]);
 
   const visibleUnreadCount = useMemo(
     () => visibleItems.filter((item) => !item.isRead).length,
     [visibleItems],
   );
+
+  const aiQueueActive = Boolean(
+    status.ai?.running || (status.ai?.queued || 0) > 0 || (status.ai?.processing || 0) > 0,
+  );
+
+  useEffect(() => {
+    if (!aiQueueActive) return;
+    const timer = window.setInterval(() => {
+      void loadStored().catch((nextError) => setError(nextError));
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [aiQueueActive, loadStored]);
 
   async function waitForJob(): Promise<PortalSyncStatus> {
     const started = Date.now();
@@ -309,6 +347,20 @@ export function PortalNoticesPanel() {
       setError(nextError);
     } finally {
       setAction('idle');
+    }
+  }
+
+  async function runAIBackfill() {
+    if (aiBackfillBusy) return;
+    setAiBackfillBusy(true);
+    setError(null);
+    try {
+      await startPortalAIBackfill(readPortalBridgeToken());
+      await loadStored();
+    } catch (nextError) {
+      setError(nextError);
+    } finally {
+      setAiBackfillBusy(false);
     }
   }
 
@@ -488,6 +540,14 @@ export function PortalNoticesPanel() {
         <b>이번 동기화 · 신규 {status.newCount}개 · {formatPortalSyncDate(status.lastSyncAt)}</b>
         {status.lastError && <span className="portal-notices-last-error" title={status.lastError}>동기화 오류: {status.lastError}</span>}
       </div>
+      {status.ai && status.ai.total > 0 && <div className="portal-notice-ai-progress">
+        <div className="portal-notice-ai-progress-copy">
+          <b>AI 사전분석 {Math.min(status.ai.completed, status.ai.total)} / {status.ai.total}</b>
+          <small>{status.ai.running ? `배치 분석 중 · 대기 ${status.ai.queued} · 처리 ${status.ai.processing}` : status.ai.failed ? `실패 ${status.ai.failed}건` : '분석 완료'}</small>
+        </div>
+        <div className="portal-notice-ai-progress-track" aria-hidden="true"><span style={{ width: `${status.ai.total ? Math.min(100, Math.round((status.ai.completed / status.ai.total) * 100)) : 0}%` }} /></div>
+        {status.ai.failed > 0 && <button className="mini" type="button" disabled={aiBackfillBusy || status.ai.running} onClick={() => void runAIBackfill()}>{aiBackfillBusy ? '재시도 중…' : `실패 ${status.ai.failed}건 재시도`}</button>}
+      </div>}
     </div>
 
     {error !== null && <div className="error portal-notices-error">{portalNoticeErrorMessage(error)}</div>}
@@ -495,8 +555,17 @@ export function PortalNoticesPanel() {
     <div className={`portal-notice-master-detail ${selectedId ? 'has-selection' : ''}`}>
       <div className="card section portal-notices-list-card">
         <div className="portal-notice-toolbar">
-          <div className="tabs" role="tablist" aria-label="학교 공지 유형">
-            {(['ALL', 'DM'] as PortalNoticeType[]).map((type) => <button key={type} className={tab === type ? 'active' : ''} type="button" role="tab" aria-selected={tab === type} onClick={() => setTab(type)}>{type} <span>{status.counts[type]}</span></button>)}
+          <div className="portal-notice-toolbar-left">
+            <label className="portal-notice-term-select">
+              <span className="sr-only">학기 선택</span>
+              <select value={termKey} onChange={(event) => { setTermKey(event.target.value); setDepartmentFilter(''); }} aria-label="학교 공지 학기">
+                <option value="">전체 학기</option>
+                {terms.map((term) => <option key={portalTermKey(term)} value={portalTermKey(term)}>{term.label} ({term.count})</option>)}
+              </select>
+            </label>
+            <div className="tabs" role="tablist" aria-label="학교 공지 유형">
+              {(['ALL', 'DM'] as PortalNoticeType[]).map((type) => <button key={type} className={tab === type ? 'active' : ''} type="button" role="tab" aria-selected={tab === type} onClick={() => setTab(type)}>{type} <span>{termCounts[type]}</span></button>)}
+            </div>
           </div>
           <small>{loading ? '불러오는 중…' : `${visibleItems.length}건 검색 결과 · ${pageItems.length}건 표시 · 미읽음 ${visibleUnreadCount}건`}</small>
         </div>
