@@ -802,7 +802,10 @@ def notices_needing_analysis(
                             OR COALESCE(a.content_hash, '') <> n.content_hash
                         )
                     )
-                    OR (? = 1 AND a.status = 'failed')
+                    OR (
+                        a.status = 'failed'
+                        AND (a.error_code = 'ai_interrupted' OR ? = 1)
+                    )
                )
              ORDER BY n.published_at DESC, n.notice_id DESC
             """,
@@ -908,7 +911,13 @@ def ai_progress(path: str | Path | None = None) -> dict[str, int]:
             "SELECT COUNT(*) FROM portal_notices WHERE TRIM(body) <> '' AND TRIM(content_hash) <> ''"
         ).fetchone()[0])
         rows = connection.execute(
-            "SELECT status, COUNT(*) AS count FROM portal_notice_ai GROUP BY status"
+            """
+            SELECT a.status, COUNT(*) AS count
+              FROM portal_notice_ai AS a
+              JOIN portal_notices AS n ON n.notice_id = a.notice_id
+             WHERE TRIM(n.body) <> '' AND TRIM(n.content_hash) <> ''
+             GROUP BY a.status
+            """
         ).fetchall()
         counts = {str(row["status"]): int(row["count"] or 0) for row in rows}
         return {
