@@ -7,7 +7,10 @@ internal sealed record DisplayTarget(
     string DeviceName,
     string Label,
     Drawing.Rectangle Bounds,
-    bool IsPrimary);
+    bool IsPrimary,
+    uint DpiX = 96,
+    uint DpiY = 96,
+    double ScaleFactor = 1.0);
 
 internal static class DisplayManager
 {
@@ -31,11 +34,24 @@ internal static class DisplayManager
             var label =
                 $"{displayLabel} — {screen.Bounds.Width}x{screen.Bounds.Height}{primarySuffix}";
 
+            var rect = new NativeMethods.RECT
+            {
+                Left = screen.Bounds.Left,
+                Top = screen.Bounds.Top,
+                Right = screen.Bounds.Right,
+                Bottom = screen.Bounds.Bottom,
+            };
+            NativeMethods.GetMonitorDpi(rect, out var dpiX, out var dpiY);
+            var scaleFactor = dpiX > 0 ? dpiX / 96.0 : 1.0;
+
             result.Add(new DisplayTarget(
                 screen.DeviceName,
                 label,
                 screen.Bounds,
-                screen.Primary));
+                screen.Primary,
+                dpiX,
+                dpiY,
+                scaleFactor));
         }
 
         return result;

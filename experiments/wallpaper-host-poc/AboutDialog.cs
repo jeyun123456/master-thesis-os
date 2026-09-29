@@ -7,6 +7,7 @@ internal static class AboutDialog
     internal static void Show(
         bool wallpaperMode,
         string displayDeviceName,
+        string resolutionLabel,
         bool autoReturnEnabled,
         bool clickToInteractEnabled,
         bool startupEnabled)
@@ -20,6 +21,7 @@ internal static class AboutDialog
             $"Version {BuildInfo.Version}\n\n" +
             $"Mode: {mode}\n" +
             $"Display: {displayDeviceName}\n" +
+            $"Resolution: {resolutionLabel}\n" +
             $"Auto-return: {(autoReturnEnabled ? "On" : "Off")}\n" +
             $"Click-to-interact: {(clickToInteractEnabled ? "On" : "Off")}\n" +
             $"Start with Windows: {(startupEnabled ? "On" : "Off")}\n" +

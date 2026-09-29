@@ -32,6 +32,9 @@ type InboxPanelProps = Pick<QuickCapturePanelProps, 'entries' | 'loaded' | 'busy
   deleteSavingId: string | null;
   onAddToProject: (entryId: string, projectId: string) => void;
   onDelete: (entryId: string) => Promise<boolean>;
+  preview: InboxSuggestion[] | null;
+  onApply: () => void;
+  onDiscardPreview: () => void;
 };
 
 const categoryLabels: Record<InboxSuggestion['category'], string> = {
@@ -136,7 +139,7 @@ export function QuickCapturePanel({ entries, loaded, busy, storageStatus, storag
   </section>;
 }
 
-export function InboxPanel({ entries, loaded, busy, storageStatus, storageError, bridgeApiWarning, bridgeTokenWarning, onAdd, onOrganize, onRetrySave, error, routeMessage, projects, projectTaskSavingId, deleteSavingId, onAddToProject, onDelete }: InboxPanelProps) {
+export function InboxPanel({ entries, loaded, busy, storageStatus, storageError, bridgeApiWarning, bridgeTokenWarning, onAdd, onOrganize, onRetrySave, preview, error, routeMessage, projects, projectTaskSavingId, deleteSavingId, onAddToProject, onDelete, onApply, onDiscardPreview }: InboxPanelProps) {
   const [filter, setFilter] = useState<InboxFilter>('all');
   const pendingCount = entries.filter((entry) => !entry.processed).length;
   const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
@@ -171,6 +174,35 @@ export function InboxPanel({ entries, loaded, busy, storageStatus, storageError,
       {busy && <div className="inbox-ai-status" role="status">최근 미정리 항목을 분석하고 있어요. 원문은 변경되지 않습니다.</div>}
       {error && <div className="inbox-ai-error" role="alert">{error}</div>}
       {routeMessage && <div className="inbox-route-message" role="status">{routeMessage}</div>}
+      {preview && <section className="inbox-preview" aria-labelledby="inbox-preview-title">
+        <div className="inbox-preview-head">
+          <div>
+            <span className="capture-eyebrow">REVIEW BEFORE APPLY</span>
+            <h4 id="inbox-preview-title">정리 미리보기</h4>
+            <p>내용을 확인한 뒤 적용하세요. 원문은 별도로 계속 보존됩니다.</p>
+          </div>
+          <div className="inbox-preview-actions">
+            <button className="btn" type="button" onClick={onDiscardPreview}>닫기</button>
+            <button className="capture-ai-button" type="button" onClick={onApply}>미리보기 적용</button>
+          </div>
+        </div>
+        <div className="inbox-proposal-list">{preview.map((suggestion) => {
+          const entry = entriesById.get(suggestion.entryId);
+          if (!entry) return null;
+          const related = suggestion.relatedEntryIds.map((id) => entriesById.get(id)).filter((item): item is InboxEntry => Boolean(item));
+          return <article className="inbox-proposal" key={suggestion.entryId}>
+            <div className="inbox-proposal-top">
+              <span className="inbox-category-tag">{categoryLabels[suggestion.category]}</span>
+              <strong>{suggestion.title}</strong>
+            </div>
+            <blockquote>{entry.rawText}</blockquote>
+            {suggestion.summary && <p>{suggestion.summary}</p>}
+            {suggestion.category === 'todo' && suggestion.nextAction && <div className="inbox-proposal-detail"><b>다음 행동</b><span>{suggestion.nextAction}</span></div>}
+            {suggestion.dueDate && <div className="inbox-proposal-detail"><b>원문에 적힌 날짜</b><time dateTime={suggestion.dueDate}>{suggestion.dueDate}</time></div>}
+            {related.length > 0 && <div className="inbox-related-suggestions"><b>유사 항목 제안</b>{related.map((item) => <span key={item.id}>{item.rawText}</span>)}</div>}
+          </article>;
+        })}</div>
+      </section>}
       <div className="inbox-category-filters" role="group" aria-label="Inbox 분류 필터">
         {([['all', '전체'], ['idea', '연구 아이디어'], ['todo', '할 일'], ['schedule', '일정'], ['other', '기타']] as [InboxFilter, string][]).map(([value, label]) => <button
           aria-pressed={filter === value}

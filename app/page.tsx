@@ -10,6 +10,7 @@ import { PortalNoticesPanel } from '@/app/portal-notices-panel';
 import { MicrosoftMailPanel } from '@/app/microsoft-mail-panel';
 import { ResearchPanel } from '@/app/research-panel';
 import { ResearchMiniTrend } from '@/app/research-mini-trend';
+import { ResultsPanel as ResultsDashboardPanel } from '@/app/results-panel';
 import { DailyChecklist } from '@/app/daily-checklist';
 import { InboxPanel, QuickCapturePanel } from '@/app/inbox-panel';
 import { RewardSlotPanel } from '@/app/reward-slot';
@@ -19,13 +20,13 @@ import { dashboardApi, type CalendarApiResponse, type RepositorySource, type Sho
 import type { CalendarEvent } from '@/lib/calendar';
 import { daysUntil, groupCalendarEvents } from '@/lib/calendar-view';
 import type { GitHubCommitSummary } from '@/lib/github';
-import { parseProjectManifest, projectStatusLabel, stageLabel, type ResearchProject } from '@/lib/projects';
+import { projectStatusLabel, stageLabel, type ResearchProject } from '@/lib/projects';
 import type { RepositoryItem } from '@/lib/repository';
 import type { ResearchStatus } from '@/lib/research-status';
 import type { DashboardBundle } from '@/lib/results';
 import { BRIDGE_OFFLINE_MESSAGE, BRIDGE_TIMEOUT_MESSAGE, BridgeApiVersionMismatchError, bridgeApiVersionMismatchMessage, bridgeResponseMessage, checkLocalBridgeApiVersion } from '@/lib/bridge-status';
 import { getEnabledShortcuts, getHomeShortcuts, loadShortcutState, shortcuts, type Shortcut } from '@/lib/shortcuts';
-import { applyInboxSuggestions, createInboxEntry, INBOX_AI_BATCH_SIZE, loadInboxEntries, mergeInboxEntries, saveInboxEntries, type InboxEntry } from '@/lib/inbox';
+import { applyInboxSuggestions, createInboxEntry, INBOX_AI_BATCH_SIZE, loadInboxEntries, mergeInboxEntries, saveInboxEntries, type InboxEntry, type InboxSuggestion } from '@/lib/inbox';
 import { organizeInboxEntries } from '@/lib/inbox-ai-client';
 import { deletePersistedInboxEntry, InboxPersistenceError, loadPersistedInbox, savePersistedInbox } from '@/lib/inbox-persistence-client';
 import { addPlannerTask, syncInboxPlannerTasks, updatePlannerTaskProject } from '@/lib/planner-tasks-client';
@@ -35,7 +36,7 @@ import { addCalendarEvent } from '@/lib/calendar-client';
 import type { InboxStorageStatus } from '@/app/inbox-panel';
 import appPackage from '../package.json';
 
-type Page = 'home' | 'research' | 'library' | 'slot' | 'shortcuts' | 'inbox' | 'mail' | 'portal' | 'planner' | 'settings';
+type Page = 'home' | 'research' | 'results' | 'library' | 'slot' | 'shortcuts' | 'inbox' | 'mail' | 'portal' | 'planner' | 'settings';
 
 const APP_VERSION = appPackage.version;
 
@@ -60,6 +61,7 @@ const pageMeta: Record<Page, [string, string]> = {
   home: ['홈', '오늘의 연구 작업과 다음 행동을 한눈에'],
   inbox: ['AI 인박스', '떠오른 내용을 저장하고 검토 후 정리'],
   research: ['연구', '프로젝트별 질문 · 진행 단계 · 다음 작업 · 관련 자료'],
+  results: ['분석 결과', '프로젝트별 계산 결과와 산출물'],
   library: ['자료실', '주요 자료 · 대표 문헌 · 연구 Wiki'],
   slot: ['슬롯', '다음 연구 작업을 작은 보상 단위로 관리'],
   shortcuts: ['바로가기', '반복해서 여는 연구 파일 · 폴더 · 웹 주소'],
@@ -78,6 +80,7 @@ const navigationGroups: NavigationGroup[] = [
     items: [
       { id: 'home', label: '홈', icon: '⌂' },
       { id: 'research', label: '연구', icon: '⌕' },
+      { id: 'results', label: '분석 결과', icon: '▥' },
       { id: 'library', label: '자료실', icon: '▤' },
     ],
   },
@@ -169,6 +172,7 @@ export default function Page() {
   const [researchProjectId, setResearchProjectId] = useState<string | null>(null);
   const [expandedProjectFolders, setExpandedProjectFolders] = useState<Set<string>>(() => new Set());
   const [inboxEntries, setInboxEntries] = useState<InboxEntry[]>([]);
+  const [inboxPreview, setInboxPreview] = useState<InboxSuggestion[] | null>(null);
   const [inboxLoaded, setInboxLoaded] = useState(false);
   const [inboxStorageStatus, setInboxStorageStatus] = useState<InboxStorageStatus>('loading');
   const [inboxStorageError, setInboxStorageError] = useState('');
@@ -384,7 +388,10 @@ export default function Page() {
     try {
       const entry = createInboxEntry(rawText);
       const next = [entry, ...inboxEntries];
-      saveInboxEntries(next);
+      if (!saveInboxEntries(next)) {
+        pop('브라우저 저장 공간을 확인해줘');
+        return false;
+      }
       setInboxEntries(next);
       void persistInboxToVault(next);
       pop('인박스에 추가했어. Vault에 저장 중이야.');
@@ -398,6 +405,7 @@ export default function Page() {
   async function organizeInbox() {
     setPage('inbox');
     setInboxAIError('');
+    setInboxPreview(null);
     setInboxRouteMessage('');
     const token = readBridgeToken();
     if (!token.trim()) {
@@ -413,47 +421,58 @@ export default function Page() {
     }
     setInboxOrganizing(true);
     try {
-      const suggestions = await organizeInboxEntries(pending, token);
-      const next = applyInboxSuggestions(inboxEntries, suggestions);
-      saveInboxEntries(next);
-      setInboxEntries(next);
-      await persistInboxToVault(next);
-      const routeErrors: string[] = [];
-      let plannerCount = 0;
-      let calendarCount = 0;
-      for (const suggestion of suggestions) {
-        const entry = next.find((value) => value.id === suggestion.entryId);
-        if (!entry?.ai) continue;
-        if (entry.ai.category === 'todo') {
-          const plannerTask = plannerTaskFromInboxEntry(entry);
-          if (!plannerTask) continue;
-          try {
-            await addPlannerTask(plannerTask);
-            plannerCount += 1;
-          } catch (error) {
-            routeErrors.push(`${entry.ai.title || '할 일'} → Planner: ${error instanceof Error ? error.message : '저장 실패'}`);
-          }
-        } else if (entry.ai.category === 'schedule') {
-          const calendarInput = calendarInputForInboxEntry(entry);
-          if (!calendarInput) continue;
-          try {
-            await addCalendarEvent(calendarInput);
-            calendarCount += 1;
-          } catch (error) {
-            routeErrors.push(`${entry.ai.title || '일정'} → Calendar: ${error instanceof Error ? error.message : '등록 실패'}`);
-          }
-        }
-      }
-      setInboxRouteMessage(routeErrors.length
-        ? `분류는 저장했어. 자동 전달 실패 ${routeErrors.length}건: ${routeErrors.join(' · ')}`
-        : `분류 저장 완료 · Planner ${plannerCount}건 · Calendar ${calendarCount}건. 원문에 명시된 날짜를 등록하고, 시간이 없으면 종일 일정으로 저장해.`);
-      pop('GPT 정리와 가능한 자동 전달을 마쳤어. 원문은 보존했어.');
+      setInboxPreview(await organizeInboxEntries(pending, token));
     } catch (error) {
       if (error instanceof BridgeApiVersionMismatchError) setBridgeApiWarning(error.message);
       setInboxAIError(error instanceof Error ? error.message : 'AI 정리 요청을 처리하지 못했어.');
     } finally {
       setInboxOrganizing(false);
     }
+  }
+
+  async function applyInboxPreview() {
+    if (!inboxPreview) return;
+    const suggestions = inboxPreview;
+    const next = applyInboxSuggestions(inboxEntries, suggestions);
+    if (!saveInboxEntries(next)) {
+      setInboxAIError('브라우저 저장 공간을 확인해줘. 원문과 미리보기는 그대로 남아 있어.');
+      return;
+    }
+    setInboxEntries(next);
+    setInboxPreview(null);
+    setInboxAIError('');
+    await persistInboxToVault(next);
+
+    const routeErrors: string[] = [];
+    let plannerCount = 0;
+    let calendarCount = 0;
+    for (const suggestion of suggestions) {
+      const entry = next.find((value) => value.id === suggestion.entryId);
+      if (!entry?.ai) continue;
+      if (entry.ai.category === 'todo') {
+        const plannerTask = plannerTaskFromInboxEntry(entry);
+        if (!plannerTask) continue;
+        try {
+          await addPlannerTask(plannerTask);
+          plannerCount += 1;
+        } catch (error) {
+          routeErrors.push(`${entry.ai.title || '할 일'} → Planner: ${error instanceof Error ? error.message : '저장 실패'}`);
+        }
+      } else if (entry.ai.category === 'schedule') {
+        const calendarInput = calendarInputForInboxEntry(entry);
+        if (!calendarInput) continue;
+        try {
+          await addCalendarEvent(calendarInput);
+          calendarCount += 1;
+        } catch (error) {
+          routeErrors.push(`${entry.ai.title || '일정'} → Calendar: ${error instanceof Error ? error.message : '등록 실패'}`);
+        }
+      }
+    }
+    setInboxRouteMessage(routeErrors.length
+      ? `분류는 저장했어. 자동 전달 실패 ${routeErrors.length}건: ${routeErrors.join(' · ')}`
+      : `분류 저장 완료 · Planner ${plannerCount}건 · Calendar ${calendarCount}건. 원문에 명시된 날짜를 등록하고, 시간이 없으면 종일 일정으로 저장해.`);
+    pop('GPT 정리와 가능한 자동 전달을 마쳤어. 원문은 보존했어.');
   }
 
   function retryInboxSave() {
@@ -583,6 +602,14 @@ export default function Page() {
           onOpen={openLocal}
           onOpenFolder={openLocalFolder}
         /></section>}
+        {page === 'results' && <section className="page active"><ResultsDashboardPanel
+          dashboard={dashboard}
+          loading={dashboardLoading}
+          projects={projects}
+          tree={tree}
+          onOpen={openLocal}
+          onOpenFolder={openLocalFolder}
+        /></section>}
         {page === 'library' && <section className="page active"><LibraryPanel tree={tree} researchStatus={researchStatus} onOpen={openLocal} /></section>}
         {page === 'slot' && <section className="page active"><RewardSlotPanel tasks={activeProject?.nextTasks || researchStatus?.nextActions || []} projectTitle={activeProject ? activeProject.title : 'Wiki live'} onNotice={pop} /></section>}
         {page === 'shortcuts' && <section className="page active"><ShortcutsPanel
@@ -609,7 +636,10 @@ export default function Page() {
           onAdd={addInboxEntry}
           onOrganize={() => void organizeInbox()}
           onRetrySave={retryInboxSave}
+          preview={inboxPreview}
           error={inboxAIError}
+          onApply={() => void applyInboxPreview()}
+          onDiscardPreview={() => setInboxPreview(null)}
           routeMessage={inboxRouteMessage}
           projects={projects}
           projectTaskSavingId={projectTaskSavingId}

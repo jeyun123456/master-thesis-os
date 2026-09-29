@@ -5,6 +5,7 @@ namespace WallpaperHostPoc;
 
 internal sealed partial class WallpaperAttachment
 {
+    private readonly System.Windows.Window _window;
     private readonly nint _hostHwnd;
     private readonly nint _originalParent;
     private readonly nint _originalStyle;
@@ -15,8 +16,9 @@ internal sealed partial class WallpaperAttachment
     private int _wallpaperHeight;
     private bool _attached;
 
-    private WallpaperAttachment(nint hostHwnd)
+    private WallpaperAttachment(System.Windows.Window window, nint hostHwnd)
     {
+        _window = window;
         _hostHwnd = hostHwnd;
         _originalParent = NativeMethods.GetParent(hostHwnd);
         _originalStyle = NativeMethods.GetWindowLongPtr(hostHwnd, NativeMethods.GWL_STYLE);
@@ -36,7 +38,7 @@ internal sealed partial class WallpaperAttachment
                 "The WPF HWND does not exist yet. Attach only after SourceInitialized.");
         }
 
-        return new WallpaperAttachment(hwnd);
+        return new WallpaperAttachment(window, hwnd);
     }
 
     internal bool TryAttach(out string status)

@@ -22,6 +22,9 @@ internal sealed partial class WallpaperAttachment
             }
         }
 
+        // Invalidate target display resolution so new screen bounds and DPI are queried
+        _targetDisplayResolved = false;
+
         return TryApplyTargetDisplayBounds(out status);
     }
 }

@@ -30,12 +30,19 @@ internal static class NativeMethods
     internal const uint SPAWN_WORKERW_MESSAGE = 0x052C;
 
     internal const int WM_DISPLAYCHANGE = 0x007E;
+    internal const int WM_DPICHANGED = 0x02E0;
     internal const int WM_HOTKEY = 0x0312;
     internal const uint WM_LBUTTONDOWN = 0x0201;
     internal const uint WM_LBUTTONUP = 0x0202;
     internal const uint MOD_ALT = 0x0001;
     internal const uint MOD_CONTROL = 0x0002;
     internal const uint VK_W = 0x57;
+    internal const uint MONITOR_DEFAULTTONEAREST = 2;
+    internal const int MDT_EFFECTIVE_DPI = 0;
+    internal const uint USER_DEFAULT_SCREEN_DPI = 96;
+
+    internal static readonly nint DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = new(-4);
+    internal static readonly nint DPI_HOSTING_BEHAVIOR_MIXED = new(1);
 
     internal const int WH_MOUSE_LL = 14;
     internal const uint LLMHF_INJECTED = 0x00000001;
@@ -150,6 +157,10 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, nint lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool EnumChildWindows(nint hWndParent, EnumWindowsProc lpEnumFunc, nint lParam);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     internal static extern int GetClassName(nint hWnd, StringBuilder lpClassName, int nMaxCount);
@@ -283,6 +294,10 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetWindowRect(nint hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool SetWindowPos(
         nint hWnd,
         nint hWndInsertAfter,
@@ -321,4 +336,53 @@ internal static class NativeMethods
             ? buffer.ToString()
             : string.Empty;
     }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetProcessDpiAwarenessContext(nint value);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern nint SetThreadDpiHostingBehavior(nint value);
+
+    [DllImport("user32.dll")]
+    internal static extern uint GetDpiForWindow(nint hWnd);
+
+    [DllImport("user32.dll")]
+    internal static extern nint MonitorFromWindow(nint hWnd, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    internal static extern nint MonitorFromRect(ref RECT lprc, uint dwFlags);
+
+    [DllImport("shcore.dll")]
+    internal static extern int GetDpiForMonitor(
+        nint hmonitor,
+        int dpiType,
+        out uint dpiX,
+        out uint dpiY);
+
+    internal static void GetMonitorDpi(RECT rect, out uint dpiX, out uint dpiY)
+    {
+        dpiX = USER_DEFAULT_SCREEN_DPI;
+        dpiY = USER_DEFAULT_SCREEN_DPI;
+
+        var hMonitor = MonitorFromRect(ref rect, MONITOR_DEFAULTTONEAREST);
+        if (hMonitor != nint.Zero)
+        {
+            try
+            {
+                if (GetDpiForMonitor(hMonitor, MDT_EFFECTIVE_DPI, out var x, out var y) == 0 &&
+                    x > 0 && y > 0)
+                {
+                    dpiX = x;
+                    dpiY = y;
+                    return;
+                }
+            }
+            catch
+            {
+                // Fall back to default screen DPI
+            }
+        }
+    }
+
 }

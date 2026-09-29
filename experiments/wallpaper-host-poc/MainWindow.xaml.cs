@@ -2,6 +2,7 @@ using Microsoft.Web.WebView2.Core;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Threading;
 using MessageBox = System.Windows.MessageBox;
 
 namespace WallpaperHostPoc;
@@ -28,6 +29,12 @@ public partial class MainWindow : Window
         var args = Environment.GetCommandLineArgs();
         _contentUri = ResolveContentUri(args);
 
+        var preferredDisplay = ResolvePreferredDisplay(args);
+        if (!string.IsNullOrWhiteSpace(preferredDisplay))
+        {
+            WallpaperSettings.SetTargetDisplayDeviceName(preferredDisplay);
+        }
+
         _wallpaperRequested = args.Any(arg => string.Equals(
             arg,
             "--wallpaper",
@@ -40,6 +47,8 @@ public partial class MainWindow : Window
             ShowInTaskbar = false;
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.NoResize;
+            MinWidth = 0;
+            MinHeight = 0;
         }
 
         SourceInitialized += MainWindow_SourceInitialized;
@@ -50,11 +59,6 @@ public partial class MainWindow : Window
     private void MainWindow_SourceInitialized(object? sender, EventArgs e)
     {
         SourceInitialized -= MainWindow_SourceInitialized;
-
-        if (!_wallpaperRequested)
-        {
-            return;
-        }
 
         _hostHwnd = new WindowInteropHelper(this).Handle;
         _hwndSource = HwndSource.FromHwnd(_hostHwnd);
@@ -69,6 +73,11 @@ public partial class MainWindow : Window
         if (!_hotkeyRegistered)
         {
             _hotkeyRegistrationError = Marshal.GetLastWin32Error();
+        }
+
+        if (!_wallpaperRequested)
+        {
+            return;
         }
 
         _wallpaperAttachment = WallpaperAttachment.ForWindow(this);
@@ -123,12 +132,11 @@ public partial class MainWindow : Window
             Browser.CoreWebView2.Settings.IsZoomControlEnabled = true;
 
             await InstallShortcutNativeBridgeAsync();
+            await InitializeResolutionAsync();
 
             Browser.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
 
             NavigateToModeRoute(_wallpaperAttachment?.IsAttached == true);
-
-            // Only the ordinary top-level window gets startup focus.
             if (!_wallpaperRequested)
             {
                 Browser.Focus();
@@ -168,6 +176,12 @@ public partial class MainWindow : Window
         {
             handled = true;
             ToggleInteractiveMode();
+        }
+        else if (msg == NativeMethods.WM_DPICHANGED || msg == NativeMethods.WM_DISPLAYCHANGE)
+        {
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.Background,
+                new Action(RefreshWallpaperBoundsAfterDisplayChange));
         }
 
         return nint.Zero;
@@ -331,6 +345,18 @@ public partial class MainWindow : Window
         }
 
         _hwndSource?.RemoveHook(WndProc);
+
+        try
+        {
+            Browser.Dispose();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"Browser disposal error: {ex.Message}");
+        }
+
+        SingleInstanceGuard.ReleaseResources();
+        System.Windows.Application.Current?.Shutdown();
     }
 
     private void CoreWebView2_NavigationCompleted(
@@ -347,9 +373,12 @@ public partial class MainWindow : Window
         if (_wallpaperAttachment?.IsAttached != true)
         {
             Title = "Master Thesis OS";
+            ReapplyResolutionOnNavigation();
             return;
         }
 
         Title = "Master Thesis OS - Wallpaper";
+        ReapplyResolutionOnNavigation();
+        _ = DumpRuntimeDpiMetricsAsync();
     }
 }

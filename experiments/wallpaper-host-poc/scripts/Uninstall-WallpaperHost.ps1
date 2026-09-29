@@ -12,8 +12,15 @@ $RunKeyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $RunValueName = 'MasterThesisOSWallpaperHost'
 
 $ProgramsDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
+if ([string]::IsNullOrWhiteSpace($ProgramsDirectory)) {
+    $ProgramsDirectory = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
+}
 $StartMenuDirectory = Join-Path $ProgramsDirectory 'Master Thesis OS'
-$DesktopShortcutPath = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory)) 'Master Thesis OS Wallpaper.lnk'
+$desktopDir = [Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory)
+if ([string]::IsNullOrWhiteSpace($desktopDir)) {
+    $desktopDir = Join-Path $env:USERPROFILE 'Desktop'
+}
+$DesktopShortcutPath = Join-Path $desktopDir 'Master Thesis OS Wallpaper.lnk'
 
 function Stop-InstalledBridgeRuntime {
     param(
@@ -22,14 +29,19 @@ function Stop-InstalledBridgeRuntime {
 
     $runtimePattern = [regex]::Escape([IO.Path]::GetFullPath($RuntimeDirectory))
     for ($attempt = 0; $attempt -lt 4; $attempt++) {
-        $bridgeProcesses = @(
-            Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-                Where-Object {
-                    $_.ProcessId -ne $PID -and
-                    -not [string]::IsNullOrWhiteSpace($_.CommandLine) -and
-                    $_.CommandLine -match $runtimePattern
-                }
-        )
+        $bridgeProcesses = @()
+        try {
+            $bridgeProcesses = @(
+                Get-CimInstance Win32_Process -ErrorAction Stop |
+                    Where-Object {
+                        $_.ProcessId -ne $PID -and
+                        -not [string]::IsNullOrWhiteSpace($_.CommandLine) -and
+                        $_.CommandLine -match $runtimePattern
+                    }
+            )
+        } catch {
+            break
+        }
 
         if ($bridgeProcesses.Count -eq 0) {
             return

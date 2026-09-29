@@ -1,0 +1,5 @@
+WidgetProvider/bin/
+WidgetProvider/obj/
+WidgetProvider/AppPackages/
+Package/Certificates/*.cer
+Package/Certificates/*.pfx

@@ -10,6 +10,8 @@ internal sealed class WallpaperSettingsData
     public bool AutoReturnToWallpaper { get; set; } = true;
 
     public bool ClickToInteractEnabled { get; set; } = true;
+
+    public string? ResolutionPreset { get; set; } = "auto";
 }
 
 internal static class WallpaperSettings
@@ -64,6 +66,11 @@ internal static class WallpaperSettings
     internal static void SetClickToInteractEnabled(bool enabled)
     {
         Update(settings => settings.ClickToInteractEnabled = enabled);
+    }
+
+    internal static void SetResolutionPreset(string preset)
+    {
+        Update(settings => settings.ResolutionPreset = ResolutionManager.NormalizePreset(preset));
     }
 
     private static void Update(Action<WallpaperSettingsData> update)

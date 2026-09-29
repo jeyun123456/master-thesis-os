@@ -11,6 +11,7 @@ internal sealed class TrayIconController : IDisposable
     private readonly Forms.ToolStripMenuItem _interactiveItem;
     private readonly Forms.ToolStripMenuItem _wallpaperItem;
     private readonly Forms.ToolStripMenuItem _displayItem;
+    private readonly Forms.ToolStripMenuItem _resolutionItem;
     private readonly Forms.ToolStripMenuItem _autoReturnItem;
     private readonly Forms.ToolStripMenuItem _clickToInteractItem;
     private readonly Forms.ToolStripMenuItem _startupItem;
@@ -22,6 +23,10 @@ internal sealed class TrayIconController : IDisposable
     private readonly Func<IReadOnlyList<DisplayTarget>> _getDisplays;
     private readonly Func<string> _getSelectedDisplayDeviceName;
     private readonly Action<string> _selectDisplay;
+    private readonly Func<IReadOnlyList<ResolutionOption>> _getResolutions;
+    private readonly Func<string> _getSelectedResolutionId;
+    private readonly Func<string> _getSelectedResolutionLabel;
+    private readonly Action<string> _selectResolution;
     private readonly Func<bool> _isAutoReturnEnabled;
     private readonly Action<bool> _setAutoReturnEnabled;
     private readonly Func<bool> _isClickToInteractEnabled;
@@ -38,6 +43,10 @@ internal sealed class TrayIconController : IDisposable
         Func<IReadOnlyList<DisplayTarget>> getDisplays,
         Func<string> getSelectedDisplayDeviceName,
         Action<string> selectDisplay,
+        Func<IReadOnlyList<ResolutionOption>> getResolutions,
+        Func<string> getSelectedResolutionId,
+        Func<string> getSelectedResolutionLabel,
+        Action<string> selectResolution,
         Func<bool> isAutoReturnEnabled,
         Action<bool> setAutoReturnEnabled,
         Func<bool> isClickToInteractEnabled,
@@ -53,6 +62,10 @@ internal sealed class TrayIconController : IDisposable
         _getDisplays = getDisplays;
         _getSelectedDisplayDeviceName = getSelectedDisplayDeviceName;
         _selectDisplay = selectDisplay;
+        _getResolutions = getResolutions;
+        _getSelectedResolutionId = getSelectedResolutionId;
+        _getSelectedResolutionLabel = getSelectedResolutionLabel;
+        _selectResolution = selectResolution;
         _isAutoReturnEnabled = isAutoReturnEnabled;
         _setAutoReturnEnabled = setAutoReturnEnabled;
         _isClickToInteractEnabled = isClickToInteractEnabled;
@@ -76,6 +89,7 @@ internal sealed class TrayIconController : IDisposable
         refreshItem.Click += (_, _) => _refresh();
 
         _displayItem = new Forms.ToolStripMenuItem("Display");
+        _resolutionItem = new Forms.ToolStripMenuItem("Resolution");
 
         _autoReturnItem = new Forms.ToolStripMenuItem("Return to wallpaper when inactive");
         _autoReturnItem.Click += (_, _) => ToggleAutoReturn();
@@ -124,6 +138,7 @@ internal sealed class TrayIconController : IDisposable
         menu.Items.Add(_wallpaperItem);
         menu.Items.Add(refreshItem);
         menu.Items.Add(_displayItem);
+        menu.Items.Add(_resolutionItem);
         menu.Items.Add(_autoReturnItem);
         menu.Items.Add(_clickToInteractItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
@@ -160,6 +175,7 @@ internal sealed class TrayIconController : IDisposable
         _wallpaperItem.Enabled = !wallpaperMode;
 
         RefreshDisplayMenu();
+        RefreshResolutionMenu();
 
         try
         {
@@ -238,6 +254,86 @@ internal sealed class TrayIconController : IDisposable
             AppLog.Error("Could not populate the display menu.", ex);
             _displayItem.Enabled = false;
             _displayItem.DropDownItems.Add(new Forms.ToolStripMenuItem("Display list unavailable")
+            {
+                Enabled = false,
+            });
+        }
+    }
+
+    private void RefreshResolutionMenu()
+    {
+        _resolutionItem.DropDownItems.Clear();
+
+        try
+        {
+            var resolutions = _getResolutions();
+            var selectedId = _getSelectedResolutionId();
+
+            if (resolutions.Count == 0)
+            {
+                _resolutionItem.Enabled = false;
+                _resolutionItem.DropDownItems.Add(new Forms.ToolStripMenuItem("No resolution available")
+                {
+                    Enabled = false,
+                });
+                return;
+            }
+
+            _resolutionItem.Enabled = true;
+
+            var autoOption = resolutions.FirstOrDefault(r => r.IsAuto);
+            if (autoOption is not null)
+            {
+                var autoItem = new Forms.ToolStripMenuItem(autoOption.Label)
+                {
+                    Checked = string.Equals(
+                        autoOption.Id,
+                        selectedId,
+                        StringComparison.OrdinalIgnoreCase),
+                    CheckOnClick = false,
+                    Tag = autoOption.Id,
+                };
+
+                autoItem.Click += (_, _) =>
+                {
+                    if (autoItem.Tag is string presetId)
+                    {
+                        _selectResolution(presetId);
+                    }
+                };
+
+                _resolutionItem.DropDownItems.Add(autoItem);
+                _resolutionItem.DropDownItems.Add(new Forms.ToolStripSeparator());
+            }
+
+            foreach (var res in resolutions.Where(r => !r.IsAuto))
+            {
+                var item = new Forms.ToolStripMenuItem(res.Label)
+                {
+                    Checked = string.Equals(
+                        res.Id,
+                        selectedId,
+                        StringComparison.OrdinalIgnoreCase),
+                    CheckOnClick = false,
+                    Tag = res.Id,
+                };
+
+                item.Click += (_, _) =>
+                {
+                    if (item.Tag is string presetId)
+                    {
+                        _selectResolution(presetId);
+                    }
+                };
+
+                _resolutionItem.DropDownItems.Add(item);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Could not populate the resolution menu.", ex);
+            _resolutionItem.Enabled = false;
+            _resolutionItem.DropDownItems.Add(new Forms.ToolStripMenuItem("Resolution list unavailable")
             {
                 Enabled = false,
             });
@@ -328,6 +424,7 @@ internal sealed class TrayIconController : IDisposable
             AboutDialog.Show(
                 wallpaperMode: _isWallpaperMode(),
                 displayDeviceName: _getSelectedDisplayDeviceName(),
+                resolutionLabel: _getSelectedResolutionLabel(),
                 autoReturnEnabled: _isAutoReturnEnabled(),
                 clickToInteractEnabled: _isClickToInteractEnabled(),
                 startupEnabled: _isStartupEnabled());

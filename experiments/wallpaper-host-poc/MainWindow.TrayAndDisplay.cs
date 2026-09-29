@@ -13,7 +13,7 @@ public partial class MainWindow
     {
         base.OnContentRendered(e);
 
-        if (!_wallpaperRequested || _trayInitialized)
+        if (_trayInitialized)
         {
             return;
         }
@@ -34,6 +34,11 @@ public partial class MainWindow
             getSelectedDisplayDeviceName: GetSelectedDisplayDeviceName,
             selectDisplay: deviceName => RunOnUiThread(
                 () => SelectDisplayFromTray(deviceName)),
+            getResolutions: GetResolutionOptions,
+            getSelectedResolutionId: () => _currentResolutionPreset,
+            getSelectedResolutionLabel: GetCurrentResolutionLabel,
+            selectResolution: presetId => RunOnUiThread(
+                () => SelectResolutionFromTray(presetId)),
             isAutoReturnEnabled: IsAutoReturnToWallpaperEnabled,
             setAutoReturnEnabled: enabled => RunOnUiThread(
                 () => SetAutoReturnToWallpaperEnabled(enabled)),
@@ -42,11 +47,37 @@ public partial class MainWindow
                 () => SetClickToInteractEnabled(enabled)),
             isStartupEnabled: StartupManager.IsEnabled,
             setStartupEnabled: StartupManager.SetEnabled,
-            exit: () => RunOnUiThread(Close));
+            exit: () => RunOnUiThread(ExitApplication));
 
         InitializeRuntimeServices();
         InitializeAutoReturn();
         InitializeClickToInteract();
+    }
+
+    private void ExitApplication()
+    {
+        AppLog.Info("Exit requested from tray icon.");
+        try
+        {
+            Close();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"Window close error during exit: {ex.Message}");
+        }
+
+        try
+        {
+            DisposeLocalBridge();
+            SingleInstanceGuard.ReleaseResources();
+            System.Windows.Application.Current?.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"Teardown error: {ex.Message}");
+        }
+
+        Environment.Exit(0);
     }
 
     protected override void OnClosed(EventArgs e)
@@ -65,6 +96,9 @@ public partial class MainWindow
         _trayIcon = null;
 
         base.OnClosed(e);
+
+        SingleInstanceGuard.ReleaseResources();
+        System.Windows.Application.Current?.Shutdown();
     }
 
     private nint TrayWndProc(
@@ -74,7 +108,7 @@ public partial class MainWindow
         nint lParam,
         ref bool handled)
     {
-        if (msg == NativeMethods.WM_DISPLAYCHANGE)
+        if (msg == NativeMethods.WM_DISPLAYCHANGE || msg == NativeMethods.WM_DPICHANGED)
         {
             Dispatcher.BeginInvoke(
                 DispatcherPriority.Background,
@@ -174,6 +208,7 @@ public partial class MainWindow
             }
 
             RefreshClickToInteractTargetBounds();
+            ReapplyResolutionAfterDisplayChange();
             AppLog.Info($"Selected display changed to {display.DeviceName}. {status}");
             _trayIcon?.RefreshState();
         }
@@ -200,6 +235,7 @@ public partial class MainWindow
         }
 
         RefreshClickToInteractTargetBounds();
+        ReapplyResolutionAfterDisplayChange();
         AppLog.Info(status);
         _trayIcon?.RefreshState();
     }

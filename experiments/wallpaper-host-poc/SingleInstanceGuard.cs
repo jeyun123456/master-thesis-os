@@ -98,7 +98,7 @@ internal static class SingleInstanceGuard
         AppLog.Warn("Primary instance exists, but its activation event was not available in time.");
     }
 
-    private static void ReleaseResources()
+    internal static void ReleaseResources()
     {
         StopActivationListener();
 
