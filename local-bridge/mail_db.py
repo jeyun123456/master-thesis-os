@@ -830,12 +830,25 @@ def update_candidate(
         connection.close()
 
 
+def recover_interrupted_analysis(path: str | Path | None = None) -> int:
+    connection = _connect(path)
+    try:
+        cursor = connection.execute(
+            "UPDATE mail_analysis SET status = 'queued', error = NULL, updated_at = ? WHERE status = 'processing'",
+            (now_iso(),),
+        )
+        connection.commit()
+        return cursor.rowcount
+    except sqlite3.Error as exc:
+        connection.rollback()
+        raise MailDatabaseError('interrupted mail analysis could not be recovered') from exc
+    finally:
+        connection.close()
+
+
 def begin_sync(path: str | Path | None = None) -> None:
     connection = _connect(path)
     try:
-        # A process terminated during analysis must not leave work permanently
-        # locked in ``processing`` on the next explicit synchronization.
-        connection.execute("UPDATE mail_analysis SET status = 'queued', updated_at = ? WHERE status = 'processing'", (now_iso(),))
         connection.executemany(
             """
             UPDATE sync_state

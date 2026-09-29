@@ -66,6 +66,8 @@ export type MailSyncStatus = {
   jobRunning?: boolean;
   jobKind?: 'sync' | 'reanalyze';
   jobError?: string;
+  aiRunning?: boolean;
+  aiError?: string;
 };
 
 export type MailAnalysisResult = {

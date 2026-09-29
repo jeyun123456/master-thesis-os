@@ -221,6 +221,8 @@ function normalizeSyncStatus(raw: unknown): MailSyncStatus {
     ...(raw.jobRunning === true ? { jobRunning: true } : raw.jobRunning === false ? { jobRunning: false } : {}),
     ...(raw.jobKind === 'sync' || raw.jobKind === 'reanalyze' ? { jobKind: raw.jobKind } : {}),
     ...(textValue(raw.jobError) ? { jobError: textValue(raw.jobError) } : {}),
+    ...(typeof raw.aiRunning === 'boolean' ? { aiRunning: raw.aiRunning } : {}),
+    ...(textValue(raw.aiError) ? { aiError: textValue(raw.aiError) } : {}),
   };
 }
 

@@ -122,6 +122,26 @@ export function MailPanel() {
     void loadAnalysis();
   }, [loadAnalysis]);
 
+  useEffect(() => {
+    const queued = syncStatus?.counts.queued ?? 0;
+    const processing = syncStatus?.counts.processing ?? 0;
+    if (!syncStatus?.aiRunning && queued + processing === 0) return;
+    const timer = window.setInterval(() => {
+      void getMailAnalysis(readBridgeToken(), { limit: 100 })
+        .then((result) => {
+          if (!mountedRef.current) return;
+          setItems(result.items);
+          setSyncStatus(result.sync);
+          setStatus(result.items.some((item) => item.folder === selectedFolder) ? 'ready' : 'empty');
+        })
+        .catch(() => {
+          // Background refresh is best-effort. The normal error state remains
+          // controlled by explicit load/sync actions.
+        });
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [selectedFolder, syncStatus?.aiRunning, syncStatus?.counts.processing, syncStatus?.counts.queued]);
+
   const loadInbox = useCallback(async () => {
     setInboxStatus('loading');
     setInboxErrorCode(null);
@@ -345,15 +365,20 @@ export function MailPanel() {
   const visibleErrorCode = selectedFolder === 'inbox' ? inboxErrorCode : errorCode;
   const openLabel = openState === 'opening' ? 'Thunderbird 여는 중…' : openState === 'opened' ? 'Thunderbird 열림' : 'Thunderbird 열기';
   const currentSyncLabel = syncing ? syncMessage : syncStatus?.status === 'running' ? syncPhaseLabel(syncStatus.phase) : syncMessage;
+  const aiPendingCount = (syncStatus?.counts.queued ?? 0) + (syncStatus?.counts.processing ?? 0);
+  const aiTotalCount = aiPendingCount + (syncStatus?.counts.completed ?? 0) + (syncStatus?.counts.failed ?? 0);
+  const mailAIActive = syncStatus?.aiRunning === true || aiPendingCount > 0;
 
   return <section className="card section microsoft-mail-card mail-panel">
     <div className="head"><h3>메일</h3><span>{mailPanelStatusLabel(visibleStatus, visibleErrorCode)}</span></div>
     <div className="mail-analysis-sync-summary">
       <div><b>메일 분석</b><small>대상 폴더: 학교 업무, 국제과</small></div>
-      <div className="mail-analysis-sync-metrics"><small>마지막 동기화: {formatSyncDate(syncStatus?.lastSyncAt)}</small><small>신규 메일: {syncStatus?.newCount ?? 0}</small><small>분석 완료: {syncStatus?.analysisCompleted ?? 0}</small><small>분석 실패: {syncStatus?.analysisFailed ?? 0}</small></div>
+      <div className="mail-analysis-sync-metrics"><small>마지막 동기화: {formatSyncDate(syncStatus?.lastSyncAt)}</small><small>신규 메일: {syncStatus?.newCount ?? 0}</small><small>AI 완료: {syncStatus?.counts.completed ?? 0}</small><small>AI 대기: {aiPendingCount}</small><small>AI 실패: {syncStatus?.counts.failed ?? 0}</small></div>
       <button className="btn" disabled={syncing} onClick={() => void handleSync()} type="button">{syncing ? currentSyncLabel : '메일 동기화'}</button>
     </div>
     {syncing && <div className="note" aria-live="polite">{currentSyncLabel}</div>}
+    {!syncing && mailAIActive && <div className="note mail-ai-background-note" aria-live="polite">AI 분석 중… {syncStatus?.counts.completed ?? 0} / {aiTotalCount}</div>}
+    {!syncing && syncStatus?.aiError && <div className="error microsoft-mail-error">{syncStatus.aiError}</div>}
     {!syncing && syncStatus?.status === 'failed' && <div className="error microsoft-mail-error">{syncStatus.folders.find((folder) => folder.error)?.error || '마지막 메일 동기화에 실패했어.'}</div>}
     <div className="muted"><small>{selectedFolder === 'inbox' ? `${selectedLabel} · Thunderbird 원본 · 읽음 상태 읽기 전용` : `${selectedLabel} · SQLite · 저장된 분석 결과`}</small></div>
     <div className="mail-folder-tabs" role="tablist" aria-label="메일 분석 폴더">
