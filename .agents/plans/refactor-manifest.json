@@ -1,0 +1,152 @@
+{
+  "plan_file": "master_thesis_os_refactor_draft.md",
+  "assessment_source": "master_thesis_os_architecture_assessment.md",
+  "policy_version": "2026-09-30-lifecycle-v1",
+  "baseline_commit": "8706d9e3a14aaa367bee7c7d4c4a871d65904909",
+  "branch": "refactor/architecture-ownership",
+  "production_commit": "8706d9e3a14aaa367bee7c7d4c4a871d65904909",
+  "installed_runtime_commit": null,
+  "provenance_note": "Vercel get_deployment read-only metadata: production alias READY at baseline SHA. Installed source commit unknown; no existing provenance artifact found.",
+  "protected_hashes": {
+    "exporter/export_results.py": "fbb5ed220eeb556072d27e11e79c04d32fdace394581a8b92a7f661ad76fb825",
+    "schemas/decomposition.schema.json": "fd75a11584e27ca428d7e6b6e2b5113ec2301a86d938bc6b25642908b00222d9",
+    "schemas/necessary_labour.schema.json": "6af8e880f91a35eac31809b67291253335e9e9b6fb57f2519d380107404008a1"
+  },
+  "status": "in_progress",
+  "current_chunk": "C1",
+  "verification_policy": "Targeted isolated tests, relevant tests, tsc --noEmit --incremental false, offline packaging assertions. No live integration/build/install/deploy.",
+  "chunks": [
+    {
+      "id": "C0",
+      "status": "completed",
+      "commit_sha": null,
+      "verification": "1 isolated health/inbox unittest passed; source/client/assertion all API v7"
+    },
+    {
+      "id": "C1",
+      "status": "pending",
+      "commit_sha": null
+    },
+    {
+      "id": "C2",
+      "status": "pending",
+      "commit_sha": null
+    },
+    {
+      "id": "C3",
+      "status": "pending",
+      "commit_sha": null
+    },
+    {
+      "id": "C4",
+      "status": "pending",
+      "commit_sha": null
+    },
+    {
+      "id": "C5",
+      "status": "pending",
+      "commit_sha": null
+    },
+    {
+      "id": "C6",
+      "status": "pending",
+      "commit_sha": null
+    },
+    {
+      "id": "C7",
+      "status": "pending",
+      "commit_sha": null
+    }
+  ],
+  "routing_records": [
+    {
+      "task_id": "C0",
+      "parent_task_id": "architecture-execution",
+      "policy_version": "2026-09-30-lifecycle-v1",
+      "current_phase": "FINALIZE",
+      "task_shape": {
+        "scope_clarity": "high",
+        "decision_required": "low",
+        "root_cause_known": true,
+        "verification_strength": "high",
+        "risk": "low",
+        "approach_resolved": true,
+        "semantic_integration_required": false
+      },
+      "route_decision": "LUNA",
+      "route_reason": "Confirmed stale test literal; isolated scratch endpoint test with no provider",
+      "requested_model": "gpt-6-luna",
+      "requested_effort": "max",
+      "route_verified": false,
+      "delegated": true,
+      "execution_completed": true,
+      "route_unavailable": false,
+      "execution_attribution": "UNVERIFIED_DELEGATION",
+      "retry_count": 0,
+      "route_retry_count": 0,
+      "returned_to_sol": false,
+      "routing_status": "ROUTE_UNVERIFIED",
+      "verification": {
+        "method": "Targeted scratch health/inbox unittest + exact one-literal diff",
+        "result": "pass",
+        "deterministic_sufficient": true,
+        "semantic_uncertainty": false
+      },
+      "status": "accepted"
+    },
+    {
+      "task_id": "C1",
+      "parent_task_id": "architecture-execution",
+      "policy_version": "2026-09-30-lifecycle-v1",
+      "current_phase": "PREPARE",
+      "task_shape": {
+        "scope_clarity": "high",
+        "decision_required": "low",
+        "root_cause_known": null,
+        "verification_strength": "high",
+        "risk": "medium",
+        "approach_resolved": true,
+        "semantic_integration_required": false
+      },
+      "route_decision": "LUNA",
+      "route_reason": "Settled concrete MailJobs owner extraction with characterization and packaging checks",
+      "requested_model": "gpt-6-luna",
+      "requested_effort": "max",
+      "route_verified": false,
+      "delegated": false,
+      "execution_completed": false,
+      "route_unavailable": false,
+      "execution_attribution": null,
+      "retry_count": 0,
+      "route_retry_count": 0,
+      "returned_to_sol": false,
+      "routing_status": "REQUESTED",
+      "verification": {
+        "method": "pending",
+        "result": "pending",
+        "deterministic_sufficient": false,
+        "semantic_uncertainty": false
+      },
+      "status": "pending"
+    }
+  ],
+  "production_deployment": "dpl_F3jcpPdXQyo6RUStkVPALnFrThHV",
+  "installed_snapshot": {
+    "api_version": 7,
+    "hashes": {
+      "bridge.py": "0f00ece6719ff5ebbf6e3e984bce75dc9278864ab509fbea6f96b15367d70d04",
+      "bridge_config.py": "3a3edb945947467c352570469dc2cf97f604b2b12ff9f27c802c61f401ecea99",
+      "bridge_security.py": "ece19a7499b266e5ce4c6a724156ef1c96001d28a3a56ff03984418d570b4163",
+      "mail_cli.py": "49f50f3b88a672d7346233614a29244e6d841aeb65c6eaf6f3589910f7f44e9a",
+      "mail_db.py": "6de0efb2037cfdafbf7ae33fb281e1a64c04e87d8768fda6609d82d89092a47f",
+      "portal_ai.py": "0fefcc08b16651fa1aa13c2cd88f4807b7b60b2aff82e41e2c184fc70ed971b9",
+      "portal_cli.py": "bdce2c6e85e3ea50d20ed57711998d9e09a1b510048ffcb9fb8cfca63cf5d8ac",
+      "portal_client.py": "f9e10907ef49f27da5cfb61a4c02f9ae5e5e772b4e426024d1b6deffdb5e6778",
+      "portal_db.py": "23230d1bebdd1251a19d3d81adc3536a993b4efd92638a8ad08f6a3f76a27a9f",
+      "shortcut_launcher.py": "036cbb4837d9a6e0c6b7b6b6770b9170e031ba307d306b49d47c17c23766cd24",
+      "start_bridge.ps1": "49d6ba72d789f5cc77bd0a3f4143239035e10f05dce279a32b282c2e3f037dc5",
+      "thunderbird_mail.py": "a87206f9b6e1d7b862b7cdd89a9fb7cabc83f41ed07e76fb820ae77fd8cf61aa"
+    },
+    "source_commit": null
+  }
+}

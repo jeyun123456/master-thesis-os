@@ -409,7 +409,7 @@ class InboxBridgeEndpointTests(unittest.TestCase):
     def test_inbox_get_and_post_persist_to_vault_json(self):
         health_status, health = self.request('GET', '/health')
         self.assertEqual(health_status, 200)
-        self.assertEqual(health['apiVersion'], 5)
+        self.assertEqual(health['apiVersion'], 7)
 
         status, data = self.request('GET', '/inbox')
         self.assertEqual(status, 200)
