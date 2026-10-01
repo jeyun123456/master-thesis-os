@@ -12,8 +12,8 @@
     "schemas/decomposition.schema.json": "fd75a11584e27ca428d7e6b6e2b5113ec2301a86d938bc6b25642908b00222d9",
     "schemas/necessary_labour.schema.json": "6af8e880f91a35eac31809b67291253335e9e9b6fb57f2519d380107404008a1"
   },
-  "status": "C6_completed",
-  "current_chunk": "C6",
+  "status": "C7_completed",
+  "current_chunk": "C7",
   "verification_policy": "Targeted isolated tests, relevant tests, tsc --noEmit --incremental false, offline packaging assertions. No live integration/build/install/deploy.",
   "chunks": [
     {
@@ -61,8 +61,10 @@
     },
     {
       "id": "C7",
-      "status": "pending",
-      "commit_sha": null
+      "status": "completed",
+      "commit_sha": null,
+      "reason": "Added source commit/API v7/file-hash provenance and offline Python import-closure/package verification without changing runtime startup or installation behavior.",
+      "verification": "8 scratch package/provenance tests PASS; 3 existing static Bridge packaging assertions PASS; source closure 14/14; publish list 14 Python + start_bridge.ps1; C# required list 14/14; PowerShell parse, package.json parse, and git diff --check PASS. No full Bridge suite, publish, install, restart, or deploy."
     }
   ],
   "routing_records": [
@@ -508,6 +510,41 @@
         "Two create fixtures route insert POST through the events-list fake branch.",
         "CalendarIntegrationError identity fixture configures primary but maps only missing, so the default body omits providerMessage."
       ]
+    },
+    {
+      "task_id": "C7",
+      "parent_task_id": "architecture-execution",
+      "policy_version": "2026-10-01-luna-first-v1",
+      "current_phase": "FINALIZE",
+      "task_shape": {
+        "scope_clarity": "high",
+        "decision_required": "low",
+        "root_cause_known": true,
+        "verification_strength": "high",
+        "risk": "medium",
+        "approach_resolved": true,
+        "semantic_integration_required": false
+      },
+      "route_decision": "LUNA_ROOT",
+      "route_reason": "Bounded offline artifact provenance and package-closure check; no runtime, install, or API behavior change.",
+      "requested_model": null,
+      "requested_effort": null,
+      "route_verified": false,
+      "delegated": false,
+      "execution_completed": true,
+      "route_unavailable": false,
+      "execution_attribution": "DIRECT_ROOT",
+      "retry_count": 1,
+      "route_retry_count": 0,
+      "returned_to_sol": false,
+      "routing_status": "ROUTE_UNVERIFIED",
+      "verification": {
+        "method": "8 scratch package/provenance tests; 3 static Bridge packaging tests; source closure, PowerShell syntax, JSON parse, diff check",
+        "result": "pass",
+        "deterministic_sufficient": true,
+        "semantic_uncertainty": false
+      },
+      "status": "accepted"
     }
   ],
   "production_deployment": "dpl_F3jcpPdXQyo6RUStkVPALnFrThHV",

@@ -12,7 +12,7 @@
     "start": "next start",
     "test": "vitest run",
     "lint": "tsc --noEmit",
-    "test:bridge": "python -m unittest discover -s local-bridge -p test_*.py",
+    "test:bridge": "python -m unittest discover -s local-bridge -p test_*.py && python scripts/test_bridge_package.py",
     "test:portal:e2e": "python scripts/portal_e2e_smoke.py",
     "test:exporter": "python -m unittest exporter.test_export_results",
     "test:web": "vitest run",
