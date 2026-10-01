@@ -251,7 +251,7 @@ class BridgeConfigurationTests(unittest.TestCase):
         self.assertIn('private const int DefaultPort = 38471', store)
         self.assertIn('var port = parsed.Port ?? DefaultPort', store)
 
-    def test_companion_runtime_packaging_includes_thunderbird_reader(self):
+    def test_companion_runtime_packaging_includes_mail_runtime(self):
         manager = (
             Path(__file__).parents[1]
             / 'experiments'
@@ -265,12 +265,10 @@ class BridgeConfigurationTests(unittest.TestCase):
             / 'scripts'
             / 'Publish-Release.ps1'
         ).read_text(encoding='utf-8-sig')
-        self.assertIn('"thunderbird_mail.py"', manager)
-        self.assertIn("'thunderbird_mail.py'", publisher)
-        self.assertIn('"mail_db.py"', manager)
-        self.assertIn("'mail_db.py'", publisher)
-        self.assertIn('"mail_cli.py"', manager)
-        self.assertIn("'mail_cli.py'", publisher)
+        for bridge_file in ('thunderbird_mail.py', 'mail_db.py', 'mail_cli.py', 'mail_jobs.py'):
+            with self.subTest(bridge_file=bridge_file):
+                self.assertIn(f'"{bridge_file}"', manager)
+                self.assertIn(f"'{bridge_file}'", publisher)
 
     def test_companion_runtime_packaging_includes_portal_reader(self):
         manager = (

@@ -3,9 +3,15 @@ import unittest
 from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
+import os
+import socket
+import sqlite3
+import subprocess
+import urllib.request
 
 import mail_cli
 import mail_db
+from mail_test_safety import MailTestSafetyMixin
 from thunderbird_mail import ThunderbirdSettings
 
 
@@ -20,9 +26,14 @@ class FakeMail:
     message_id: str | None = None
 
 
-class MailAnalysisPersistenceTests(unittest.TestCase):
+class MailAnalysisPersistenceTests(MailTestSafetyMixin, unittest.TestCase):
+    _request_provider = staticmethod(mail_cli._request_provider)
+    _request_codex_provider = staticmethod(mail_cli._request_codex_provider)
+
     def setUp(self):
+        super().setUp()
         self.temp = tempfile.TemporaryDirectory()
+        self.register_mail_test_temp(self.temp.name)
         self.db_path = Path(self.temp.name) / 'mail-analysis.db'
         self.settings = ThunderbirdSettings(profile_path='unused', account='school@example.edu')
         self.school_items = [FakeMail('school-1', '발표 안내', message_id='<school-1@example.edu>')]
@@ -51,9 +62,12 @@ class MailAnalysisPersistenceTests(unittest.TestCase):
                 'reason': '실제 일정',
             }],
         }
+        def request_batch(mails):
+            return {'results': [{'mailId': mail['id'], **provider} for mail in mails]}
+
         with patch('mail_cli.get_recent_mail', side_effect=self.recent_mail) as recent, \
              patch('mail_cli.get_mail_message', side_effect=self.message), \
-             patch('mail_cli._request_provider', return_value=provider) as request:
+             patch('mail_cli._request_batch_provider', side_effect=request_batch) as request:
             first = mail_cli.sync_mail(self.settings, self.db_path)
             second = mail_cli.sync_mail(self.settings, self.db_path)
 
@@ -62,7 +76,7 @@ class MailAnalysisPersistenceTests(unittest.TestCase):
         self.assertEqual(second['newCount'], 0)
         self.assertEqual(first['analysisCompleted'], 2)
         self.assertEqual(second['analysisCompleted'], 0)
-        self.assertEqual(request.call_count, 2)
+        self.assertEqual(request.call_count, 1)
         rows = mail_db.list_analysis(self.db_path)
         self.assertEqual(len(rows), 2)
         self.assertEqual({row['folder'] for row in rows}, {'school-work', 'international-office'})
@@ -89,7 +103,7 @@ class MailAnalysisPersistenceTests(unittest.TestCase):
     def test_ai_failure_is_persisted_and_reanalysis_can_complete(self):
         item = self.school_items[0]
         mail_db.upsert_mail(item, 'school-work', '발표 일정 본문', '2026-09-18T00:00:00Z', self.db_path)
-        with patch('mail_cli._request_provider', side_effect=mail_cli.MailAnalysisError('provider down')):
+        with patch('mail_cli._request_batch_provider', side_effect=mail_cli.MailAnalysisError('provider down')):
             failed = mail_cli.analyze_new(self.settings, self.db_path)
         self.assertEqual(failed['failed'], 1)
         failed_row = mail_db.get_analysis(self.db_path, item.id)
@@ -109,7 +123,9 @@ class MailAnalysisPersistenceTests(unittest.TestCase):
                 'reason': '제출 마감',
             }],
         }
-        with patch('mail_cli._request_provider', return_value=provider):
+        with patch('mail_cli._request_batch_provider', return_value={
+            'results': [{'mailId': item.id, **provider}],
+        }):
             result = mail_cli.reanalyze_mail(item.id, self.settings, self.db_path)
         self.assertEqual(result['completed'], 1)
         row = mail_db.get_analysis(self.db_path, item.id)
@@ -199,7 +215,9 @@ class MailAnalysisPersistenceTests(unittest.TestCase):
             output_path.write_text(mail_cli.json.dumps(provider, ensure_ascii=False), encoding='utf-8')
             return mail_cli.subprocess.CompletedProcess(command, 0, '', '')
 
-        with patch.dict('os.environ', {'MAIL_AI_PROVIDER': 'codex-cli', 'MAIL_AI_MODEL': 'gpt-5.6-luna'}), \
+        with patch('mail_cli._request_provider', self._request_provider), \
+             patch('mail_cli._request_codex_provider', self._request_codex_provider), \
+             patch.dict('os.environ', {'MAIL_AI_PROVIDER': 'codex-cli', 'MAIL_AI_MODEL': 'gpt-5.6-luna'}), \
              patch('mail_cli._codex_executable', return_value='codex.exe'), \
              patch('mail_cli.subprocess.run', side_effect=run_codex) as run:
             result = mail_cli._request_provider({'subject': '테스트', 'body': '본문'})
@@ -208,6 +226,47 @@ class MailAnalysisPersistenceTests(unittest.TestCase):
         command = run.call_args.args[0]
         self.assertIn('gpt-5.6-luna', command)
         self.assertIn('--ephemeral', command)
+
+    def test_safety_guards_block_external_effects_and_record_swallowed_errors(self):
+        self.assertEqual(set(os.environ), {key for key in self._SAFE_ENV_KEYS if key in os.environ})
+        env_before = dict(os.environ)
+        mail_cli.load_local_env()
+        self.assertEqual(dict(os.environ), env_before)
+
+        expected: list[str] = []
+        attempts = [
+            ('urllib.request.urlopen', lambda: urllib.request.urlopen('https://example.invalid')),
+            ('urllib.OpenerDirector.open', lambda: urllib.request.OpenerDirector.open(None, 'https://example.invalid')),
+            ('socket.socket', socket.socket),
+        ]
+        attempts.extend([
+            ('socket.create_connection', lambda: socket.create_connection(('127.0.0.1', 1))),
+            ('socket.getaddrinfo', lambda: socket.getaddrinfo('example.invalid', 443)),
+            ('subprocess.Popen', lambda: subprocess.Popen(['not-a-real-process'])),
+            ('os.system', lambda: os.system('ver')),
+            ('mail_cli._request_provider', lambda: mail_cli._request_provider({'body': 'test'})),
+            ('mail_cli._request_batch_provider', lambda: mail_cli._request_batch_provider([])),
+            ('mail_cli._request_batch_http_provider', lambda: mail_cli._request_batch_http_provider([])),
+            ('mail_cli.load_settings', mail_cli.load_settings),
+            ('mail_db.resolve_db_path', mail_db.resolve_db_path),
+            ('sqlite3.connect', lambda: sqlite3.connect(str(Path(self.temp.name).parent / 'outside-mail-test.db'))),
+        ])
+        for label, attempt in attempts:
+            with self.assertRaises(AssertionError):
+                attempt()
+            expected.append(label)
+
+        before_swallowed = len(self.mail_safety_attempts)
+        try:
+            mail_cli.load_settings()
+        except Exception:
+            pass
+        self.assertEqual(self.mail_safety_attempts[before_swallowed:], ['mail_cli.load_settings'])
+        expected.append('mail_cli.load_settings')
+
+        with self.assertRaises(AssertionError):
+            self._assert_no_mail_safety_attempts()
+        self.clear_expected_mail_safety_attempts(expected)
 
 
 if __name__ == '__main__':

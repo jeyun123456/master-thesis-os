@@ -56,6 +56,7 @@ except ConfigError as exc:
 import mail_cli
 import mail_db
 import portal_db
+from mail_jobs import MailJobs
 from shortcut_launcher import launch_shortcut, normalize_shortcut_request
 
 mail_cli.load_local_env((bridge_config.root, bridge_config.root / 'master-thesis-os'))
@@ -77,6 +78,7 @@ def _resolve_bridge_db_path():
 
 
 DB_PATH = _resolve_bridge_db_path()
+MAIL_JOBS = MailJobs(bridge_config.thunderbird, DB_PATH)
 INBOX_DATA_PATH = ROOT / 'shared' / 'inbox' / 'inbox.json'
 INBOX_STORE_LOCK = threading.Lock()
 PLANNER_TASKS_DATA_PATH = ROOT / 'shared' / 'planner' / 'tasks.json'
@@ -782,13 +784,6 @@ def _resolve_portal_db_path():
 
 PORTAL_DB_PATH = _resolve_portal_db_path()
 
-MAIL_JOB_LOCK = threading.Lock()
-MAIL_JOB_THREAD: threading.Thread | None = None
-MAIL_JOB_KIND: str | None = None
-MAIL_JOB_ERROR: str | None = None
-MAIL_AI_LOCK = threading.Lock()
-MAIL_AI_THREAD: threading.Thread | None = None
-MAIL_AI_ERROR: str | None = None
 PORTAL_JOB_LOCK = threading.Lock()
 PORTAL_JOB_THREAD: threading.Thread | None = None
 PORTAL_JOB_KIND: str | None = None
@@ -808,85 +803,6 @@ def launch(path: Path):
         subprocess.Popen(['open', str(path)])
     else:
         subprocess.Popen(['xdg-open', str(path)])
-
-
-def _mail_job_active() -> bool:
-    return MAIL_JOB_THREAD is not None and MAIL_JOB_THREAD.is_alive()
-
-
-def _mail_ai_active() -> bool:
-    return MAIL_AI_THREAD is not None and MAIL_AI_THREAD.is_alive()
-
-
-def _remember_job_end(error: str | None = None) -> None:
-    global MAIL_JOB_THREAD, MAIL_JOB_KIND, MAIL_JOB_ERROR
-    with MAIL_JOB_LOCK:
-        MAIL_JOB_THREAD = None
-        MAIL_JOB_KIND = None
-        MAIL_JOB_ERROR = error
-
-
-def _remember_mail_ai_end(error: str | None = None) -> None:
-    global MAIL_AI_THREAD, MAIL_AI_ERROR
-    with MAIL_AI_LOCK:
-        MAIL_AI_THREAD = None
-        MAIL_AI_ERROR = error
-
-
-def _run_sync_job() -> None:
-    try:
-        mail_cli.sync_mail(bridge_config.thunderbird, DB_PATH, analyze=False)
-    except Exception:
-        message = '메일 동기화 작업이 중단되었어.'
-        for folder in mail_db.TARGET_FOLDERS:
-            try:
-                mail_db.fail_sync_folder(folder, mail_db.now_iso(), message, DB_PATH)
-            except mail_db.MailDatabaseError:
-                pass
-        _remember_job_end(message)
-    else:
-        _remember_job_end()
-        _ensure_mail_ai_worker()
-
-
-def _run_mail_ai_job() -> None:
-    try:
-        settings = mail_cli.load_settings()
-        while True:
-            mail_cli.analyze_new(settings, DB_PATH)
-            status = mail_db.sync_status(DB_PATH)
-            if int(status.get('counts', {}).get('queued', 0)) <= 0:
-                break
-    except Exception:
-        _remember_mail_ai_end('메일 AI 분석 작업이 중단되었어.')
-    else:
-        _remember_mail_ai_end()
-
-
-def _ensure_mail_ai_worker() -> bool:
-    global MAIL_AI_THREAD, MAIL_AI_ERROR
-    with MAIL_AI_LOCK:
-        if _mail_ai_active() or _mail_job_active():
-            return False
-        status = mail_db.sync_status(DB_PATH)
-        if int(status.get('counts', {}).get('queued', 0)) <= 0:
-            return False
-        MAIL_AI_ERROR = None
-        MAIL_AI_THREAD = threading.Thread(target=_run_mail_ai_job, name='mail-ai-batch', daemon=True)
-        MAIL_AI_THREAD.start()
-        return True
-
-
-def start_sync_job() -> bool:
-    global MAIL_JOB_THREAD, MAIL_JOB_KIND, MAIL_JOB_ERROR
-    with MAIL_JOB_LOCK:
-        if _mail_job_active():
-            return False
-        MAIL_JOB_ERROR = None
-        MAIL_JOB_KIND = 'sync'
-        MAIL_JOB_THREAD = threading.Thread(target=_run_sync_job, name='mail-sync', daemon=True)
-        MAIL_JOB_THREAD.start()
-        return True
 
 
 def _portal_job_active() -> bool:
@@ -1180,32 +1096,6 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return value
 
-    def _mail_status(self):
-        with MAIL_JOB_LOCK:
-            active = _mail_job_active()
-            job_kind = MAIL_JOB_KIND
-            job_error = MAIL_JOB_ERROR
-        with MAIL_AI_LOCK:
-            ai_active = _mail_ai_active()
-            ai_error = MAIL_AI_ERROR
-        if not active and not ai_active:
-            mail_db.recover_interrupted_analysis(DB_PATH)
-            _ensure_mail_ai_worker()
-            with MAIL_AI_LOCK:
-                ai_active = _mail_ai_active()
-                ai_error = MAIL_AI_ERROR
-        status = mail_db.sync_status(DB_PATH)
-        return {
-            'ok': True,
-            'source': 'sqlite',
-            **status,
-            'jobRunning': active,
-            **({'jobKind': job_kind} if job_kind else {}),
-            **({'jobError': job_error} if job_error else {}),
-            'aiRunning': ai_active,
-            **({'aiError': ai_error} if ai_error else {}),
-        }
-
     def _portal_status(self):
         try:
             from portal_client import profile_session_state, resolve_profile_path
@@ -1332,7 +1222,7 @@ class Handler(BaseHTTPRequestHandler):
             'source': 'sqlite',
             'folders': list(mail_db.TARGET_FOLDERS),
             'items': items,
-            'sync': self._mail_status(),
+            'sync': MAIL_JOBS.status(),
         })
 
     def _planning_response(self):
@@ -1342,7 +1232,7 @@ class Handler(BaseHTTPRequestHandler):
             'folders': list(mail_db.TARGET_FOLDERS),
             'tasks': mail_db.list_tasks(DB_PATH, limit=200),
             'items': mail_db.list_analysis(DB_PATH, limit=100),
-            'sync': self._mail_status(),
+            'sync': MAIL_JOBS.status(),
         })
 
     def _single_analysis_response(self, mail_id: str):
@@ -1409,7 +1299,7 @@ class Handler(BaseHTTPRequestHandler):
             if not self._header_authenticated():
                 return
             try:
-                return self.json_out(200, self._mail_status())
+                return self.json_out(200, MAIL_JOBS.status())
             except mail_db.MailDatabaseError:
                 return self.json_out(503, {'ok': False, 'source': 'sqlite', 'error': 'database_unavailable'})
         if path == '/mail/analysis':
@@ -1486,7 +1376,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _analysis_post(self, path: str, body: dict[str, object]):
         if path == '/mail/sync':
-            if not start_sync_job():
+            if not MAIL_JOBS.start_sync():
                 return self.json_out(409, {'ok': False, 'source': 'sqlite', 'error': 'sync_already_running'})
             return self.json_out(202, {'ok': True, 'source': 'sqlite', 'status': 'running', 'jobKind': 'sync'})
 
@@ -1542,7 +1432,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'mail analysis could not be queued'})
             except mail_db.MailDatabaseError:
                 return self.json_out(503, {'ok': False, 'source': 'sqlite', 'error': 'database_unavailable'})
-            _ensure_mail_ai_worker()
+            MAIL_JOBS.ensure_ai_worker()
             return self.json_out(202, {'ok': True, 'source': 'sqlite', 'status': 'queued', 'mailId': mail_id})
         return None
 
