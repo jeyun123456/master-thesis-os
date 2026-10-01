@@ -12,45 +12,52 @@
     "schemas/decomposition.schema.json": "fd75a11584e27ca428d7e6b6e2b5113ec2301a86d938bc6b25642908b00222d9",
     "schemas/necessary_labour.schema.json": "6af8e880f91a35eac31809b67291253335e9e9b6fb57f2519d380107404008a1"
   },
-  "status": "in_progress",
-  "current_chunk": "C1",
+  "status": "C6_completed",
+  "current_chunk": "C6",
   "verification_policy": "Targeted isolated tests, relevant tests, tsc --noEmit --incremental false, offline packaging assertions. No live integration/build/install/deploy.",
   "chunks": [
     {
       "id": "C0",
       "status": "completed",
-      "commit_sha": null,
+      "commit_sha": "69ec6538d1a076b2869d8af00cf95893bd8a0eaf",
       "verification": "1 isolated health/inbox unittest passed; source/client/assertion all API v7"
     },
     {
       "id": "C1",
-      "status": "pending",
-      "commit_sha": null
+      "status": "completed",
+      "commit_sha": "d466e693e4bb64f64085bd59f4f847472025e791",
+      "verification": "Architecture/AST equivalence PASS; safety1/Mail14/Bridge4 PASS; packaging/import closure PASS; typecheck PASS",
+      "verification_safety": "Recovered test-only guard; negative 1 PASS; owner6 + existing analysis8 =14 PASS (0.672s); offline packaging assertions and unchanged-source typecheck PASS. C1 integration not resumed/committed."
     },
     {
       "id": "C2",
-      "status": "pending",
-      "commit_sha": null
+      "status": "completed",
+      "commit_sha": "b9cae7eb8a35380724f3f3d663b243dfab93b98b"
     },
     {
       "id": "C3",
-      "status": "pending",
-      "commit_sha": null
+      "status": "completed",
+      "commit_sha": "b463233240f10fdb6d8cce391fa2d636568443c2",
+      "verification": "Workspace8/import1/HTTP8/C1smoke3/C2smoke4/packaging1/typecheck PASS; retained safety1; root AST/architecture PASS"
     },
     {
       "id": "C4",
-      "status": "pending",
-      "commit_sha": null
+      "status": "completed",
+      "commit_sha": null,
+      "commit": "74d24c24ac2ee2f5654f65b9d2ecdd3700af9724"
     },
     {
       "id": "C5",
-      "status": "pending",
-      "commit_sha": null
+      "status": "skipped",
+      "commit_sha": null,
+      "reason": "No substantive shared invariant remains: shared helpers already exist; remaining Planner cache replay/write and Research snapshot projection policies differ."
     },
     {
       "id": "C6",
-      "status": "pending",
-      "commit_sha": null
+      "status": "completed",
+      "commit_sha": null,
+      "reason": "One Google provider module extracted; strict Calendar suite passed 25/25 twice, TypeScript typecheck and diff check passed; no production integration calls.",
+      "verification": "lib/calendar.test.ts 25/25 twice after extraction (network sentinel included); tsc --noEmit --incremental false; git diff --check."
     },
     {
       "id": "C7",
@@ -98,7 +105,7 @@
       "task_id": "C1",
       "parent_task_id": "architecture-execution",
       "policy_version": "2026-09-30-lifecycle-v1",
-      "current_phase": "PREPARE",
+      "current_phase": "FINALIZE",
       "task_shape": {
         "scope_clarity": "high",
         "decision_required": "low",
@@ -113,21 +120,394 @@
       "requested_model": "gpt-6-luna",
       "requested_effort": "max",
       "route_verified": false,
-      "delegated": false,
-      "execution_completed": false,
+      "delegated": true,
+      "execution_completed": true,
       "route_unavailable": false,
-      "execution_attribution": null,
+      "execution_attribution": "UNVERIFIED_DELEGATION",
+      "retry_count": 0,
+      "route_retry_count": 0,
+      "returned_to_sol": true,
+      "routing_status": "ROUTE_UNVERIFIED",
+      "verification": {
+        "method": "Owner tests, existing analysis tests, packaging assertion, typecheck",
+        "result": "fail",
+        "deterministic_sufficient": false,
+        "semantic_uncertainty": true
+      },
+      "status": "rejected"
+    },
+    {
+      "task_id": "C1-verification-safety",
+      "parent_task_id": "C1",
+      "policy_version": "2026-09-30-lifecycle-v1",
+      "current_phase": "FINALIZE",
+      "task_shape": {
+        "scope_clarity": "high",
+        "decision_required": "low",
+        "root_cause_known": true,
+        "verification_strength": "high",
+        "risk": "medium",
+        "approach_resolved": true,
+        "semantic_integration_required": false
+      },
+      "route_decision": "LUNA",
+      "route_reason": "Root traced active batch boundary; settled test-only fake and fail-closed guard design",
+      "requested_model": "gpt-6-luna",
+      "requested_effort": "max",
+      "route_verified": false,
+      "delegated": true,
+      "execution_completed": true,
+      "route_unavailable": false,
+      "execution_attribution": "UNVERIFIED_DELEGATION",
+      "retry_count": 0,
+      "route_retry_count": 0,
+      "returned_to_sol": false,
+      "routing_status": "ROUTE_UNVERIFIED",
+      "verification": {
+        "method": "Static root guard review; negative 1 PASS; targeted suites14 PASS; typecheck/static packaging PASS; source/user/runtime SHA256 match",
+        "result": "pass",
+        "deterministic_sufficient": true,
+        "semantic_uncertainty": false
+      },
+      "status": "accepted"
+    },
+    {
+      "task_id": "C1-final-verification",
+      "parent_task_id": "C1",
+      "policy_version": "2026-09-30-lifecycle-v1",
+      "current_phase": "FINALIZE",
+      "task_shape": {
+        "scope_clarity": "high",
+        "decision_required": "low",
+        "root_cause_known": true,
+        "verification_strength": "high",
+        "risk": "medium",
+        "approach_resolved": true,
+        "semantic_integration_required": false
+      },
+      "route_decision": "LUNA",
+      "route_reason": "Root architecture review settled; isolated existing tests and bounded Mail handler verification",
+      "requested_model": "gpt-6-luna",
+      "requested_effort": "max",
+      "route_verified": false,
+      "delegated": true,
+      "execution_completed": true,
+      "route_unavailable": false,
+      "execution_attribution": "UNVERIFIED_DELEGATION",
+      "retry_count": 0,
+      "route_retry_count": 0,
+      "returned_to_sol": false,
+      "routing_status": "ROUTE_UNVERIFIED",
+      "verification": {
+        "method": "Root architecture + AST9 equivalence; safety1/mail14/Bridge4 PASS; packaging13 files +22edges complete; typecheck PASS",
+        "result": "pass",
+        "deterministic_sufficient": true,
+        "semantic_uncertainty": false
+      },
+      "status": "accepted"
+    },
+    {
+      "task_id": "C2-characterization",
+      "parent_task_id": "C2",
+      "policy_version": "2026-10-01-usage-v2",
+      "current_phase": "FINALIZE",
+      "task_shape": {
+        "scope_clarity": "high",
+        "decision_required": "low",
+        "root_cause_known": null,
+        "verification_strength": "high",
+        "risk": "medium",
+        "approach_resolved": true,
+        "semantic_integration_required": false
+      },
+      "route_decision": "LUNA",
+      "route_reason": "Settled concrete baseline adapter and test-only fail-closed Portal guards; no production changes in this phase",
+      "requested_model": "gpt-6-luna",
+      "requested_effort": "max",
+      "route_verified": false,
+      "delegated": true,
+      "execution_completed": true,
+      "route_unavailable": false,
+      "execution_attribution": "UNVERIFIED_DELEGATION",
+      "retry_count": 1,
+      "route_retry_count": 0,
+      "returned_to_sol": true,
+      "routing_status": "ROUTE_UNVERIFIED",
+      "verification": {
+        "method": "Safety1PASS; baseline characterization15PASS after one fixture retry; existing Portal/AI36 passed in baseline run",
+        "result": "pass",
+        "deterministic_sufficient": true,
+        "semantic_uncertainty": false
+      },
+      "status": "accepted",
+      "retry_reason": "Root confirmed two test-only causes: sqlite connection context does not close; unittest iterable side_effect returns callable instead of invoking it. Correct explicit close and function side_effect only; not notice key rename."
+    },
+    {
+      "task_id": "C2-extraction",
+      "parent_task_id": "C2-characterization",
+      "policy_version": "2026-10-01-usage-v2",
+      "current_phase": "FINALIZE",
+      "task_shape": {
+        "scope_clarity": "high",
+        "decision_required": "low",
+        "root_cause_known": null,
+        "verification_strength": "high",
+        "risk": "medium",
+        "approach_resolved": true,
+        "semantic_integration_required": false
+      },
+      "route_decision": "LUNA",
+      "route_reason": "Baseline characterized; settled single concrete PortalJobs owner with5 public operations; mechanical ownership transfer and exact AST equivalence gate",
+      "requested_model": "gpt-6-luna",
+      "requested_effort": "max",
+      "route_verified": false,
+      "delegated": true,
+      "execution_completed": true,
+      "route_unavailable": false,
+      "execution_attribution": "UNVERIFIED_DELEGATION",
+      "retry_count": 1,
+      "route_retry_count": 0,
+      "returned_to_sol": false,
+      "routing_status": "ROUTE_UNVERIFIED",
+      "verification": {
+        "method": "Root AST13 + remaining Bridge dispatch equivalence; safety1/owner20/existing36/packaging1 PASS; import closure/typecheck PASS; user/runtime hashes preserved",
+        "result": "pass",
+        "deterministic_sufficient": true,
+        "semantic_uncertainty": false
+      },
+      "status": "accepted",
+      "retry_reason": "Windows asyncio.windows_utils defines Popen subclass during import; import pure test modules before installing subprocess.Popen denial. No source change or repeated passing tests."
+    },
+    {
+      "task_id": "C3-characterization",
+      "parent_task_id": null,
+      "policy_version": "2026-10-01-usage-v2",
+      "current_phase": "FINALIZE",
+      "task_shape": {
+        "scope_clarity": "high",
+        "decision_required": "low",
+        "root_cause_known": null,
+        "verification_strength": "high",
+        "risk": "medium",
+        "approach_resolved": true,
+        "semantic_integration_required": false
+      },
+      "route_decision": "LUNA",
+      "route_reason": "Root resolved scratch AST characterization approach; no production edits permitted. C3 extraction remains high-risk root decision.",
+      "requested_model": "gpt-6-luna",
+      "requested_effort": "max",
+      "route_verified": false,
+      "delegated": true,
+      "execution_completed": true,
+      "route_unavailable": false,
+      "execution_attribution": "UNVERIFIED_DELEGATION",
+      "retry_count": 1,
+      "route_retry_count": 0,
+      "returned_to_sol": true,
+      "routing_status": "ROUTE_UNVERIFIED",
+      "verification": {
+        "method": "Filesystem negative1 and baseline8 pass; root static guard review; production unchanged",
+        "result": "pass",
+        "deterministic_sufficient": true,
+        "semantic_uncertainty": false
+      },
+      "status": "accepted"
+    },
+    {
+      "task_id": "C3-extraction",
+      "parent_task_id": "C3-characterization",
+      "policy_version": "2026-10-01-usage-v2",
+      "current_phase": "FINALIZE",
+      "task_shape": {
+        "scope_clarity": "high",
+        "decision_required": "low",
+        "root_cause_known": null,
+        "verification_strength": "high",
+        "risk": "medium",
+        "approach_resolved": true,
+        "semantic_integration_required": false
+      },
+      "route_decision": "LUNA",
+      "route_reason": "Root resolved concrete owner10 operations after scratch baseline8; move exact algorithms/locks/bytes with AST comparison and semantic integration gate.",
+      "requested_model": "gpt-6-luna",
+      "requested_effort": "max",
+      "route_verified": false,
+      "delegated": true,
+      "execution_completed": true,
+      "route_unavailable": false,
+      "execution_attribution": "UNVERIFIED_DELEGATION",
+      "retry_count": 1,
+      "route_retry_count": 0,
+      "returned_to_sol": true,
+      "routing_status": "ROUTE_UNVERIFIED",
+      "verification": {
+        "method": "Owner8/import1/HTTP8/C1smoke3/C2smoke4/packaging1 pass; existing safety1 retained; root AST25 moved+25 remaining and semantic pass; closure14 Python29 edges; tsc pass; protected hashes match",
+        "result": "pass",
+        "deterministic_sufficient": true,
+        "semantic_uncertainty": false,
+        "sol_review": "pass"
+      },
+      "status": "accepted",
+      "execution_faults": [
+        "Extraction command SyntaxError before writes; one corrected command succeeded.",
+        "New HTTP fixture expected task from raw unprocessed item; root verified sync requires ai.category=todo."
+      ]
+    },
+    {
+      "task_id": "C4-characterization",
+      "parent_task_id": null,
+      "policy_version": "2026-10-01-usage-v2",
+      "current_phase": "FINALIZE",
+      "task_shape": {
+        "scope_clarity": "high",
+        "decision_required": "low",
+        "root_cause_known": null,
+        "verification_strength": "high",
+        "risk": "medium",
+        "approach_resolved": true,
+        "semantic_integration_required": false
+      },
+      "route_decision": "LUNA",
+      "route_reason": "Root resolved TS-AST baseline extraction and test-only hook runner, no production edits, existing async policies preserved.",
+      "requested_model": "gpt-6-luna",
+      "requested_effort": "max",
+      "route_verified": false,
+      "delegated": true,
+      "execution_completed": true,
+      "route_unavailable": false,
+      "execution_attribution": "UNVERIFIED_DELEGATION",
+      "retry_count": 0,
+      "route_retry_count": 0,
+      "returned_to_sol": false,
+      "routing_status": "ROUTE_UNVERIFIED",
+      "verification": {
+        "method": "Current page source-derived baseline11 PASS; strengthened caught-attempt negative1 PASS; static guard review",
+        "result": "pass",
+        "deterministic_sufficient": true,
+        "semantic_uncertainty": false
+      },
+      "status": "accepted",
+      "execution_faults": [
+        "pnpm unavailable; no test executed; used installed vitest.CMD."
+      ]
+    },
+    {
+      "task_id": "C4-extraction",
+      "parent_task_id": "C4-characterization",
+      "policy_version": "2026-10-01-usage-v2",
+      "current_phase": "FINALIZE",
+      "task_shape": {
+        "scope_clarity": "high",
+        "decision_required": "low",
+        "root_cause_known": null,
+        "verification_strength": "high",
+        "risk": "medium",
+        "approach_resolved": true,
+        "semantic_integration_required": false
+      },
+      "route_decision": "LUNA",
+      "route_reason": "Root resolved concrete Inbox hook/options and baseline async ownership; mechanical extraction with one root semantic review.",
+      "requested_model": "gpt-6-luna",
+      "requested_effort": "max",
+      "route_verified": false,
+      "delegated": true,
+      "execution_completed": true,
+      "route_unavailable": false,
+      "execution_attribution": "UNVERIFIED_DELEGATION",
+      "retry_count": 1,
+      "route_retry_count": 0,
+      "returned_to_sol": false,
+      "routing_status": "ROUTE_UNVERIFIED",
+      "verification": {
+        "method": "Root AST/deep-module review; actual hook11 and panel1 PASS; existing16 PASS/baseline1 stale assertion; tsc PASS; protected hashes unchanged",
+        "result": "pass_with_baseline_failure",
+        "deterministic_sufficient": true,
+        "semantic_uncertainty": false
+      },
+      "status": "accepted",
+      "execution_faults": [
+        "Test action lookup tokenSaved->bridgeTokenSaved; affected-case retry PASS.",
+        "Panel Node TS loader resolution; injected existing domain namespace retry PASS.",
+        "Fixture constructor string type narrowed to actual InboxPersistenceError type; tsc retry PASS."
+      ],
+      "baseline_issues": [
+        "Unchanged lib/inbox.test.ts expects Todo; unchanged HEAD domain normalizes to todo."
+      ],
+      "retry_note": "One bounded correction per diagnosed test-only failure; no production retries."
+    },
+    {
+      "task_id": "C5-audit",
+      "parent_task_id": null,
+      "policy_version": "2026-09-30-lifecycle-v1",
+      "current_phase": "FINALIZE",
+      "task_shape": {
+        "scope_clarity": "high",
+        "decision_required": "low",
+        "root_cause_known": null,
+        "verification_strength": "high",
+        "risk": "low",
+        "approach_resolved": true,
+        "semantic_integration_required": false
+      },
+      "route_decision": "LUNA_ROOT",
+      "route_reason": "Bounded current-source comparison showed existing shared helpers cover common invariants; remaining load/cache behaviors are observably feature-specific, so source change is skipped.",
+      "requested_model": "gpt-6-luna",
+      "requested_effort": "max",
+      "route_verified": false,
+      "delegated": false,
+      "execution_completed": true,
+      "route_unavailable": false,
+      "execution_attribution": "DIRECT_ROOT",
       "retry_count": 0,
       "route_retry_count": 0,
       "returned_to_sol": false,
       "routing_status": "REQUESTED",
       "verification": {
-        "method": "pending",
-        "result": "pending",
+        "method": "Current Planner/Research call-path and helper comparison; existing helper tests reviewed; no source change",
+        "result": "pass_skip",
+        "deterministic_sufficient": true,
+        "semantic_uncertainty": false
+      },
+      "status": "accepted"
+    },
+    {
+      "task_id": "C6-characterization",
+      "parent_task_id": null,
+      "policy_version": "2026-10-01-luna-first-v1",
+      "current_phase": "VERIFY",
+      "task_shape": {
+        "scope_clarity": "high",
+        "decision_required": "low",
+        "root_cause_known": true,
+        "verification_strength": "weak",
+        "risk": "medium",
+        "approach_resolved": true,
+        "semantic_integration_required": false
+      },
+      "route_decision": "LUNA_ROOT",
+      "route_reason": "Bounded characterization is deterministic; execution paused after the single fixture-only retry left three known test failures.",
+      "requested_model": "gpt-6-luna",
+      "requested_effort": "max",
+      "route_verified": false,
+      "delegated": false,
+      "execution_completed": false,
+      "route_unavailable": false,
+      "execution_attribution": "DIRECT_ROOT",
+      "retry_count": 1,
+      "route_retry_count": 0,
+      "returned_to_sol": false,
+      "routing_status": "REQUESTED",
+      "verification": {
+        "method": "Focused lib/calendar.test.ts run before and after one bounded fixture correction",
+        "result": "fail",
         "deterministic_sufficient": false,
         "semantic_uncertainty": false
       },
-      "status": "pending"
+      "status": "pending",
+      "execution_faults": [
+        "Two create fixtures route insert POST through the events-list fake branch.",
+        "CalendarIntegrationError identity fixture configures primary but maps only missing, so the default body omits providerMessage."
+      ]
     }
   ],
   "production_deployment": "dpl_F3jcpPdXQyo6RUStkVPALnFrThHV",
@@ -148,5 +528,12 @@
       "thunderbird_mail.py": "a87206f9b6e1d7b862b7cdd89a9fb7cabc83f41ed07e76fb820ae77fd8cf61aa"
     },
     "source_commit": null
+  },
+  "verification_safety_source_snapshot": {
+    "local-bridge/bridge.py": "ba233a4195ea0e1cdf225643d55041d0ee003d7fc413ea3c6d77d4cee7c4a1bf",
+    "local-bridge/mail_jobs.py": "b5b4443c45626de0cae3bd6e9d6e73fff9f2a12579d5673cc3e946f9d9f88536",
+    "local-bridge/test_bridge.py": "83e5a0cc0eb521b8b5096c2da63d386f56ab627e531bd9a5a1a2079f296c21a0",
+    "experiments/wallpaper-host-poc/BridgeProcessManager.cs": "040c37c4eb1d50b8a5bdd958b910bd6d2b5922c4fae531db33b9909f07080d31",
+    "experiments/wallpaper-host-poc/scripts/Publish-Release.ps1": "2ff1396f33724f22efcfed0990290b2e1f59cb4df5b8cbfb60c388937ad88fb2"
   }
 }

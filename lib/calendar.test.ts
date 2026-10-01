@@ -1,3 +1,4 @@
+import '../app/inbox-workflow-test-safety';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateKeyPairSync } from 'node:crypto';
 import {
@@ -16,8 +17,10 @@ import {
   normalizePrivateKey,
   parseCalendarIds,
 } from './calendar';
+import { assertNoDeniedAttempts, deniedNetworkAttempts } from '../app/inbox-workflow-test-safety';
 
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
+const GOOGLE_API_ORIGIN = 'https://www.googleapis.com';
 const envKeys = [
   'GOOGLE_SERVICE_ACCOUNT_EMAIL',
   'GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY',
@@ -47,12 +50,18 @@ function mockGoogle(
   const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     fetcher.calls.push({ url, init });
-    if (url === TOKEN_ENDPOINT) {
+    const requestUrl = new URL(url);
+    const method = init?.method || 'GET';
+    if (url === TOKEN_ENDPOINT && method === 'POST') {
       const response = tokenResponses[Math.min(tokenIndex++, tokenResponses.length - 1)];
       return new Response(JSON.stringify(response.body), { status: response.status || 200 });
     }
-    const calendarId = decodeURIComponent(url.split('/calendars/')[1].split('/events')[0]);
-    const response = responses[calendarId] || { status: 404, body: { error: 'not found' } };
+    if (requestUrl.origin !== GOOGLE_API_ORIGIN) throw new Error(`Unexpected Calendar fake URL: ${method} ${url}`);
+    const match = requestUrl.pathname.match(/^\/calendar\/v3\/calendars\/([^/]+)\/events$/);
+    if (method !== 'GET' || !match) throw new Error(`Unexpected Calendar fake request: ${method} ${url}`);
+    const calendarId = decodeURIComponent(match[1]);
+    const response = responses[calendarId];
+    if (!response) throw new Error(`Unconfigured calendar in fake response: ${calendarId}`);
     return new Response(JSON.stringify(response.body), { status: response.status || 200 });
   }) as MockFetch;
   fetcher.calls = [];
@@ -73,6 +82,17 @@ afterEach(() => {
 });
 
 describe('calendar configuration and JWT helpers', () => {
+  it('blocks global outbound fetch and fails closed when the denied attempt is caught', async () => {
+    try {
+      await fetch('https://calendar-safety.invalid');
+    } catch {
+      // The guard records the attempt even when the caller catches its exception.
+    }
+    expect(deniedNetworkAttempts).toContain('globalThis.fetch');
+    expect(assertNoDeniedAttempts).toThrow('globalThis.fetch');
+    deniedNetworkAttempts.length = 0;
+  });
+
   it('parses, trims, ignores empty values, and deduplicates calendar IDs', () => {
     expect(parseCalendarIds(' primary, research , ,primary ')).toEqual(['primary', 'research']);
     expect(parseCalendarIds('   ', 'legacy@example.com')).toEqual(['legacy@example.com']);
@@ -152,11 +172,17 @@ describe('service account Calendar requests', () => {
   });
 
   it('inserts a reviewed all-day candidate with a deterministic event ID', async () => {
+    configured('first-calendar,second-calendar');
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       calls.push({ url, init });
-      if (url === TOKEN_ENDPOINT) return new Response(JSON.stringify({ access_token: 'token', expires_in: 3600 }), { status: 200 });
+      const requestUrl = new URL(url);
+      const method = init?.method || 'GET';
+      if (url === TOKEN_ENDPOINT && method === 'POST') return new Response(JSON.stringify({ access_token: 'token', expires_in: 3600 }), { status: 200 });
+      if (requestUrl.origin !== GOOGLE_API_ORIGIN || method !== 'POST' || requestUrl.pathname !== '/calendar/v3/calendars/first-calendar/events' || requestUrl.searchParams.get('sendUpdates') !== 'none') {
+        throw new Error(`Unexpected Calendar fake request: ${method} ${url}`);
+      }
       const payload = JSON.parse(String(init?.body)) as { id: string; summary: string; start: { date: string }; end: { date: string }; extendedProperties: { private: Record<string, string> } };
       return new Response(JSON.stringify({
         id: payload.id,
@@ -179,6 +205,7 @@ describe('service account Calendar requests', () => {
     expect(result.created).toBe(true);
     expect(result.eventId).toBe(calendarEventIdForCandidate('mail-1', 'mail-calendar:abcd1234'));
     const insert = calls.find((call) => call.init?.method === 'POST' && call.url.includes('/events?'));
+    expect(insert?.url).toContain('/calendars/first-calendar/events?sendUpdates=none');
     const payload = JSON.parse(String(insert?.init?.body)) as Record<string, unknown>;
     expect(payload.id).toBe(result.eventId);
     expect(payload.start).toEqual({ date: '2026-09-20' });
@@ -188,7 +215,13 @@ describe('service account Calendar requests', () => {
 
   it('normalizes minute-only timed candidates to RFC3339 seconds', async () => {
     const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input) === TOKEN_ENDPOINT) return new Response(JSON.stringify({ access_token: 'token', expires_in: 3600 }), { status: 200 });
+      const url = String(input);
+      const requestUrl = new URL(url);
+      const method = init?.method || 'GET';
+      if (url === TOKEN_ENDPOINT && method === 'POST') return new Response(JSON.stringify({ access_token: 'token', expires_in: 3600 }), { status: 200 });
+      if (requestUrl.origin !== GOOGLE_API_ORIGIN || method !== 'POST' || requestUrl.pathname !== '/calendar/v3/calendars/primary/events' || requestUrl.searchParams.get('sendUpdates') !== 'none') {
+        throw new Error(`Unexpected Calendar fake request: ${method} ${url}`);
+      }
       const payload = JSON.parse(String(init?.body)) as { start: { dateTime: string }; end: { dateTime: string } };
       return new Response(JSON.stringify({
         id: 'timed-event',
@@ -211,15 +244,64 @@ describe('service account Calendar requests', () => {
     const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       calls.push({ url, init });
-      if (url === TOKEN_ENDPOINT) return new Response(JSON.stringify({ access_token: 'token', expires_in: 3600 }), { status: 200 });
-      if (init?.method === 'POST') return new Response(JSON.stringify({ error: 'already exists' }), { status: 409 });
-      return new Response(JSON.stringify(event), { status: 200 });
+      const requestUrl = new URL(url);
+      const method = init?.method || 'GET';
+      const eventsPath = '/calendar/v3/calendars/primary/events';
+      if (url === TOKEN_ENDPOINT && method === 'POST') {
+        return new Response(JSON.stringify({ access_token: 'token', expires_in: 3600 }), { status: 200 });
+      }
+      if (requestUrl.origin !== GOOGLE_API_ORIGIN) throw new Error(`Unexpected Calendar fake URL: ${method} ${url}`);
+      if (method === 'GET' && requestUrl.pathname === eventsPath) {
+        return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      }
+      if (method === 'POST' && requestUrl.pathname === eventsPath && requestUrl.searchParams.get('sendUpdates') === 'none') {
+        const payload = JSON.parse(String(init?.body)) as { id: string };
+        expect(payload.id).toBe(event.id);
+        return new Response(JSON.stringify({ error: { message: 'already exists' } }), { status: 409 });
+      }
+      if (method === 'GET' && requestUrl.pathname === `${eventsPath}/${event.id}`) {
+        return new Response(JSON.stringify(event), { status: 200 });
+      }
+      throw new Error(`Unexpected Calendar fake request: ${method} ${url}`);
     }) as typeof fetch;
+    await getCalendarEvents(14, { fetchImpl: fetcher, now: baseNow });
     const result = await createCalendarEvent({
       mailId: 'mail-2', candidateId: 'candidate-2', title: '면담', start: '2026-09-20T14:00', end: '2026-09-20T15:00', allDay: false, type: 'event',
     }, { fetchImpl: fetcher, now: baseNow });
     expect(result).toMatchObject({ created: false, eventId: event.id, event: { title: '면담' } });
-    expect(calls.some((call) => call.url.includes(`/events/${event.id}`))).toBe(true);
+    expect(calls.some((call) => call.init?.method !== 'POST' && new URL(call.url).pathname === `/calendar/v3/calendars/primary/events/${event.id}`)).toBe(true);
+    await getCalendarEvents(14, { fetchImpl: fetcher, now: baseNow });
+    expect(calls.filter((call) => (call.init?.method || 'GET') === 'GET' && new URL(call.url).pathname === '/calendar/v3/calendars/primary/events')).toHaveLength(2);
+  });
+
+  it('clears the event cache after a successful create', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, init });
+      const requestUrl = new URL(url);
+      const method = init?.method || 'GET';
+      const eventsPath = '/calendar/v3/calendars/primary/events';
+      if (url === TOKEN_ENDPOINT && method === 'POST') {
+        return new Response(JSON.stringify({ access_token: 'token', expires_in: 3600 }), { status: 200 });
+      }
+      if (requestUrl.origin !== GOOGLE_API_ORIGIN) throw new Error(`Unexpected Calendar fake URL: ${method} ${url}`);
+      if (method === 'GET' && requestUrl.pathname === eventsPath) {
+        return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      }
+      if (method === 'POST' && requestUrl.pathname === eventsPath && requestUrl.searchParams.get('sendUpdates') === 'none') {
+        const payload = JSON.parse(String(init?.body)) as { id: string; summary: string; start: { date: string }; end: { date: string } };
+        expect(payload.id).toBe(calendarEventIdForCandidate('mail-cache', 'candidate-cache'));
+        return new Response(JSON.stringify(payload), { status: 200 });
+      }
+      throw new Error(`Unexpected Calendar fake request: ${method} ${url}`);
+    }) as typeof fetch;
+    await getCalendarEvents(14, { fetchImpl: fetcher, now: baseNow });
+    await createCalendarEvent({
+      mailId: 'mail-cache', candidateId: 'candidate-cache', title: '캐시 갱신', start: '2026-09-20', end: null, allDay: true,
+    }, { fetchImpl: fetcher, now: baseNow });
+    await getCalendarEvents(14, { fetchImpl: fetcher, now: baseNow });
+    expect(calls.filter((call) => (call.init?.method || 'GET') === 'GET' && new URL(call.url).pathname === '/calendar/v3/calendars/primary/events')).toHaveLength(2);
   });
 
   it('sends a JWT bearer request and returns an empty calendar', async () => {
@@ -261,9 +343,49 @@ describe('service account Calendar requests', () => {
     await expect(getCalendarEvents(14, { fetchImpl: fetcher, now: baseNow, bypassCache: true })).resolves.toHaveLength(1);
   });
 
+  it('treats an empty success as success when another calendar fails', async () => {
+    configured('empty,bad');
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const fetcher = mockGoogle({
+      empty: { body: { items: [] } },
+      bad: { status: 404, body: { error: { message: 'not found' } } },
+    });
+    await expect(getCalendarEvents(14, { fetchImpl: fetcher, now: baseNow, bypassCache: true })).resolves.toEqual([]);
+    expect(fetcher.calls.filter((call) => call.url.includes('/events?')).map((call) => decodeURIComponent(call.url.split('/calendars/')[1].split('/events')[0])))
+      .toEqual(['empty', 'bad']);
+  });
+
+  it('keeps equal event IDs from different calendars distinct', async () => {
+    configured('first,second');
+    const duplicate = { id: 'same-id', summary: '같은 제목', start: { dateTime: '2026-09-10T10:00:00+09:00' }, end: { dateTime: '2026-09-10T11:00:00+09:00' } };
+    const fetcher = mockGoogle({ first: { body: { items: [duplicate] } }, second: { body: { items: [duplicate] } } });
+    const events = await getCalendarEvents(14, { fetchImpl: fetcher, now: baseNow, bypassCache: true });
+    expect(events.map((event) => event.calendarId)).toEqual(['first', 'second']);
+  });
+
+  it('reuses an unexpired access token across separate reads', async () => {
+    const fetcher = mockGoogle({ primary: { body: { items: [] } } });
+    await getCalendarEvents(14, { fetchImpl: fetcher, now: baseNow, bypassCache: true });
+    await getCalendarEvents(14, { fetchImpl: fetcher, now: new Date(baseNow.getTime() + 1_000), bypassCache: true });
+    expect(fetcher.calls.filter((call) => call.url === TOKEN_ENDPOINT)).toHaveLength(1);
+  });
+
+  it('preserves CalendarIntegrationError identity and provider details', async () => {
+    const fetcher = mockGoogle({ primary: { status: 404, body: { error: { message: 'not found' } } } });
+    let caught: unknown;
+    try {
+      await getCalendarEvents(14, { fetchImpl: fetcher, now: baseNow, bypassCache: true });
+    } catch (error) {
+      caught = error;
+    }
+    expect(fetcher.calls.some((call) => (call.init?.method || 'GET') === 'GET' && new URL(call.url).pathname === '/calendar/v3/calendars/primary/events')).toBe(true);
+    expect(caught).toBeInstanceOf(CalendarIntegrationError);
+    expect(caught).toMatchObject({ code: 'invalid_calendar', httpStatus: 404, providerMessage: 'not found' });
+  });
+
   it('returns an error when every configured calendar fails', async () => {
     configured('missing');
-    const fetcher = mockGoogle({ missing: { status: 404, body: { error: 'not found' } } });
+    const fetcher = mockGoogle({ missing: { status: 404, body: { error: { message: 'not found' } } } });
     await expect(getCalendarEvents(14, { fetchImpl: fetcher, now: baseNow, bypassCache: true })).rejects.toMatchObject({ code: 'invalid_calendar' });
   });
 
