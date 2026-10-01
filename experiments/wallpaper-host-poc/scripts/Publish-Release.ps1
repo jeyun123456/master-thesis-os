@@ -13,6 +13,7 @@ $BridgeSourceDirectory = Join-Path $RepositoryDirectory 'local-bridge'
 $BridgeRuntimeDirectoryName = 'bridge-runtime'
 $BridgeRuntimeFiles = @(
     'bridge.py',
+    'workspace_store.py',
     'bridge_config.py',
     'bridge_security.py',
     'shortcut_launcher.py',

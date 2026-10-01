@@ -13,6 +13,7 @@ internal sealed class BridgeProcessManager : IDisposable
     private static readonly string[] RequiredBridgeFiles =
     [
         "bridge.py",
+        "workspace_store.py",
         "bridge_config.py",
         "bridge_security.py",
         "shortcut_launcher.py",
