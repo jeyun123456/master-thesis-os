@@ -24,6 +24,7 @@ $BridgeRuntimeFiles = @(
     'portal_client.py',
     'portal_cli.py',
     'portal_ai.py',
+    'portal_jobs.py',
     'start_bridge.ps1'
 )
 

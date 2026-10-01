@@ -3,9 +3,10 @@ from datetime import datetime
 from unittest.mock import patch
 
 import portal_ai
+from portal_test_safety import PortalTestSafetyMixin
 
 
-class PortalAIAnalysisTests(unittest.TestCase):
+class PortalAIAnalysisTests(PortalTestSafetyMixin, unittest.TestCase):
     def test_normalizes_provider_result_and_generates_deterministic_candidates(self):
         provider_result = {
             'summary': '공지 핵심 요약',
@@ -61,7 +62,7 @@ class PortalAIAnalysisTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, 'ai_response_invalid')
 
 
-class InboxAIOrganizationTests(unittest.TestCase):
+class InboxAIOrganizationTests(PortalTestSafetyMixin, unittest.TestCase):
     def test_preserves_explicit_date_and_drops_invented_dates_and_non_todo_actions(self):
         entries = [
             {'id': 'todo-1', 'rawText': '교수님께 결과 보내야 함. 마감 2026년 10월 2일'},

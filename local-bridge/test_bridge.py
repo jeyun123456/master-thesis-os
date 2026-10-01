@@ -284,7 +284,7 @@ class BridgeConfigurationTests(unittest.TestCase):
             / 'scripts'
             / 'Publish-Release.ps1'
         ).read_text(encoding='utf-8-sig')
-        for bridge_file in ('portal_db.py', 'portal_client.py', 'portal_cli.py', 'portal_ai.py'):
+        for bridge_file in ('portal_db.py', 'portal_client.py', 'portal_cli.py', 'portal_ai.py', 'portal_jobs.py'):
             with self.subTest(bridge_file=bridge_file):
                 self.assertIn(f'"{bridge_file}"', manager)
                 self.assertIn(f"'{bridge_file}'", publisher)

@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from bridge_config import CONFIG_ERROR_EXIT_CODE, ConfigError, load_bridge_config, resolve_config_path
 from bridge_security import allows_private_network, target_for_endpoint, token_matches
+from portal_jobs import PortalJobs
 from thunderbird_mail import (
     ThunderbirdMailError,
     clamp_mail_limit,
@@ -783,16 +784,7 @@ def _resolve_portal_db_path():
 
 
 PORTAL_DB_PATH = _resolve_portal_db_path()
-
-PORTAL_JOB_LOCK = threading.Lock()
-PORTAL_JOB_THREAD: threading.Thread | None = None
-PORTAL_JOB_KIND: str | None = None
-PORTAL_JOB_ERROR: str | None = None
-PORTAL_JOB_ERROR_CODE: str | None = None
-PORTAL_AI_LOCK = threading.Lock()
-PORTAL_AI_THREAD: threading.Thread | None = None
-PORTAL_AI_ERROR: str | None = None
-PORTAL_AI_ERROR_CODE: str | None = None
+PORTAL_JOBS = PortalJobs(ROOT, PORTAL_DB_PATH)
 
 
 def launch(path: Path):
@@ -803,218 +795,6 @@ def launch(path: Path):
         subprocess.Popen(['open', str(path)])
     else:
         subprocess.Popen(['xdg-open', str(path)])
-
-
-def _portal_job_active() -> bool:
-    return PORTAL_JOB_THREAD is not None and PORTAL_JOB_THREAD.is_alive()
-
-
-def _portal_ai_active() -> bool:
-    return PORTAL_AI_THREAD is not None and PORTAL_AI_THREAD.is_alive()
-
-
-def _remember_portal_job_end(error: str | None = None, error_code: str | None = None) -> None:
-    global PORTAL_JOB_THREAD, PORTAL_JOB_KIND, PORTAL_JOB_ERROR, PORTAL_JOB_ERROR_CODE
-    with PORTAL_JOB_LOCK:
-        PORTAL_JOB_THREAD = None
-        PORTAL_JOB_KIND = None
-        PORTAL_JOB_ERROR = error
-        PORTAL_JOB_ERROR_CODE = error_code
-
-
-def _remember_portal_ai_end(error: str | None = None, error_code: str | None = None) -> None:
-    global PORTAL_AI_THREAD, PORTAL_AI_ERROR, PORTAL_AI_ERROR_CODE
-    with PORTAL_AI_LOCK:
-        PORTAL_AI_THREAD = None
-        PORTAL_AI_ERROR = error
-        PORTAL_AI_ERROR_CODE = error_code
-
-
-def _run_portal_sync_job() -> None:
-    try:
-        from portal_cli import sync_portal
-
-        sync_portal(ROOT, PORTAL_DB_PATH)
-    except Exception as exc:
-        code = getattr(exc, 'code', 'parsing_failed')
-        message = getattr(exc, 'message', '학교 공지 동기화가 중단되었어.')
-        _remember_portal_job_end(message, code)
-    else:
-        _remember_portal_job_end()
-        try:
-            queue_portal_ai_backfill()
-        except Exception:
-            # Sync itself succeeded. AI backfill errors are exposed through the
-            # independent AI worker state instead of turning sync into failure.
-            pass
-
-
-def _run_portal_login_job() -> None:
-    try:
-        from portal_cli import login_portal
-
-        login_portal(ROOT, PORTAL_DB_PATH)
-    except Exception as exc:
-        code = getattr(exc, 'code', 'portal_unreachable')
-        message = getattr(exc, 'message', '학교 포털 로그인 창을 처리하지 못했어.')
-        _remember_portal_job_end(message, code)
-    else:
-        _remember_portal_job_end()
-
-
-def _run_portal_ai_worker() -> None:
-    last_error: str | None = None
-    last_error_code: str | None = None
-    try:
-        import portal_ai
-
-        while True:
-            notice_ids = portal_db.claim_notice_analysis_batch(
-                portal_ai.MAX_NOTICE_BATCH_SIZE,
-                PORTAL_DB_PATH,
-            )
-            if not notice_ids:
-                break
-            notices: list[dict[str, object]] = []
-            for notice_id in notice_ids:
-                notice = portal_db.get_notice(notice_id, PORTAL_DB_PATH)
-                if notice is None:
-                    portal_db.save_notice_analysis_failed(
-                        notice_id,
-                        'notice_not_found',
-                        '공지 상세를 찾지 못했어.',
-                        PORTAL_DB_PATH,
-                    )
-                    continue
-                notices.append(notice)
-            if not notices:
-                continue
-            try:
-                results = portal_ai.analyze_notices(notices)
-            except Exception as exc:
-                code = getattr(exc, 'code', 'ai_provider_failed')
-                message = getattr(exc, 'message', str(exc) or '공지 AI batch 분석이 중단되었어.')
-                last_error = message
-                last_error_code = code
-                for notice in notices:
-                    try:
-                        portal_db.save_notice_analysis_failed(
-                            str(notice.get('noticeId') or notice.get('notice_id') or ''),
-                            code,
-                            message,
-                            PORTAL_DB_PATH,
-                        )
-                    except Exception:
-                        pass
-                continue
-            model = portal_ai.provider_model()
-            analyzed_at = portal_db.now_iso()
-            for notice in notices:
-                notice_id = str(notice.get('noticeId') or notice.get('notice_id') or '')
-                result = results.get(notice_id)
-                if result is None:
-                    portal_db.save_notice_analysis_failed(
-                        notice_id,
-                        'ai_response_invalid',
-                        'AI provider가 공지 결과를 반환하지 않았어.',
-                        PORTAL_DB_PATH,
-                    )
-                    continue
-                try:
-                    portal_db.save_notice_analysis(
-                        notice_id,
-                        result,
-                        portal_ai.PROMPT_VERSION,
-                        model,
-                        analyzed_at,
-                        PORTAL_DB_PATH,
-                    )
-                except Exception as exc:
-                    last_error = str(exc) or '공지 AI 분석 결과를 저장하지 못했어.'
-                    last_error_code = getattr(exc, 'code', 'ai_storage_failed')
-                    try:
-                        portal_db.save_notice_analysis_failed(
-                            notice_id,
-                            last_error_code,
-                            last_error,
-                            PORTAL_DB_PATH,
-                        )
-                    except Exception:
-                        pass
-    except Exception as exc:
-        last_error = getattr(exc, 'message', str(exc) or '공지 AI worker가 중단되었어.')
-        last_error_code = getattr(exc, 'code', 'ai_provider_failed')
-    _remember_portal_ai_end(last_error, last_error_code)
-
-
-def _ensure_portal_ai_worker() -> bool:
-    global PORTAL_AI_THREAD, PORTAL_AI_ERROR, PORTAL_AI_ERROR_CODE
-    with PORTAL_AI_LOCK:
-        if _portal_ai_active():
-            return False
-        progress = portal_db.ai_progress(PORTAL_DB_PATH)
-        if progress.get('queued', 0) <= 0:
-            return False
-        PORTAL_AI_ERROR = None
-        PORTAL_AI_ERROR_CODE = None
-        PORTAL_AI_THREAD = threading.Thread(
-            target=_run_portal_ai_worker,
-            name='portal-ai-batch',
-            daemon=True,
-        )
-        PORTAL_AI_THREAD.start()
-        return True
-
-
-def queue_portal_ai_backfill(*, include_failed: bool = False) -> int:
-    import portal_ai
-
-    notice_ids = portal_db.notices_needing_analysis(
-        portal_ai.PROMPT_VERSION,
-        portal_ai.provider_model(),
-        PORTAL_DB_PATH,
-        include_failed=include_failed,
-    )
-    queued = portal_db.queue_notice_analyses(
-        notice_ids,
-        PORTAL_DB_PATH,
-        force=True,
-    )
-    _ensure_portal_ai_worker()
-    return queued
-
-
-def start_portal_sync_job() -> bool:
-    global PORTAL_JOB_THREAD, PORTAL_JOB_KIND, PORTAL_JOB_ERROR, PORTAL_JOB_ERROR_CODE
-    with PORTAL_JOB_LOCK:
-        if _portal_job_active():
-            return False
-        PORTAL_JOB_ERROR = None
-        PORTAL_JOB_ERROR_CODE = None
-        PORTAL_JOB_KIND = 'sync'
-        PORTAL_JOB_THREAD = threading.Thread(target=_run_portal_sync_job, name='portal-sync', daemon=True)
-        PORTAL_JOB_THREAD.start()
-        return True
-
-
-def start_portal_login_job() -> bool:
-    global PORTAL_JOB_THREAD, PORTAL_JOB_KIND, PORTAL_JOB_ERROR, PORTAL_JOB_ERROR_CODE
-    with PORTAL_JOB_LOCK:
-        if _portal_job_active():
-            return False
-        PORTAL_JOB_ERROR = None
-        PORTAL_JOB_ERROR_CODE = None
-        PORTAL_JOB_KIND = 'login'
-        PORTAL_JOB_THREAD = threading.Thread(target=_run_portal_login_job, name='portal-login', daemon=True)
-        PORTAL_JOB_THREAD.start()
-        return True
-
-
-def start_portal_notice_analysis(notice_id: str, *, force: bool = False) -> bool:
-    if not portal_db.queue_notice_analysis(notice_id, PORTAL_DB_PATH, force=force):
-        return False
-    _ensure_portal_ai_worker()
-    return True
 
 
 def _safe_query_int(values: dict[str, list[str]], key: str, default: int) -> int:
@@ -1096,57 +876,6 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return value
 
-    def _portal_status(self):
-        try:
-            from portal_client import profile_session_state, resolve_profile_path
-
-            session_state = profile_session_state(resolve_profile_path(ROOT))
-        except Exception:
-            session_state = 'unknown'
-        with PORTAL_JOB_LOCK:
-            active = _portal_job_active()
-            job_kind = PORTAL_JOB_KIND
-            job_error = PORTAL_JOB_ERROR
-            job_error_code = PORTAL_JOB_ERROR_CODE
-        with PORTAL_AI_LOCK:
-            ai_active = _portal_ai_active()
-            ai_error = PORTAL_AI_ERROR
-            ai_error_code = PORTAL_AI_ERROR_CODE
-        if not active:
-            portal_db.recover_interrupted_sync(PORTAL_DB_PATH)
-        if not ai_active:
-            portal_db.recover_interrupted_ai(PORTAL_DB_PATH)
-        status = portal_db.sync_status(PORTAL_DB_PATH)
-        if not active and status.get('status') != 'running':
-            try:
-                queue_portal_ai_backfill()
-            except Exception as exc:
-                ai_error = getattr(exc, 'message', str(exc) or '공지 AI backfill을 시작하지 못했어.')
-                ai_error_code = getattr(exc, 'code', 'ai_provider_failed')
-            with PORTAL_AI_LOCK:
-                ai_active = _portal_ai_active()
-        ai_progress = portal_db.ai_progress(PORTAL_DB_PATH)
-        persisted_error_code = status.get('lastErrorCode')
-        effective_error_code = job_error_code or persisted_error_code
-        if effective_error_code in {'login_required', 'session_expired'}:
-            session_state = effective_error_code
-        return {
-            'ok': True,
-            **status,
-            'source': 'sqlite',
-            'session': {'state': session_state},
-            'jobRunning': active,
-            **({'jobKind': job_kind} if job_kind else {}),
-            **({'jobError': job_error} if job_error else {}),
-            **({'jobErrorCode': job_error_code} if job_error_code else {}),
-            'ai': {
-                **ai_progress,
-                'running': ai_active,
-                **({'error': ai_error} if ai_error else {}),
-                **({'errorCode': ai_error_code} if ai_error_code else {}),
-            },
-        }
-
     def _portal_notices_response(self):
         query = self._query()
         type_values = query.get('type', [])
@@ -1191,7 +920,7 @@ class Handler(BaseHTTPRequestHandler):
                 semester=semester,
             ),
             'terms': portal_db.academic_terms(PORTAL_DB_PATH),
-            'sync': self._portal_status(),
+            'sync': PORTAL_JOBS.status(),
         })
 
     def _single_portal_notice_response(self, notice_id: str):
@@ -1277,7 +1006,7 @@ class Handler(BaseHTTPRequestHandler):
             if not self._header_authenticated():
                 return
             try:
-                return self.json_out(200, self._portal_status())
+                return self.json_out(200, PORTAL_JOBS.status())
             except portal_db.PortalDatabaseError:
                 return self.json_out(503, {'ok': False, 'source': 'sqlite', 'error': 'database_error'})
         if path == '/portal/notices':
@@ -1457,16 +1186,16 @@ class Handler(BaseHTTPRequestHandler):
                 'entries': entries,
             })
         if path == '/portal/sync':
-            if not start_portal_sync_job():
+            if not PORTAL_JOBS.start_sync():
                 return self.json_out(409, {'ok': False, 'source': 'sqlite', 'error': 'sync_already_running'})
             return self.json_out(202, {'ok': True, 'source': 'sqlite', 'status': 'running', 'jobKind': 'sync'})
         if path == '/portal/login':
-            if not start_portal_login_job():
+            if not PORTAL_JOBS.start_login():
                 return self.json_out(409, {'ok': False, 'source': 'sqlite', 'error': 'portal_job_already_running'})
             return self.json_out(202, {'ok': True, 'source': 'sqlite', 'status': 'running', 'jobKind': 'login'})
         if path == '/portal/ai/backfill':
             try:
-                queued = queue_portal_ai_backfill(include_failed=True)
+                queued = PORTAL_JOBS.queue_backfill(include_failed=True)
             except Exception as exc:
                 return self.json_out(503, {
                     'ok': False,
@@ -1509,7 +1238,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_out(400, {'ok': False, 'source': 'sqlite', 'error': 'notice not found'})
             if portal_db.get_notice(notice_id, PORTAL_DB_PATH) is None:
                 return self.json_out(404, {'ok': False, 'source': 'sqlite', 'error': 'notice not found'})
-            if not start_portal_notice_analysis(notice_id, force=body.get('force') is True):
+            if not PORTAL_JOBS.start_notice_analysis(notice_id, force=body.get('force') is True):
                 return self.json_out(409, {'ok': False, 'source': 'sqlite', 'error': 'ai_job_already_running'})
             return self.json_out(202, {'ok': True, 'source': 'sqlite', 'status': 'queued', 'jobKind': 'ai', 'noticeId': notice_id})
         if body is not None and path.startswith(prefix) and path.endswith('/candidate'):

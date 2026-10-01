@@ -21,9 +21,10 @@ from portal_client import (
     resolve_profile_path,
     validate_external_url,
 )
+from portal_test_safety import PortalTestSafetyMixin
 
 
-class PortalParsingTests(unittest.TestCase):
+class PortalParsingTests(PortalTestSafetyMixin, unittest.TestCase):
     def test_external_browser_urls_are_absolute_http_urls_only(self):
         self.assertEqual(
             validate_external_url('https://sp.ritsumei.ac.jp/studentportal/s/'),
@@ -231,8 +232,9 @@ class PortalParsingTests(unittest.TestCase):
         self.assertEqual(records[0]['Id'], 'a0efD0000000002QAA')
 
 
-class PortalDatabaseTests(unittest.TestCase):
+class PortalDatabaseTests(PortalTestSafetyMixin, unittest.TestCase):
     def setUp(self):
+        super().setUp()
         self.temp = tempfile.TemporaryDirectory()
         self.path = Path(self.temp.name) / 'portal-notices.db'
         self.synced_at = '2026-09-18T14:00:00Z'
@@ -517,7 +519,7 @@ class PortalDatabaseTests(unittest.TestCase):
         self.assertEqual(recovered['ai']['errorCode'], 'ai_interrupted')
 
 
-class PortalProfileTests(unittest.TestCase):
+class PortalProfileTests(PortalTestSafetyMixin, unittest.TestCase):
     def test_persistent_context_uses_the_system_default_chromium_browser(self):
         class FakeChromium:
             def __init__(self):
@@ -582,7 +584,7 @@ class PortalProfileTests(unittest.TestCase):
             self.assertEqual(profile_session_state(profile), 'saved')
 
 
-class PortalSyncLoginTests(unittest.TestCase):
+class PortalSyncLoginTests(PortalTestSafetyMixin, unittest.TestCase):
     def test_successful_login_clears_stale_authentication_error(self):
         class FakeClient:
             def login(self, **kwargs):
@@ -639,7 +641,7 @@ class PortalSyncLoginTests(unittest.TestCase):
             self.assertEqual(status['lastErrorCode'], portal_db.SYNC_INTERRUPTED_CODE)
 
 
-class PortalSyncOrchestrationTests(unittest.TestCase):
+class PortalSyncOrchestrationTests(PortalTestSafetyMixin, unittest.TestCase):
     def test_new_details_are_fetched_once_and_history_is_not_deleted(self):
         summaries = [
             NoticeSummary(
