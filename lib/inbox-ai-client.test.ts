@@ -1,3 +1,4 @@
+import '../app/inbox-workflow-test-safety';
 import { describe, expect, it, vi } from 'vitest';
 import { createInboxEntry } from './inbox';
 import { organizeInboxEntries } from './inbox-ai-client';

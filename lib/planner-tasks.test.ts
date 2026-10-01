@@ -1,3 +1,4 @@
+import '../app/inbox-workflow-test-safety';
 import { describe, expect, it } from 'vitest';
 import { ensureInboxPlannerTasks, plannerTaskFromInboxEntry, parsePlannerTasks } from './planner-tasks';
 import type { InboxEntry } from './inbox';

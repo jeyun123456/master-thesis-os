@@ -1,3 +1,4 @@
+import '../app/inbox-workflow-test-safety';
 import { describe, expect, it } from 'vitest';
 import { applyInboxSuggestions, createInboxEntry, INBOX_STORAGE_KEY, loadInboxEntries, saveInboxEntries } from './inbox';
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { LibraryPanel } from '@/app/library-panel';
 import { PortalAttention } from '@/app/home-attention';
 import { MailActionCandidates } from '@/app/mail-action-candidates';
@@ -24,16 +24,9 @@ import { projectStatusLabel, stageLabel, type ResearchProject } from '@/lib/proj
 import type { RepositoryItem } from '@/lib/repository';
 import type { ResearchStatus } from '@/lib/research-status';
 import type { DashboardBundle } from '@/lib/results';
-import { BRIDGE_OFFLINE_MESSAGE, BRIDGE_TIMEOUT_MESSAGE, BridgeApiVersionMismatchError, bridgeApiVersionMismatchMessage, bridgeResponseMessage, checkLocalBridgeApiVersion } from '@/lib/bridge-status';
+import { BRIDGE_OFFLINE_MESSAGE, BRIDGE_TIMEOUT_MESSAGE, bridgeResponseMessage } from '@/lib/bridge-status';
 import { getEnabledShortcuts, getHomeShortcuts, loadShortcutState, shortcuts, type Shortcut } from '@/lib/shortcuts';
-import { applyInboxSuggestions, createInboxEntry, INBOX_AI_BATCH_SIZE, loadInboxEntries, mergeInboxEntries, saveInboxEntries, type InboxEntry, type InboxSuggestion } from '@/lib/inbox';
-import { organizeInboxEntries } from '@/lib/inbox-ai-client';
-import { deletePersistedInboxEntry, InboxPersistenceError, loadPersistedInbox, savePersistedInbox } from '@/lib/inbox-persistence-client';
-import { addPlannerTask, syncInboxPlannerTasks, updatePlannerTaskProject } from '@/lib/planner-tasks-client';
-import { plannerTaskFromInboxEntry } from '@/lib/planner-tasks';
-import { calendarInputForInboxEntry } from '@/lib/inbox-calendar';
-import { addCalendarEvent } from '@/lib/calendar-client';
-import type { InboxStorageStatus } from '@/app/inbox-panel';
+import { useInboxWorkflow } from '@/app/use-inbox-workflow';
 import appPackage from '../package.json';
 
 type Page = 'home' | 'research' | 'results' | 'library' | 'slot' | 'shortcuts' | 'inbox' | 'mail' | 'portal' | 'planner' | 'settings';
@@ -171,21 +164,6 @@ export default function Page() {
   const [shortcutWritable, setShortcutWritable] = useState(false);
   const [researchProjectId, setResearchProjectId] = useState<string | null>(null);
   const [expandedProjectFolders, setExpandedProjectFolders] = useState<Set<string>>(() => new Set());
-  const [inboxEntries, setInboxEntries] = useState<InboxEntry[]>([]);
-  const [inboxPreview, setInboxPreview] = useState<InboxSuggestion[] | null>(null);
-  const [inboxLoaded, setInboxLoaded] = useState(false);
-  const [inboxStorageStatus, setInboxStorageStatus] = useState<InboxStorageStatus>('loading');
-  const [inboxStorageError, setInboxStorageError] = useState('');
-  const [bridgeApiWarning, setBridgeApiWarning] = useState('');
-  const [bridgeTokenWarning, setBridgeTokenWarning] = useState('');
-  const [inboxLoadAttempt, setInboxLoadAttempt] = useState(0);
-  const inboxSaveRevision = useRef(0);
-  const inboxWriteQueue = useRef<Promise<void>>(Promise.resolve());
-  const [inboxOrganizing, setInboxOrganizing] = useState(false);
-  const [inboxAIError, setInboxAIError] = useState('');
-  const [inboxRouteMessage, setInboxRouteMessage] = useState('');
-  const [projectTaskSavingId, setProjectTaskSavingId] = useState<string | null>(null);
-  const [inboxDeleteSavingId, setInboxDeleteSavingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [toast, setToast] = useState('');
   const [todayLabel, setTodayLabel] = useState('');
@@ -199,55 +177,28 @@ export default function Page() {
     return () => window.clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    if (!readBridgeToken().trim()) {
-      setBridgeTokenWarning('Local Bridge token이 없습니다. Settings > 로컬 브리지에서 token을 저장해 주세요. token을 저장하기 전에는 Vault 저장과 GPT 정리를 사용할 수 없습니다.');
-    }
-    void checkLocalBridgeApiVersion().then((result) => {
-      if (cancelled) return;
-      setBridgeApiWarning(result.state === 'outdated' ? bridgeApiVersionMismatchMessage(result.apiVersion) : '');
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const cached = loadInboxEntries();
-    setInboxEntries(cached);
-
-    async function loadVaultInbox() {
-      try {
-        const persisted = await loadPersistedInbox();
-        if (cancelled) return;
-        const merged = mergeInboxEntries(persisted, cached);
-        setInboxEntries(merged);
-        const cacheSaved = saveInboxEntries(merged);
-        setInboxStorageStatus(cacheSaved ? 'saved' : 'failed');
-        setInboxStorageError(cacheSaved ? '' : 'Vault에는 연결됐지만 브라우저 캐시를 갱신하지 못했어요.');
-        setBridgeTokenWarning('');
-        setBridgeApiWarning('');
-        setInboxLoaded(true);
-        if (JSON.stringify(merged) !== JSON.stringify(persisted)) void persistInboxToVault(merged);
-      } catch (error) {
-        if (cancelled) return;
-        if (error instanceof InboxPersistenceError && error.code === 'bridge_auth') {
-          setBridgeTokenWarning(readBridgeToken().trim()
-            ? '저장된 Local Bridge token이 거부됐습니다. Settings > 로컬 브리지에서 token을 확인해 주세요.'
-            : 'Local Bridge token이 없습니다. Settings > 로컬 브리지에서 token을 저장해 주세요. token을 저장하기 전에는 Vault 저장과 GPT 정리를 사용할 수 없습니다.');
-        }
-        if (error instanceof InboxPersistenceError && error.code === 'bridge_outdated') {
-          setBridgeApiWarning(error.message);
-        }
-        setInboxStorageStatus('failed');
-        setInboxStorageError(error instanceof Error ? error.message : 'Vault 인박스를 불러오지 못했어요. 브라우저 캐시는 유지됩니다.');
-        setInboxLoaded(true);
-      }
-    }
-
-    void loadVaultInbox();
-    return () => { cancelled = true; };
-  }, [inboxLoadAttempt]);
+  const {
+    inboxEntries,
+    inboxPreview,
+    inboxLoaded,
+    inboxStorageStatus,
+    inboxStorageError,
+    bridgeApiWarning,
+    bridgeTokenWarning,
+    inboxOrganizing,
+    inboxAIError,
+    inboxRouteMessage,
+    projectTaskSavingId,
+    inboxDeleteSavingId,
+    addInboxEntry,
+    organizeInbox,
+    applyInboxPreview,
+    discardInboxPreview,
+    retryInboxSave,
+    deleteInboxEntry,
+    addInboxTaskToProject,
+    bridgeTokenSaved,
+  } = useInboxWorkflow({ projects, onNotice: pop, onOpenInbox: () => setPage('inbox') });
 
   useEffect(() => {
     let cancelled = false;
@@ -311,40 +262,6 @@ export default function Page() {
     window.setTimeout(() => setToast(''), 1700);
   }
 
-  function queueInboxWrite<T>(write: () => Promise<T>): Promise<T> {
-    const operation = inboxWriteQueue.current.then(write, write);
-    inboxWriteQueue.current = operation.then(() => undefined, () => undefined);
-    return operation;
-  }
-
-  async function persistInboxToVault(entries: InboxEntry[]) {
-    const revision = ++inboxSaveRevision.current;
-    setInboxStorageStatus('saving');
-    setInboxStorageError('');
-    try {
-      const persisted = await queueInboxWrite(() => savePersistedInbox(entries));
-      if (revision !== inboxSaveRevision.current) return;
-      setInboxEntries(persisted);
-      const cacheSaved = saveInboxEntries(persisted);
-      setInboxStorageStatus(cacheSaved ? 'saved' : 'failed');
-      setInboxStorageError(cacheSaved ? '' : 'Vault에는 저장됐지만 브라우저 캐시를 갱신하지 못했어요.');
-      setBridgeTokenWarning('');
-      setBridgeApiWarning('');
-    } catch (error) {
-      if (revision !== inboxSaveRevision.current) return;
-      if (error instanceof InboxPersistenceError && error.code === 'bridge_auth') {
-        setBridgeTokenWarning(readBridgeToken().trim()
-          ? '저장된 Local Bridge token이 거부됐습니다. Settings > 로컬 브리지에서 token을 확인해 주세요.'
-          : 'Local Bridge token이 없습니다. Settings > 로컬 브리지에서 token을 저장해 주세요. token을 저장하기 전에는 Vault 저장과 GPT 정리를 사용할 수 없습니다.');
-      }
-      if (error instanceof InboxPersistenceError && error.code === 'bridge_outdated') {
-        setBridgeApiWarning(error.message);
-      }
-      setInboxStorageStatus('failed');
-      setInboxStorageError(error instanceof Error ? error.message : 'Vault 저장에 실패했어요. 브라우저 캐시는 유지됩니다.');
-    }
-  }
-
   async function openLocal(path: string) {
     pop('로컬 파일을 여는 중…');
     try {
@@ -383,130 +300,6 @@ export default function Page() {
     return result.items;
   }
 
-  function addInboxEntry(rawText: string) {
-    if (!inboxLoaded) return false;
-    try {
-      const entry = createInboxEntry(rawText);
-      const next = [entry, ...inboxEntries];
-      if (!saveInboxEntries(next)) {
-        pop('브라우저 저장 공간을 확인해줘');
-        return false;
-      }
-      setInboxEntries(next);
-      void persistInboxToVault(next);
-      pop('인박스에 추가했어. Vault에 저장 중이야.');
-      return true;
-    } catch (error) {
-      pop(error instanceof Error ? error.message : '인박스에 저장하지 못했어');
-      return false;
-    }
-  }
-
-  async function organizeInbox() {
-    setPage('inbox');
-    setInboxAIError('');
-    setInboxPreview(null);
-    setInboxRouteMessage('');
-    const token = readBridgeToken();
-    if (!token.trim()) {
-      setBridgeTokenWarning('Local Bridge token이 없습니다. Settings > 로컬 브리지에서 token을 저장해 주세요. token을 저장하기 전에는 Vault 저장과 GPT 정리를 사용할 수 없습니다.');
-      setInboxAIError('Local Bridge token이 없어 GPT 정리를 실행할 수 없습니다. Settings > 로컬 브리지에서 token을 저장해 주세요.');
-      return;
-    }
-    setBridgeTokenWarning('');
-    const pending = inboxEntries.filter((entry) => !entry.processed).slice(0, INBOX_AI_BATCH_SIZE);
-    if (!pending.length) {
-      setInboxAIError('GPT로 정리할 새 항목이 없어.');
-      return;
-    }
-    setInboxOrganizing(true);
-    try {
-      setInboxPreview(await organizeInboxEntries(pending, token));
-    } catch (error) {
-      if (error instanceof BridgeApiVersionMismatchError) setBridgeApiWarning(error.message);
-      setInboxAIError(error instanceof Error ? error.message : 'AI 정리 요청을 처리하지 못했어.');
-    } finally {
-      setInboxOrganizing(false);
-    }
-  }
-
-  async function applyInboxPreview() {
-    if (!inboxPreview) return;
-    const suggestions = inboxPreview;
-    const next = applyInboxSuggestions(inboxEntries, suggestions);
-    if (!saveInboxEntries(next)) {
-      setInboxAIError('브라우저 저장 공간을 확인해줘. 원문과 미리보기는 그대로 남아 있어.');
-      return;
-    }
-    setInboxEntries(next);
-    setInboxPreview(null);
-    setInboxAIError('');
-    await persistInboxToVault(next);
-
-    const routeErrors: string[] = [];
-    let plannerCount = 0;
-    let calendarCount = 0;
-    for (const suggestion of suggestions) {
-      const entry = next.find((value) => value.id === suggestion.entryId);
-      if (!entry?.ai) continue;
-      if (entry.ai.category === 'todo') {
-        const plannerTask = plannerTaskFromInboxEntry(entry);
-        if (!plannerTask) continue;
-        try {
-          await addPlannerTask(plannerTask);
-          plannerCount += 1;
-        } catch (error) {
-          routeErrors.push(`${entry.ai.title || '할 일'} → Planner: ${error instanceof Error ? error.message : '저장 실패'}`);
-        }
-      } else if (entry.ai.category === 'schedule') {
-        const calendarInput = calendarInputForInboxEntry(entry);
-        if (!calendarInput) continue;
-        try {
-          await addCalendarEvent(calendarInput);
-          calendarCount += 1;
-        } catch (error) {
-          routeErrors.push(`${entry.ai.title || '일정'} → Calendar: ${error instanceof Error ? error.message : '등록 실패'}`);
-        }
-      }
-    }
-    setInboxRouteMessage(routeErrors.length
-      ? `분류는 저장했어. 자동 전달 실패 ${routeErrors.length}건: ${routeErrors.join(' · ')}`
-      : `분류 저장 완료 · Planner ${plannerCount}건 · Calendar ${calendarCount}건. 원문에 명시된 날짜를 등록하고, 시간이 없으면 종일 일정으로 저장해.`);
-    pop('GPT 정리와 가능한 자동 전달을 마쳤어. 원문은 보존했어.');
-  }
-
-  function retryInboxSave() {
-    void persistInboxToVault(inboxEntries);
-  }
-
-  async function deleteInboxEntry(entryId: string): Promise<boolean> {
-    if (!inboxLoaded || inboxOrganizing || inboxStorageStatus === 'saving' || inboxDeleteSavingId !== null) return false;
-    const revision = ++inboxSaveRevision.current;
-    setInboxDeleteSavingId(entryId);
-    setInboxStorageStatus('saving');
-    setInboxStorageError('');
-    try {
-      const persisted = await queueInboxWrite(() => deletePersistedInboxEntry(entryId));
-      if (revision !== inboxSaveRevision.current) return false;
-      setInboxEntries(persisted);
-      const cacheSaved = saveInboxEntries(persisted);
-      setInboxStorageStatus(cacheSaved ? 'saved' : 'failed');
-      setInboxStorageError(cacheSaved ? '' : 'Vault에서는 삭제됐지만 브라우저 캐시를 갱신하지 못했어요.');
-      setBridgeTokenWarning('');
-      setBridgeApiWarning('');
-      pop('Inbox 항목을 삭제했어.');
-      return true;
-    } catch (error) {
-      if (revision !== inboxSaveRevision.current) return false;
-      setInboxStorageStatus('failed');
-      setInboxStorageError(error instanceof Error ? error.message : 'Inbox 항목을 삭제하지 못했어요.');
-      pop(error instanceof Error ? error.message : 'Inbox 항목을 삭제하지 못했어.');
-      return false;
-    } finally {
-      if (revision === inboxSaveRevision.current) setInboxDeleteSavingId(null);
-    }
-  }
-
   function focusTodaySchedule() {
     const target = document.getElementById('today-schedule-card');
     target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -516,24 +309,6 @@ export default function Page() {
   function openResearchProject(projectId: string) {
     setResearchProjectId(projectId);
     setPage('research');
-  }
-
-  async function addInboxTaskToProject(entryId: string, projectId: string) {
-    const entry = inboxEntries.find((value) => value.id === entryId);
-    if (!entry?.ai || entry.ai.category !== 'todo') return;
-    setProjectTaskSavingId(entryId);
-    try {
-      const project = projects.find((value) => value.id === projectId);
-      if (!project) throw new Error('선택한 프로젝트를 찾지 못했어.');
-      const taskId = `inbox:${entryId}`;
-      await syncInboxPlannerTasks();
-      await updatePlannerTaskProject(taskId, projectId);
-      pop(`Planner와 ${project.title} 다음 작업에 연결했어.`);
-    } catch (error) {
-      pop(error instanceof Error ? error.message : '프로젝트에 추가하지 못했어. Inbox 원문은 유지돼.');
-    } finally {
-      setProjectTaskSavingId(null);
-    }
   }
 
   const schedule = useMemo(() => groupCalendarEvents(calendar.items), [calendar.items]);
@@ -639,7 +414,7 @@ export default function Page() {
           preview={inboxPreview}
           error={inboxAIError}
           onApply={() => void applyInboxPreview()}
-          onDiscardPreview={() => setInboxPreview(null)}
+          onDiscardPreview={discardInboxPreview}
           routeMessage={inboxRouteMessage}
           projects={projects}
           projectTaskSavingId={projectTaskSavingId}
@@ -651,7 +426,7 @@ export default function Page() {
         {page === 'settings' && <section className="page active">
           <div className="grid2">
             <Card title="연구 저장소" right={repositorySource === 'none' ? '설정 필요' : repositorySource === 'local' ? '로컬' : 'GitHub'}><div className="note">Obsidian Vault가 연구 데이터의 기준이야. 프로젝트는 <code>projects/*/project.md</code>에서 자동 발견하고, 기존 <code>wiki/ · Calc/ · 연구/</code> 경로는 manifest가 연결해.</div></Card>
-            <Card title="로컬 브리지" right="127.0.0.1 전용"><div className="note">로컬 파일·볼트 폴더 열기는 PC에서 bridge를 실행했을 때만 동작해. 토큰은 이 브라우저의 localStorage에 저장돼.</div><div className="toolbar bridge-toolbar"><button className="btn" type="button" onClick={() => openLocalFolder()}>볼트 폴더 열기</button></div><BridgeToken onSave={() => { const hasToken = Boolean(readBridgeToken().trim()); setBridgeTokenWarning(hasToken ? '' : 'Local Bridge token이 없습니다. Settings > 로컬 브리지에서 token을 저장해 주세요. token을 저장하기 전에는 Vault 저장과 GPT 정리를 사용할 수 없습니다.'); if (hasToken) setInboxLoadAttempt((attempt) => attempt + 1); pop('브리지 토큰을 저장했어'); }} onNotice={pop} /></Card>
+            <Card title="로컬 브리지" right="127.0.0.1 전용"><div className="note">로컬 파일·볼트 폴더 열기는 PC에서 bridge를 실행했을 때만 동작해. 토큰은 이 브라우저의 localStorage에 저장돼.</div><div className="toolbar bridge-toolbar"><button className="btn" type="button" onClick={() => openLocalFolder()}>볼트 폴더 열기</button></div><BridgeToken onSave={bridgeTokenSaved} onNotice={pop} /></Card>
           </div>
           <div className="grid2 section-gap">
             <Card title="Google Calendar" right={calendar.state === 'ready' || calendar.state === 'empty' ? '연결됨' : '확인 필요'}><div className="note">현재 상태: {calendarStateText(calendar)}</div></Card>
