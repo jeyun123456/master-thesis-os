@@ -24,7 +24,7 @@
       "required": ["id", "version", "priceBasis", "sectorClassification"],
       "properties": {
         "id": { "const": "symmetric-two-factor-decomposition" },
-        "version": { "const": "2026-09-03" },
+        "version": { "const": "2026-09-29-D011" },
         "priceBasis": { "const": "2020 constant prices" },
         "sectorClassification": { "const": "K77" }
       }

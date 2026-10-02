@@ -160,3 +160,31 @@ Verification: 8 scratch-only checker/provenance tests PASS, including complete a
 Architecture completion review: C1 MailJobs, C2 PortalJobs, C3 WorkspaceStore, C4 Inbox workflow controller and C6 Google provider seam remain the committed chunks recorded above; C5 remains **SKIPPED** with no source/module/LOC change. The known `inbox.test.ts` `Todo`/`todo` baseline issue and other previously recorded correctness limitations remain deferred. No application Python/TypeScript, Bridge health/API, C# process-manager, installer, DB/config, or UI source changed in C7. Existing exporter/schema edits and the untracked assessment/draft documents were left untouched. No publish, install, restart, production smoke, or Vercel deployment occurred.
 
 The C7 chunk is verified for its single commit. Its resulting commit SHA is authoritative in Git history; the manifest leaves `commit_sha` null because a commit cannot contain its own final object SHA without changing that SHA.
+
+## R4 release closeout - 2026-10-02
+
+Final release status: **REFACTOR AND STAGED RELEASE COMPLETE**. This addendum supersedes the earlier readiness-only deployment status; it records closeout without changing the untracked readiness report or the original assessment/draft.
+
+- Architecture chunks: C0 69ec6538d1a076b2869d8af00cf95893bd8a0eaf; C1 d466e693e4bb64f64085bd59f4f847472025e791; C2 b9cae7eb8a35380724f3f3d663b243dfab93b98b; C3 b463233240f10fdb6d8cce391fa2d636568443c2; C4 74d24c24ac2ee2f5654f65b9d2ecdd3700af9724; C5 **SKIPPED** (source/module/LOC change 0); C6 b9f52d6c515a68eb3feb84d974dbd71c518704fa; C7 7a1c6c4009a4b6a3c61a7ef206bda5072344f975.
+- Companion artifact: the validated R1 artifact from source 7a1c6c4009a4b6a3c61a7ef206bda5072344f975 (Companion 0.6.1.0, Bridge API v7) was installed through the validated prebuilt installer flow. R2 local smoke completed: diagnostic Web UI loaded, installed packaged Bridge was selected, and /health reported API v7. Config/data preservation and installed provenance/hash checks passed; no product-data workflow was run.
+- Web production: release source e8c7d441098942c40bf6588fa854d6a3f3ef130b is addressable on origin/main; Vercel production deployment dpl_EcQzXF6LXmNo6QN4RsYiNYJ7neJy is READY at that SHA. Canonical / and /companion-diagnostics returned HTTP 200. Vercel environment, Companion, and Bridge were not changed during R3.
+- R4 performed no deployment, install, restart, cleanup, source change, or user-data operation. No commit was created.
+
+### Residual artifact and scratch inventory
+
+Read-only inventory on 2026-10-02; nothing was removed.
+
+| Item | Observed state | Closeout disposition |
+|---|---|---|
+| R1 validated artifact: experiments/wallpaper-host-poc/artifacts/publish/r1-7a1c6c4009a4b6a3c61a7ef206bda5072344f975 | Present; 28 files, 2,658,078 bytes. | **Retain** as the installed release provenance/audit artifact and rollback reference until a later release replaces it or retention is explicitly decided. |
+| R2 rollback snapshot: C:\Users\yeonj\AppData\Local\MasterThesisOSWallpaper-R2-Rollback-e8c7d441-20261002-104253 | Present; 30 files, 2,669,770 bytes. | **Retain** while Companion 0.6.1.0 remains the active local release and no replacement rollback point is designated. |
+| R1 build worktree: C:\Users\yeonj\AppData\Local\Temp\mto-r1-build-7a1c6c4009a4b6a3c61a7ef206bda5072344f975 | Registered Git worktree at 7a1c6c4009a4b6a3c61a7ef206bda5072344f975; 314 files, 4,915,431 bytes. Its status contains mirrored modified exporter/schema files and untracked assessment/draft documents. | **Preserve; not a cleanup candidate** because it contains copies of user-local changes. |
+| R1 Python compile cache: C:\Users\yeonj\AppData\Local\Temp\mto-r1-pycompile-7a1c6c4009a4b6a3c61a7ef206bda5072344f975 | Present; 14 .pyc files, 562,975 bytes. | **Cleanup candidate** as generated cache after the owner confirms it is no longer needed. No other process command line referenced the named scratch paths during inventory; open file handles were not inspected. |
+| R3 temporary source export: C:\Users\yeonj\AppData\Local\Temp\mtos-r3-head-e8c7d441098942c40bf6588fa854d6a3f3ef130b-20261002-111817 | Present; source.zip 645,657 bytes and an expanded source tree with 420 enumerated regular files (141,696,348 bytes). The tree contains .next/cache (8 files, 136,808,252 bytes). source/node_modules is a junction to the repository node_modules, not an independent copy. | **Conditional cleanup candidate** for the temporary export and generated .next cache after confirming no active use. Any later removal must not recurse through/follow the node_modules junction. No deletion was attempted. |
+| Other pre-existing Temp worktrees | master-thesis-os-standard-results-test, mtos-calendar-load-all-20260929, and mtos-portal-ai-hotfix-835198e652a74244ba3a60a8c250d6af remain registered; older unrelated Temp directories also exist. | Outside this release closeout; **preserve and do not classify for cleanup**. |
+
+### Deferred issues carried forward unchanged
+
+No fixes were made. The existing deferred set remains: stale test expectations (Todo vs todo and API v5 vs v7); Portal failed-marker write isolation; non-transactional Inbox/Planner cross-file writes and the existing downstream dispatch after Inbox durable-save failure; Portal status-GET recovery/backfill/worker-start side effects; no cross-process worker lease; separate Home/slot/wallpaper nextTasks sources; deferred Calendar pagination/cache redesign; and the previously observed Companion resolution-injection hydration mismatch warning in the Next development overlay.
+
+The tracked C7 manifest remains a historical refactor-execution record, including its original pre-refactor production baseline; it was not repurposed as current release state. Existing user-local modified files and untracked assessment, draft, and readiness documents remain untouched. No source fix, Vercel environment change, additional deployment, Companion install/restart, or cleanup was performed.

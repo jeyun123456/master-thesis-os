@@ -17,7 +17,7 @@ from openpyxl import load_workbook
 YEARS = [2010, 2015, 2020]
 PERIODS = [(2010, 2015), (2015, 2020), (2010, 2020)]
 SCHEMA_VERSION = "1.1.0"
-METHOD_VERSION = "2026-09-03"
+METHOD_VERSION = "2026-09-29-D011"
 TOLERANCE = 1e-8
 APP_ROOT = Path(__file__).resolve().parents[1]
 RESULTS_RELATIVE_PATH = Path("projects") / "thesis" / "코드" / "결과" / "주요결과"
