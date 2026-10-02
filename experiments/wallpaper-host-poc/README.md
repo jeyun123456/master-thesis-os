@@ -72,6 +72,25 @@ Keyboard input always follows the normal Windows/WPF/WebView2 path. This project
 
 Explorer's desktop icon windows are never re-parented, hidden, or resized. The WorkerW and desktop ListView are used only for shell discovery and safe icon hit-testing.
 
+## Companion diagnostic smoke
+
+To verify the WebView shell and Local Bridge without starting product data workflows, run the web app locally with the Bridge URL set only in that development process. Use the port from the shared Bridge config (the default is `38471`):
+
+```powershell
+$env:NEXT_PUBLIC_LOCAL_BRIDGE_URL = 'http://127.0.0.1:38471'
+$env:NEXT_TELEMETRY_DISABLED = '1'
+npm run dev -- --hostname localhost --port 3000
+```
+
+In a separate PowerShell window, launch the installed companion directly in interactive mode. Exit an already-running companion normally first because the application is single-instance:
+
+```powershell
+$exe = Join-Path $env:LOCALAPPDATA 'MasterThesisOSWallpaper\app\MasterThesisOSWallpaper.exe'
+Start-Process -FilePath $exe -ArgumentList @('--url', 'http://localhost:3000/companion-diagnostics')
+```
+
+Do not pass `--wallpaper`; that mode intentionally navigates to `/wallpaper`. Confirm `Web UI: Loaded`, `Local Bridge: Connected`, and the API version. The diagnostics route requests only the configured local Bridge `/health` endpoint. It does not load Calendar, Mail, Portal, Inbox, Planner, Research, or Results data and does not modify user data. This local smoke does not require a Vercel deploy or Companion rebuild. Stop the local Next development server when finished, then clear both variables from that PowerShell session with `Remove-Item Env:NEXT_PUBLIC_LOCAL_BRIDGE_URL,Env:NEXT_TELEMETRY_DISABLED`.
+
 ## Display selection
 
 The tray `Display` submenu selects exactly one connected display. The Windows device name, including negative-coordinate displays such as `\\.\DISPLAY2`, is stored in settings and restored on restart. If it is unavailable, the primary display is selected. Wallpaper, Open state, and click-to-interact all use the same target display.
