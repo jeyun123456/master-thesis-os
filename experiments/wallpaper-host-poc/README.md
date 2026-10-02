@@ -24,6 +24,15 @@ Installed executable:
 
 The installer publishes the Release build, replaces only the app directory, preserves `settings.json` and `logs\`, updates an existing startup entry, and creates the Start Menu shortcuts. Run the same command again to update.
 
+To install a previously validated publish directory without rebuilding it, pass the entire directory (including the executable and `bridge-runtime`):
+
+```powershell
+$validatedDirectory = 'C:\path\to\validated-publish-directory'
+powershell -ExecutionPolicy Bypass -File .\scripts\Install-WallpaperHost.ps1 -PublishDirectory $validatedDirectory
+```
+
+The installer checks the publish layout, Bridge provenance, and packaged Bridge file hashes before stopping the existing companion. Use only a publish directory that has already passed the offline release checks. To run those static installer checks without installing or building, add `-ValidateOnly`.
+
 The companion automatically starts the Local Bridge when it starts. The installed copy carries the bridge launcher and Python modules under `app\bridge-runtime\`, while the shared configuration remains at `%LOCALAPPDATA%\MasterThesisOSWallpaper\bridge\config.json`. An already healthy bridge is reused, and only a bridge process started by the companion is stopped when the companion exits. If the configuration or Python runtime is unavailable, the companion still opens and the existing manual bridge launcher remains available as a fallback.
 
 Use `-NoLaunch` to install without starting the companion:
