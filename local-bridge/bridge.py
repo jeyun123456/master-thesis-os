@@ -26,8 +26,9 @@ HERE = Path(__file__).resolve().parent
 CONFIG = resolve_config_path(HERE)
 MAX_BODY_BYTES = 16 * 1024
 MAX_INBOX_BODY_BYTES = 4 * 1024 * 1024
+MAX_RESEARCH_QA_BODY_BYTES = 128 * 1024
 
-BRIDGE_API_VERSION = 7
+BRIDGE_API_VERSION = 8
 MAIL_PATH_PREFIX = '/mail/'
 
 
@@ -604,7 +605,7 @@ class Handler(BaseHTTPRequestHandler):
             '/open', '/open-folder', '/launch', '/mail/recent', '/mail/folders',
             '/mail/message', '/mail/open', '/mail/sync', '/mail/analysis/candidate', '/mail/task',
             '/portal/sync', '/portal/login', '/portal/ai/backfill', '/portal/open-url', '/inbox', '/inbox/delete', '/inbox/organize', '/planner/tasks',
-            '/planner/tasks/sync-inbox', '/planner/tasks/update', '/planner/tasks/delete',
+            '/planner/tasks/sync-inbox', '/planner/tasks/update', '/planner/tasks/delete', '/research/answer',
             '/projects/workspace', '/projects/update',
         )
         is_portal_state = path.startswith('/portal/notices/') and path.endswith('/state')
@@ -614,7 +615,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_out(404, {'error': 'not found'})
         if not self._origin_allowed():
             return
-        body_limit = MAX_INBOX_BODY_BYTES if path in {'/inbox', '/inbox/delete'} else MAX_PLANNER_BODY_BYTES if path.startswith('/planner/tasks') else MAX_BODY_BYTES
+        body_limit = MAX_INBOX_BODY_BYTES if path in {'/inbox', '/inbox/delete'} else MAX_RESEARCH_QA_BODY_BYTES if path == '/research/answer' else MAX_PLANNER_BODY_BYTES if path.startswith('/planner/tasks') else MAX_BODY_BYTES
         body = self._read_json_body(body_limit)
         if body is None:
             return
@@ -642,6 +643,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_out(200, {'ok': True, 'source': 'vault', 'version': 1, 'tasks': tasks})
             if path == '/projects/workspace':
                 return self.json_out(200, WORKSPACE_STORE.project_workspace(body.get('projectId')))
+            if path == '/research/answer':
+                import research_qa
+                try:
+                    result = research_qa.answer_research_question(body)
+                except research_qa.ResearchQAError as exc:
+                    status = 400 if exc.code == 'research_qa_invalid' else 503
+                    return self.json_out(status, {'ok': False, 'errorCode': exc.code, 'error': str(exc)})
+                return self.json_out(200, result)
             if path == '/projects/update':
                 return self.json_out(200, WORKSPACE_STORE.update_project_metadata(body))
             portal_response = self._portal_post(path, body)
