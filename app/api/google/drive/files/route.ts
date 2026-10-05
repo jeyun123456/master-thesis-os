@@ -5,7 +5,10 @@ import {
   GoogleDriveIntegrationError,
 } from '@/lib/google-drive';
 
-export const runtime = 'nodejs';\nexport const dynamic = 'force-dynamic';\n\nconst PRIVATE_RESPONSE = { 'Cache-Control': 'private, no-store' };
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+const PRIVATE_RESPONSE = { 'Cache-Control': 'private, no-store' };
 
 export async function GET(req: NextRequest) {
   const requestedLimit = Number(req.nextUrl.searchParams.get('limit') || 30);
