@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { GoogleDrivePanel } from '@/app/google-drive-panel';\nimport { LibraryPanel } from '@/app/library-panel';
+import { GoogleDrivePanel } from '@/app/google-drive-panel';
+import { LibraryPanel } from '@/app/library-panel';
 import { PortalAttention } from '@/app/home-attention';
 import { GmailMailPanel } from '@/app/gmail-mail-panel';
 import { MailActionCandidates } from '@/app/mail-action-candidates';
