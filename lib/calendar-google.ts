@@ -230,7 +230,10 @@ async function accessToken(value: CalendarConfig, fetchImpl: FetchLike, now: Dat
       cache: 'no-store',
     });
   } catch {
-    throw new CalendarIntegrationError('network_error', 'Google Calendar token request could not be reached.');
+    const message = mode === 'service_account'
+      ? 'Google service account token request could not be reached.'
+      : 'Google OAuth token request could not be reached.';
+    throw new CalendarIntegrationError('network_error', message);
   }
 
   const data = await responseJson(response);
