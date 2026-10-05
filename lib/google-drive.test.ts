@@ -7,6 +7,7 @@ import {
   googleDriveConfigured,
   googleDriveContentReadable,
   normalizeGoogleDriveFile,
+  searchGoogleDriveContent,
 } from './google-drive';
 
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
@@ -194,6 +195,78 @@ describe('Google Drive requests', () => {
       code: 'unsupported_content',
       httpStatus: 415,
     });
+  });
+
+
+  it('uses Drive fullText index and returns context snippets for readable research files', async () => {
+    const calls: string[] = [];
+    const fetcher = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === TOKEN_ENDPOINT) {
+        return new Response(JSON.stringify({ access_token: 'drive-access', expires_in: 3600 }), { status: 200 });
+      }
+
+      const requestUrl = new URL(url);
+      if (requestUrl.origin === 'https://www.googleapis.com' && requestUrl.pathname === '/drive/v3/files' && requestUrl.searchParams.has('q')) {
+        const q = requestUrl.searchParams.get('q') || '';
+        expect(q).toContain("fullText contains '전환'");
+        expect(q).toContain("fullText contains '신해석'");
+        expect(q).toContain("name contains '전환'");
+        return new Response(JSON.stringify({
+          files: [
+            {
+              id: 'doc-search',
+              name: '전환 문제 메모',
+              mimeType: 'application/vnd.google-apps.document',
+              modifiedTime: '2026-10-05T08:00:00.000Z',
+              webViewLink: 'https://docs.google.com/document/d/doc-search/edit',
+            },
+            {
+              id: 'pdf-search',
+              name: 'reference.pdf',
+              mimeType: 'application/pdf',
+              modifiedTime: '2026-10-04T08:00:00.000Z',
+              webViewLink: 'https://drive.google.com/file/d/pdf-search/view',
+            },
+          ],
+        }), { status: 200 });
+      }
+
+      if (requestUrl.pathname === '/drive/v3/files/doc-search/export') {
+        return new Response('전환 문제에 대한 기존 해석\n신해석 학파의 화폐적 표현을 검토한다.', { status: 200 });
+      }
+
+      throw new Error(`Unexpected Drive fake request: ${url}`);
+    }) as typeof fetch;
+
+    const result = await searchGoogleDriveContent('전환 신해석', 10, {
+      fetchImpl: fetcher,
+      now: new Date('2026-10-05T00:00:00Z'),
+    });
+
+    expect(result).toMatchObject({
+      query: '전환 신해석',
+      terms: ['전환', '신해석'],
+      candidates: 2,
+      contentInspected: 1,
+    });
+    expect(result.items).toHaveLength(2);
+    expect(result.items[0]).toMatchObject({
+      file: { id: 'doc-search' },
+      contentReadable: true,
+      contentMatched: true,
+      indexedMatch: true,
+    });
+    expect(result.items[0].matchedTerms).toEqual(expect.arrayContaining(['전환', '신해석']));
+    expect(result.items[0].snippets.length).toBeGreaterThan(0);
+    expect(result.items[1]).toMatchObject({
+      file: { id: 'pdf-search', kind: 'pdf' },
+      contentReadable: false,
+      contentMatched: false,
+      indexedMatch: true,
+    });
+    expect(calls.some((url) => url.includes('/drive/v3/files/doc-search/export?'))).toBe(true);
   });
 
   it('maps Drive permission failures', async () => {
