@@ -1,15 +1,22 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
 import {
   getGoogleDriveContent,
   getRecentGoogleDriveFiles,
   GoogleDriveClientError,
+  searchGoogleDriveResearch,
 } from '../lib/google-drive-client';
-import type { GoogleDriveFile, GoogleDriveFileContent } from '../lib/google-drive';
+import type {
+  GoogleDriveFile,
+  GoogleDriveFileContent,
+  GoogleDriveSearchResult,
+} from '../lib/google-drive';
 
 type DrivePanelStatus = 'loading' | 'ready' | 'empty' | 'unconfigured' | 'error';
 type ContentStatus = 'idle' | 'loading' | 'ready' | 'error';
+type ResearchSearchStatus = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
 export function GoogleDrivePanel() {
   const [status, setStatus] = useState<DrivePanelStatus>('loading');
@@ -20,6 +27,12 @@ export function GoogleDrivePanel() {
   const [contentErrorCode, setContentErrorCode] = useState<string | null>(null);
   const [selectedContent, setSelectedContent] = useState<GoogleDriveFileContent | null>(null);
   const [contentQuery, setContentQuery] = useState('');
+  const [researchQuery, setResearchQuery] = useState('');
+  const [researchStatus, setResearchStatus] = useState<ResearchSearchStatus>('idle');
+  const [researchErrorCode, setResearchErrorCode] = useState<string | null>(null);
+  const [researchResults, setResearchResults] = useState<GoogleDriveSearchResult[]>([]);
+  const [researchCandidates, setResearchCandidates] = useState(0);
+  const [researchInspected, setResearchInspected] = useState(0);
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -56,6 +69,33 @@ export function GoogleDrivePanel() {
       .slice(0, 50);
   }, [contentQuery, selectedContent]);
 
+  async function runResearchSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalized = researchQuery.trim();
+    if (normalized.length < 2) {
+      setResearchStatus('error');
+      setResearchErrorCode('provider_bad_request');
+      setResearchResults([]);
+      return;
+    }
+
+    setResearchStatus('loading');
+    setResearchErrorCode(null);
+    try {
+      const result = await searchGoogleDriveResearch(normalized, fetch, 10);
+      setResearchResults(result.items);
+      setResearchCandidates(result.candidates);
+      setResearchInspected(result.contentInspected);
+      setResearchStatus(result.items.length ? 'ready' : 'empty');
+    } catch (error) {
+      setResearchResults([]);
+      setResearchCandidates(0);
+      setResearchInspected(0);
+      setResearchStatus('error');
+      setResearchErrorCode(error instanceof GoogleDriveClientError ? error.code : 'network_error');
+    }
+  }
+
   async function loadContent(item: GoogleDriveFile) {
     if (!contentReadable(item)) return;
     setContentStatus('loading');
@@ -81,9 +121,38 @@ export function GoogleDrivePanel() {
 
   return <section className="card section google-drive-card">
     <div className="head"><h3>Google Drive</h3><span>{statusLabel(status)}</span></div>
-    <div className="muted"><small>Google OAuth · Drive API · 읽기 전용 · 최근 수정 파일</small></div>
+    <div className="muted"><small>Google OAuth · Drive API · 읽기 전용 · 본문 인덱스 검색</small></div>
+
+    {(status === 'ready' || status === 'empty') && <div className="google-drive-research-search">
+      <form className="library-toolbar google-drive-search-toolbar" onSubmit={runResearchSearch}>
+        <input
+          className="search"
+          value={researchQuery}
+          onChange={(event) => setResearchQuery(event.target.value)}
+          placeholder="내 Drive 연구자료 전체에서 검색"
+          aria-label="Google Drive 연구자료 전체 검색"
+        />
+        <button className="btn" disabled={researchStatus === 'loading'} type="submit">
+          {researchStatus === 'loading' ? '검색 중…' : '연구자료 검색'}
+        </button>
+      </form>
+      <div className="muted google-drive-search-help"><small>파일명 + Google Drive 전체 텍스트 인덱스로 후보를 찾고, 읽을 수 있는 상위 문서는 실제 본문 문맥까지 확인해.</small></div>
+
+      {researchStatus === 'loading' && <div className="microsoft-mail-state">Drive 연구자료 전체를 검색하는 중이야…</div>}
+      {researchStatus === 'error' && <div className="error microsoft-mail-error">{researchSearchErrorMessage(researchErrorCode)}</div>}
+      {(researchStatus === 'ready' || researchStatus === 'empty') && <div className="google-drive-search-results">
+        <div className="library-section-heading compact-heading">
+          <div><h3>통합 검색 결과</h3><p>Drive 후보 {researchCandidates}개 · 실제 본문 확인 {researchInspected}개</p></div>
+          <span>{researchResults.length}개</span>
+        </div>
+        {researchResults.length
+          ? <div className="google-drive-search-list">{researchResults.map((result) => <DriveSearchResultRow result={result} key={result.file.id} onRead={loadContent} />)}</div>
+          : <div className="library-empty">일치하는 Drive 연구자료가 없어.</div>}
+      </div>}
+    </div>}
+
     {(status === 'ready' || status === 'empty') && <div className="library-toolbar google-drive-toolbar">
-      <input className="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Drive 파일명 검색" />
+      <input className="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="최근 파일명 검색" />
       <button className="mini" onClick={() => void load()} type="button">새로고침</button>
     </div>}
     {status === 'loading' && <div className="microsoft-mail-state">Google Drive 파일을 읽는 중이야…</div>}
@@ -145,6 +214,30 @@ function contentReadable(item: GoogleDriveFile): boolean {
     || item.mimeType === 'application/x-javascript';
 }
 
+function DriveSearchResultRow({ result, onRead }: { result: GoogleDriveSearchResult; onRead: (item: GoogleDriveFile) => void | Promise<void> }) {
+  const { file } = result;
+  return <article className="google-drive-search-result">
+    <div className="google-drive-search-result-head">
+      <div className="google-drive-search-result-title">
+        <span className="resource-badge">{kindLabel(file.kind)}</span>
+        <div><h4>{file.name}</h4><p>{formatModified(file.modifiedTime)} · 점수 {result.score}</p></div>
+      </div>
+      <div className="google-drive-row-actions">
+        {result.contentReadable && <button className="mini" onClick={() => void onRead(file)} type="button">내용</button>}
+        <a className="mini" href={file.webViewLink} rel="noreferrer" target="_blank">열기</a>
+      </div>
+    </div>
+    <div className="google-drive-search-evidence">
+      {result.matchedTerms.length > 0 && <div className="google-drive-search-terms">{result.matchedTerms.map((term) => <span key={term}>{term}</span>)}</div>}
+      {result.snippets.length > 0
+        ? result.snippets.map((snippet, index) => <div className="google-drive-search-snippet" key={`${file.id}:${snippet.lineNumber ?? index}`}>
+            <span>{snippet.lineNumber ? `L${snippet.lineNumber}` : '본문'}</span><p>{snippet.text}</p>
+          </div>)
+        : <p className="google-drive-index-hit">Google Drive 전체 텍스트 인덱스에서 일치했어.{file.kind === 'pdf' ? ' PDF 본문은 아직 미리보기 추출하지 않아.' : ''}</p>}
+    </div>
+  </article>;
+}
+
 function DriveRow({ item, onRead }: { item: GoogleDriveFile; onRead: (item: GoogleDriveFile) => void | Promise<void> }) {
   const readable = contentReadable(item);
   return <div className="library-row google-drive-row">
@@ -182,6 +275,14 @@ function errorMessage(code: string | null): string {
   if (code === 'quota_error') return 'Google Drive API quota 또는 rate limit을 확인해줘.';
   if (code === 'provider_bad_request') return 'Google Drive API 요청이 거부됐어.';
   return 'Google Drive 연결을 확인해줘.';
+}
+
+function researchSearchErrorMessage(code: string | null): string {
+  if (code === 'provider_bad_request') return '검색어를 2자 이상 입력해줘.';
+  if (code === 'auth_error') return 'Google OAuth 인증이 만료됐어.';
+  if (code === 'insufficient_permissions') return 'Google Drive 검색 권한이 없어.';
+  if (code === 'quota_error') return 'Google Drive API quota 또는 rate limit을 확인해줘.';
+  return 'Drive 연구자료 검색에 실패했어.';
 }
 
 function contentErrorMessage(code: string | null): string {
