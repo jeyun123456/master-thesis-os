@@ -10,7 +10,8 @@ export type GoogleDriveErrorCode =
   | 'provider_bad_request'
   | 'quota_error'
   | 'network_error'
-  | 'malformed_response';
+  | 'malformed_response'
+  | 'unsupported_content';
 
 export class GoogleDriveIntegrationError extends Error {
   constructor(
@@ -33,6 +34,16 @@ export type GoogleDriveFile = {
   isFolder: boolean;
   kind: 'folder' | 'document' | 'spreadsheet' | 'presentation' | 'pdf' | 'file';
 };
+
+export type GoogleDriveFileContent = {
+  file: GoogleDriveFile;
+  format: 'text' | 'csv';
+  content: string;
+  charCount: number;
+  truncated: boolean;
+};
+
+const MAX_CONTENT_CHARS = 200_000;
 
 type DriveOptions = {
   fetchImpl?: typeof fetch;
@@ -176,7 +187,7 @@ export function normalizeGoogleDriveFile(raw: unknown): GoogleDriveFile {
   };
 }
 
-async function driveRequest(path: string, token: string, fetchImpl: typeof fetch): Promise<unknown> {
+async function driveFetch(path: string, token: string, fetchImpl: typeof fetch): Promise<Response> {
   let response: Response;
   try {
     response = await fetchImpl(`${DRIVE_API_ROOT}${path}`, {
@@ -186,8 +197,6 @@ async function driveRequest(path: string, token: string, fetchImpl: typeof fetch
   } catch {
     throw new GoogleDriveIntegrationError('network_error', 'Google Drive API request could not be reached.');
   }
-
-  const data = await responseJson(response);
   if (!response.ok) {
     console.warn('[drive] Google API failure', JSON.stringify({
       status: response.status,
@@ -196,7 +205,78 @@ async function driveRequest(path: string, token: string, fetchImpl: typeof fetch
     }));
     throw new GoogleDriveIntegrationError(providerErrorCode(response.status), 'Google Drive API request failed.', response.status);
   }
-  return data;
+  return response;
+}
+
+async function driveRequest(path: string, token: string, fetchImpl: typeof fetch): Promise<unknown> {
+  return responseJson(await driveFetch(path, token, fetchImpl));
+}
+
+async function driveTextRequest(path: string, token: string, fetchImpl: typeof fetch): Promise<string> {
+  const response = await driveFetch(path, token, fetchImpl);
+  try {
+    return await response.text();
+  } catch {
+    throw new GoogleDriveIntegrationError('malformed_response', 'Google Drive text response was malformed.', response.status);
+  }
+}
+
+function readableTextMimeType(mimeType: string): boolean {
+  return mimeType.startsWith('text/')
+    || mimeType === 'application/json'
+    || mimeType === 'application/xml'
+    || mimeType === 'application/javascript'
+    || mimeType === 'application/x-javascript';
+}
+
+function contentExport(file: GoogleDriveFile): { path: string; format: 'text' | 'csv' } | null {
+  const id = encodeURIComponent(file.id);
+  if (file.kind === 'document' || file.kind === 'presentation') {
+    return { path: `/files/${id}/export?mimeType=${encodeURIComponent('text/plain')}`, format: 'text' };
+  }
+  if (file.kind === 'spreadsheet') {
+    return { path: `/files/${id}/export?mimeType=${encodeURIComponent('text/csv')}`, format: 'csv' };
+  }
+  if (readableTextMimeType(file.mimeType)) {
+    return { path: `/files/${id}?alt=media`, format: file.mimeType === 'text/csv' ? 'csv' : 'text' };
+  }
+  return null;
+}
+
+export function googleDriveContentReadable(file: GoogleDriveFile): boolean {
+  return contentExport(file) !== null;
+}
+
+export async function getGoogleDriveFileContent(fileId: string, options: DriveOptions = {}): Promise<GoogleDriveFileContent> {
+  const normalizedId = fileId.trim();
+  if (!normalizedId || normalizedId.length > 256 || normalizedId.includes('/')) {
+    throw new GoogleDriveIntegrationError('provider_bad_request', 'Google Drive file id was invalid.', 400);
+  }
+
+  const fetchImpl = options.fetchImpl || fetch;
+  const token = await accessToken(fetchImpl, options.now || new Date());
+  const id = encodeURIComponent(normalizedId);
+  const metadataRaw = await driveRequest(
+    `/files/${id}?fields=id,name,mimeType,modifiedTime,webViewLink,size`,
+    token,
+    fetchImpl,
+  );
+  const file = normalizeGoogleDriveFile(metadataRaw);
+  const selected = contentExport(file);
+  if (!selected) {
+    throw new GoogleDriveIntegrationError('unsupported_content', 'This Drive file does not have a text-readable export.', 415);
+  }
+
+  const raw = await driveTextRequest(selected.path, token, fetchImpl);
+  const charCount = raw.length;
+  const truncated = charCount > MAX_CONTENT_CHARS;
+  return {
+    file,
+    format: selected.format,
+    content: truncated ? raw.slice(0, MAX_CONTENT_CHARS) : raw,
+    charCount,
+    truncated,
+  };
 }
 
 export async function getGoogleDriveFiles(limit = 30, options: DriveOptions = {}): Promise<GoogleDriveFile[]> {
