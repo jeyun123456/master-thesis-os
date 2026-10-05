@@ -155,12 +155,12 @@ GOOGLE_REFRESH_TOKEN=...
 GOOGLE_CALENDAR_IDS=primary
 ```
 
-- `GOOGLE_REFRESH_TOKEN`은 Calendar read/write consent가 포함된 계정에서 발급된 값이어야 한다.
+- `GOOGLE_REFRESH_TOKEN`은 사용하는 Google 기능의 consent scope가 포함된 계정에서 발급된 값이어야 한다. 현재 통합은 Calendar read/write, Gmail read-only, Drive read-only를 사용한다.
 - 개인 기본 캘린더만 쓰면 `GOOGLE_CALENDAR_IDS=primary`가 가장 단순하다.
 - 여러 캘린더를 함께 보려면 `primary,research-id@group.calendar.google.com`처럼 쉼표로 추가한다.
 - OAuth와 Service Account 변수가 모두 있으면 **OAuth가 우선**한다. 따라서 전환 중에도 기존 Service Account 값을 잠시 남겨둘 수 있다.
 
-서버는 refresh token을 `https://oauth2.googleapis.com/token`에 `grant_type=refresh_token`으로 교환해 access token을 얻는다. client secret·refresh token·access token은 브라우저 응답이나 로그에 출력하지 않는다. access token은 만료 직전까지 best-effort 메모리 cache하며, Vercel 인스턴스가 재시작되면 refresh token으로 다시 발급한다.
+서버는 refresh token을 `https://oauth2.googleapis.com/token`에 `grant_type=refresh_token`으로 교환해 access token을 얻는다. 같은 OAuth credential을 Calendar, Gmail read-only, Drive read-only에서 재사용한다. client secret·refresh token·access token은 브라우저 응답이나 로그에 출력하지 않는다. access token은 만료 직전까지 best-effort 메모리 cache하며, Vercel 인스턴스가 재시작되면 refresh token으로 다시 발급한다.
 
 ### Service Account fallback
 
@@ -216,7 +216,7 @@ GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY  -> OAuth 검증 후 제거 가능
 
 OAuth live 검증이 끝나기 전까지 Service Account 변수를 남겨도 된다. OAuth가 완전하게 설정된 동안에는 OAuth가 우선되므로 fallback credential은 사용되지 않는다.
 
-기준 문서는 Google OAuth 2.0 Web Server Applications, OAuth refresh token, Calendar API 인증, Events.list, Events.insert reference다.
+기준 문서는 Google OAuth 2.0, OAuth refresh token, Calendar API, Gmail API, Drive API reference다. 자료실의 Google Drive 카드는 `drive.readonly` 범위에서 최근 수정 파일 metadata만 조회하고 원본 수정·삭제는 하지 않는다.
 
 ## Microsoft 365 학교 메일 Graph 연결(선택)
 
