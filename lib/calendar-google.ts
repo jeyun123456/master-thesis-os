@@ -1,4 +1,4 @@
-import { createSign } from 'node:crypto';
+import { createHash, createSign } from 'node:crypto';
 
 export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar';
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
@@ -25,9 +25,17 @@ export class CalendarIntegrationError extends Error {
   }
 }
 
-type CalendarConfig = { serviceAccountEmail: string; privateKey: string; calendarIds: string[] };
+type CalendarConfig = {
+  serviceAccountEmail: string;
+  privateKey: string;
+  oauthClientId: string;
+  oauthClientSecret: string;
+  oauthRefreshToken: string;
+  calendarIds: string[];
+};
 type FetchLike = typeof fetch;
-type AccessTokenEntry = { token: string; expiresAt: number };
+type AccessTokenEntry = { token: string; expiresAt: number; cacheKey: string };
+type CalendarAuthMode = 'oauth' | 'service_account';
 type ProviderErrorDetails = { providerReason?: string; providerMessage?: string; providerBody: string };
 type GoogleCalendarRequest = {
   path: string;
@@ -128,13 +136,35 @@ function tokenErrorCode(status: number): CalendarErrorCode {
   return 'network_error';
 }
 
+function authMode(value: CalendarConfig): CalendarAuthMode {
+  if (value.oauthClientId && value.oauthClientSecret && value.oauthRefreshToken) return 'oauth';
+  if (value.serviceAccountEmail && value.privateKey) return 'service_account';
+  throw new CalendarIntegrationError('auth_error', 'Google Calendar credentials are not configured.');
+}
+
+function tokenCacheKey(value: CalendarConfig, mode: CalendarAuthMode): string {
+  const credentialMaterial = mode === 'oauth'
+    ? `${value.oauthClientId}\u0000${value.oauthRefreshToken}`
+    : `${value.serviceAccountEmail}\u0000${value.privateKey}`;
+  return createHash('sha256').update(credentialMaterial, 'utf8').digest('hex');
+}
+
 function logRuntimeConfig(operation: string, value: CalendarConfig, calendarId?: string): void {
+  let mode: CalendarAuthMode | 'unconfigured' = 'unconfigured';
+  try {
+    mode = authMode(value);
+  } catch {
+    // Configuration errors are surfaced by the caller; logs only expose non-secret state.
+  }
   console.info('[calendar] runtime config', JSON.stringify({
     operation,
-    serviceAccountEmail: value.serviceAccountEmail || '<missing>',
+    authMode: mode,
+    serviceAccountEmail: mode === 'service_account' ? value.serviceAccountEmail || '<missing>' : null,
     calendarId: calendarId || null,
     calendarIds: value.calendarIds,
-    hasPrivateKey: Boolean(value.privateKey),
+    hasPrivateKey: mode === 'service_account' && Boolean(value.privateKey),
+    hasOAuthClient: mode === 'oauth' && Boolean(value.oauthClientId),
+    hasOAuthRefreshToken: mode === 'oauth' && Boolean(value.oauthRefreshToken),
     scope: CALENDAR_SCOPE,
   }));
 }
@@ -167,30 +197,40 @@ function providerFailure(
 }
 
 async function accessToken(value: CalendarConfig, fetchImpl: FetchLike, now: Date): Promise<string> {
-  if (!value.serviceAccountEmail || !value.privateKey || !value.calendarIds.length) {
-    throw new CalendarIntegrationError('auth_error', 'Google Calendar service account is not configured.');
+  if (!value.calendarIds.length) {
+    throw new CalendarIntegrationError('auth_error', 'Google Calendar IDs are not configured.');
   }
+  const mode = authMode(value);
   logRuntimeConfig('oauth-token', value);
 
   const nowMs = now.getTime();
-  if (accessTokenCache && accessTokenCache.expiresAt - TOKEN_CACHE_SKEW_MS > nowMs) {
+  const cacheKey = tokenCacheKey(value, mode);
+  if (accessTokenCache && accessTokenCache.cacheKey === cacheKey && accessTokenCache.expiresAt - TOKEN_CACHE_SKEW_MS > nowMs) {
     return accessTokenCache.token;
   }
 
-  const assertion = createServiceAccountAssertion(value.serviceAccountEmail, value.privateKey, now);
+  const body = mode === 'oauth'
+    ? new URLSearchParams({
+        client_id: value.oauthClientId,
+        client_secret: value.oauthClientSecret,
+        refresh_token: value.oauthRefreshToken,
+        grant_type: 'refresh_token',
+      })
+    : new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        assertion: createServiceAccountAssertion(value.serviceAccountEmail, value.privateKey, now),
+      });
+
   let response: Response;
   try {
     response = await fetchImpl(TOKEN_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-        assertion,
-      }),
+      body,
       cache: 'no-store',
     });
   } catch {
-    throw new CalendarIntegrationError('network_error', 'Google service account token request could not be reached.');
+    throw new CalendarIntegrationError('network_error', 'Google Calendar token request could not be reached.');
   }
 
   const data = await responseJson(response);
@@ -204,12 +244,12 @@ async function accessToken(value: CalendarConfig, fetchImpl: FetchLike, now: Dat
   }
   const token = typeof data === 'object' && data && 'access_token' in data ? stringValue(data.access_token) : '';
   if (!token) {
-    throw new CalendarIntegrationError('malformed_response', 'Google service account response did not contain an access token.');
+    throw new CalendarIntegrationError('malformed_response', 'Google token response did not contain an access token.');
   }
   const expiresIn = typeof data === 'object' && data && 'expires_in' in data && typeof data.expires_in === 'number'
     ? data.expires_in
     : 3600;
-  accessTokenCache = { token, expiresAt: nowMs + Math.max(0, expiresIn) * 1000 };
+  accessTokenCache = { token, expiresAt: nowMs + Math.max(0, expiresIn) * 1000, cacheKey };
   return token;
 }
 
