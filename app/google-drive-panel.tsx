@@ -6,11 +6,7 @@ import {
   getRecentGoogleDriveFiles,
   GoogleDriveClientError,
 } from '../lib/google-drive-client';
-import {
-  googleDriveContentReadable,
-  type GoogleDriveFile,
-  type GoogleDriveFileContent,
-} from '../lib/google-drive';
+import type { GoogleDriveFile, GoogleDriveFileContent } from '../lib/google-drive';
 
 type DrivePanelStatus = 'loading' | 'ready' | 'empty' | 'unconfigured' | 'error';
 type ContentStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -61,7 +57,7 @@ export function GoogleDrivePanel() {
   }, [contentQuery, selectedContent]);
 
   async function loadContent(item: GoogleDriveFile) {
-    if (!googleDriveContentReadable(item)) return;
+    if (!contentReadable(item)) return;
     setContentStatus('loading');
     setContentErrorCode(null);
     setContentQuery('');
@@ -138,8 +134,19 @@ export function GoogleDrivePanel() {
   </section>;
 }
 
+function contentReadable(item: GoogleDriveFile): boolean {
+  return item.kind === 'document'
+    || item.kind === 'spreadsheet'
+    || item.kind === 'presentation'
+    || item.mimeType.startsWith('text/')
+    || item.mimeType === 'application/json'
+    || item.mimeType === 'application/xml'
+    || item.mimeType === 'application/javascript'
+    || item.mimeType === 'application/x-javascript';
+}
+
 function DriveRow({ item, onRead }: { item: GoogleDriveFile; onRead: (item: GoogleDriveFile) => void | Promise<void> }) {
-  const readable = googleDriveContentReadable(item);
+  const readable = contentReadable(item);
   return <div className="library-row google-drive-row">
     <span className="resource-badge">{kindLabel(item.kind)}</span>
     <div className="library-row-main">
