@@ -36,7 +36,7 @@ describe('inbox', () => {
     expect(updated).toMatchObject({
       processed: true,
       ai: {
-        category: 'Todo',
+        category: 'todo',
         title: '교수님께 결과 보내기',
         nextAction: '최신 결과 파일을 확인해 보낸다.',
         dueDate: null,
