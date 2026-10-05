@@ -265,7 +265,7 @@ class BridgeConfigurationTests(unittest.TestCase):
             / 'scripts'
             / 'Publish-Release.ps1'
         ).read_text(encoding='utf-8-sig')
-        for bridge_file in ('thunderbird_mail.py', 'mail_db.py', 'mail_cli.py', 'mail_jobs.py'):
+        for bridge_file in ('thunderbird_mail.py', 'mail_db.py', 'mail_cli.py', 'mail_jobs.py', 'research_qa.py'):
             with self.subTest(bridge_file=bridge_file):
                 self.assertIn(f'"{bridge_file}"', manager)
                 self.assertIn(f"'{bridge_file}'", publisher)
