@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { GoogleDrivePanel } from '@/app/google-drive-panel';
 import { LibraryPanel } from '@/app/library-panel';
 import { PortalAttention } from '@/app/home-attention';
 import { GmailMailPanel } from '@/app/gmail-mail-panel';
@@ -56,7 +57,7 @@ const pageMeta: Record<Page, [string, string]> = {
   inbox: ['AI 인박스', '떠오른 내용을 저장하고 검토 후 정리'],
   research: ['연구', '프로젝트별 질문 · 진행 단계 · 다음 작업 · 관련 자료'],
   results: ['분석 결과', '프로젝트별 계산 결과와 산출물'],
-  library: ['자료실', '주요 자료 · 대표 문헌 · 연구 Wiki'],
+  library: ['자료실', 'Google Drive · 주요 자료 · 대표 문헌 · 연구 Wiki'],
   slot: ['슬롯', '다음 연구 작업을 작은 보상 단위로 관리'],
   shortcuts: ['바로가기', '반복해서 여는 연구 파일 · 폴더 · 웹 주소'],
   mail: ['메일', '학교 업무 · 국제과를 폴더별로 확인'],
@@ -386,7 +387,7 @@ export default function Page() {
           onOpen={openLocal}
           onOpenFolder={openLocalFolder}
         /></section>}
-        {page === 'library' && <section className="page active"><LibraryPanel tree={tree} researchStatus={researchStatus} onOpen={openLocal} /></section>}
+        {page === 'library' && <section className="page active"><GoogleDrivePanel /><div className="section-gap"><LibraryPanel tree={tree} researchStatus={researchStatus} onOpen={openLocal} /></div></section>}
         {page === 'slot' && <section className="page active"><RewardSlotPanel tasks={activeProject?.nextTasks || researchStatus?.nextActions || []} projectTitle={activeProject ? activeProject.title : 'Wiki live'} onNotice={pop} /></section>}
         {page === 'shortcuts' && <section className="page active"><ShortcutsPanel
           shortcuts={shortcutItems}
