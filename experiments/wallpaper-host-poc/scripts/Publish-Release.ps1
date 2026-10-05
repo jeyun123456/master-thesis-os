@@ -21,6 +21,7 @@ $BridgeRuntimeFiles = @(
     'thunderbird_mail.py',
     'mail_db.py',
     'mail_cli.py',
+    'research_qa.py',
     'mail_jobs.py',
     'portal_db.py',
     'portal_client.py',

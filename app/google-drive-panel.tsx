@@ -8,6 +8,12 @@ import {
   GoogleDriveClientError,
   searchGoogleDriveResearch,
 } from '../lib/google-drive-client';
+import {
+  askResearchQuestion,
+  ResearchQAClientError,
+  type ResearchQAAnswer,
+  type ResearchQAMode,
+} from '../lib/research-qa-client';
 import type {
   GoogleDriveFile,
   GoogleDriveFileContent,
@@ -17,6 +23,7 @@ import type {
 type DrivePanelStatus = 'loading' | 'ready' | 'empty' | 'unconfigured' | 'error';
 type ContentStatus = 'idle' | 'loading' | 'ready' | 'error';
 type ResearchSearchStatus = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
+type ResearchQAStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 export function GoogleDrivePanel() {
   const [status, setStatus] = useState<DrivePanelStatus>('loading');
@@ -33,6 +40,10 @@ export function GoogleDrivePanel() {
   const [researchResults, setResearchResults] = useState<GoogleDriveSearchResult[]>([]);
   const [researchCandidates, setResearchCandidates] = useState(0);
   const [researchInspected, setResearchInspected] = useState(0);
+  const [researchQuestion, setResearchQuestion] = useState('');
+  const [researchQAStatus, setResearchQAStatus] = useState<ResearchQAStatus>('idle');
+  const [researchQAError, setResearchQAError] = useState<string | null>(null);
+  const [researchAnswer, setResearchAnswer] = useState<ResearchQAAnswer | null>(null);
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -84,6 +95,10 @@ export function GoogleDrivePanel() {
     try {
       const result = await searchGoogleDriveResearch(normalized, fetch, 10);
       setResearchResults(result.items);
+      setResearchQuestion((current) => current.trim() ? current : normalized);
+      setResearchAnswer(null);
+      setResearchQAStatus('idle');
+      setResearchQAError(null);
       setResearchCandidates(result.candidates);
       setResearchInspected(result.contentInspected);
       setResearchStatus(result.items.length ? 'ready' : 'empty');
@@ -93,6 +108,25 @@ export function GoogleDrivePanel() {
       setResearchInspected(0);
       setResearchStatus('error');
       setResearchErrorCode(error instanceof GoogleDriveClientError ? error.code : 'network_error');
+    }
+  }
+
+  async function runResearchQA(mode: ResearchQAMode) {
+    if (!researchResults.length) {
+      setResearchQAStatus('error');
+      setResearchQAError('먼저 Drive 연구자료 검색을 실행해줘.');
+      return;
+    }
+    setResearchQAStatus('loading');
+    setResearchQAError(null);
+    try {
+      const answer = await askResearchQuestion(researchQuestion, mode, researchResults);
+      setResearchAnswer(answer);
+      setResearchQAStatus('ready');
+    } catch (error) {
+      setResearchAnswer(null);
+      setResearchQAStatus('error');
+      setResearchQAError(error instanceof ResearchQAClientError ? error.message : '연구 Q&A에 실패했어.');
     }
   }
 
@@ -146,7 +180,37 @@ export function GoogleDrivePanel() {
           <span>{researchResults.length}개</span>
         </div>
         {researchResults.length
-          ? <div className="google-drive-search-list">{researchResults.map((result) => <DriveSearchResultRow result={result} key={result.file.id} onRead={loadContent} />)}</div>
+          ? <>
+              <div className="google-drive-search-list">{researchResults.map((result) => <DriveSearchResultRow result={result} key={result.file.id} onRead={loadContent} />)}</div>
+              <div className="google-drive-research-qa">
+                <div className="library-section-heading compact-heading">
+                  <div><h3>내 자료로 질문하기</h3><p>Luna가 기본이야. 복잡한 논증 비교나 비판만 Sol 정밀 분석을 쓰면 돼.</p></div>
+                </div>
+                <textarea
+                  className="google-drive-qa-input"
+                  value={researchQuestion}
+                  onChange={(event) => setResearchQuestion(event.target.value)}
+                  placeholder="예: 이 자료들에서 전환 문제에 대한 핵심 논점이 어떻게 다른지 비교해줘"
+                  rows={3}
+                />
+                <div className="google-drive-qa-actions">
+                  <button className="btn" disabled={researchQAStatus === 'loading'} onClick={() => void runResearchQA('luna')} type="button">
+                    {researchQAStatus === 'loading' ? '답변 생성 중…' : 'Luna 답변'}
+                  </button>
+                  <button className="mini" disabled={researchQAStatus === 'loading'} onClick={() => void runResearchQA('sol')} type="button">Sol 정밀 분석</button>
+                </div>
+                {researchQAStatus === 'error' && <div className="error microsoft-mail-error">{researchQAError || '연구 Q&A에 실패했어.'}</div>}
+                {researchQAStatus === 'ready' && researchAnswer && <div className="google-drive-qa-answer">
+                  <div className="google-drive-qa-answer-head">
+                    <strong>{researchAnswer.mode === 'sol' ? 'Sol 정밀 분석' : 'Luna 답변'}</strong>
+                    <span>{researchAnswer.model}</span>
+                  </div>
+                  {researchAnswer.insufficientEvidence && <div className="note">제공된 검색 근거만으로는 일부 판단에 근거가 부족해.</div>}
+                  <div className="google-drive-qa-answer-body">{researchAnswer.answer}</div>
+                  {researchAnswer.sourceIds.length > 0 && <div className="muted"><small>사용 근거: {researchAnswer.sourceIds.join(', ')}</small></div>}
+                </div>}
+              </div>
+            </>
           : <div className="library-empty">일치하는 Drive 연구자료가 없어.</div>}
       </div>}
     </div>}
