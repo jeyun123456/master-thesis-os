@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { LibraryPanel } from '@/app/library-panel';
 import { PortalAttention } from '@/app/home-attention';
+import { GmailMailPanel } from '@/app/gmail-mail-panel';
 import { MailActionCandidates } from '@/app/mail-action-candidates';
 import { MailPanel } from '@/app/mail-panel';
 import { PlannerPanel } from '@/app/planner-panel';
@@ -397,7 +398,7 @@ export default function Page() {
           onOpenFile={openLocal}
           onOpenFolder={openLocalFolder}
         /></section>}
-        {page === 'mail' && <section className="page active"><MailPanel /></section>}
+        {page === 'mail' && <section className="page active"><GmailMailPanel /><div className="section-gap"><MailPanel /></div></section>}
         {page === 'portal' && <section className="page active"><PortalNoticesPanel /></section>}
         {page === 'planner' && <section className="page active"><PlannerPanel projects={projects} /></section>}
         {page === 'inbox' && <section className="page active"><InboxPanel
