@@ -43,7 +43,29 @@ export type GoogleDriveFileContent = {
   truncated: boolean;
 };
 
+export type GoogleDriveSearchResult = {
+  file: GoogleDriveFile;
+  score: number;
+  matchedTerms: string[];
+  snippets: Array<{ lineNumber: number | null; text: string }>;
+  contentReadable: boolean;
+  contentMatched: boolean;
+  indexedMatch: boolean;
+};
+
+export type GoogleDriveSearchResponse = {
+  query: string;
+  terms: string[];
+  candidates: number;
+  contentInspected: number;
+  items: GoogleDriveSearchResult[];
+};
+
 const MAX_CONTENT_CHARS = 200_000;
+const MAX_SEARCH_TERMS = 5;
+const MAX_SEARCH_CANDIDATES = 20;
+const MAX_SEARCH_CONTENT_FILES = 10;
+const MAX_SEARCH_SNIPPETS = 3;
 
 type DriveOptions = {
   fetchImpl?: typeof fetch;
@@ -247,6 +269,28 @@ export function googleDriveContentReadable(file: GoogleDriveFile): boolean {
   return contentExport(file) !== null;
 }
 
+async function getGoogleDriveFileContentWithToken(
+  file: GoogleDriveFile,
+  token: string,
+  fetchImpl: typeof fetch,
+): Promise<GoogleDriveFileContent> {
+  const selected = contentExport(file);
+  if (!selected) {
+    throw new GoogleDriveIntegrationError('unsupported_content', 'This Drive file does not have a text-readable export.', 415);
+  }
+
+  const raw = await driveTextRequest(selected.path, token, fetchImpl);
+  const charCount = raw.length;
+  const truncated = charCount > MAX_CONTENT_CHARS;
+  return {
+    file,
+    format: selected.format,
+    content: truncated ? raw.slice(0, MAX_CONTENT_CHARS) : raw,
+    charCount,
+    truncated,
+  };
+}
+
 export async function getGoogleDriveFileContent(fileId: string, options: DriveOptions = {}): Promise<GoogleDriveFileContent> {
   const normalizedId = fileId.trim();
   if (!normalizedId || normalizedId.length > 256 || normalizedId.includes('/')) {
@@ -262,20 +306,167 @@ export async function getGoogleDriveFileContent(fileId: string, options: DriveOp
     fetchImpl,
   );
   const file = normalizeGoogleDriveFile(metadataRaw);
-  const selected = contentExport(file);
-  if (!selected) {
-    throw new GoogleDriveIntegrationError('unsupported_content', 'This Drive file does not have a text-readable export.', 415);
+  return getGoogleDriveFileContentWithToken(file, token, fetchImpl);
+}
+
+function escapeDriveQueryLiteral(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function normalizeSearchTerms(query: string): string[] {
+  const normalized = query.normalize('NFKC').trim();
+  if (normalized.length < 2 || normalized.length > 200) {
+    throw new GoogleDriveIntegrationError('provider_bad_request', 'Drive search query must be between 2 and 200 characters.', 400);
+  }
+  const seen = new Set<string>();
+  const terms: string[] = [];
+  for (const raw of normalized.split(/\s+/)) {
+    const term = raw.trim();
+    if (!term) continue;
+    const key = term.toLocaleLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    terms.push(term);
+    if (terms.length >= MAX_SEARCH_TERMS) break;
+  }
+  if (!terms.length) {
+    throw new GoogleDriveIntegrationError('provider_bad_request', 'Drive search query was empty.', 400);
+  }
+  return terms;
+}
+
+function driveSearchQuery(terms: string[]): string {
+  const clauses = terms.flatMap((term) => {
+    const escaped = escapeDriveQueryLiteral(term);
+    return [`name contains '${escaped}'`, `fullText contains '${escaped}'`];
+  });
+  return `trashed = false and mimeType != 'application/vnd.google-apps.folder' and (${clauses.join(' or ')})`;
+}
+
+function termMatches(value: string, terms: string[]): string[] {
+  const normalized = value.normalize('NFKC').toLocaleLowerCase();
+  return terms.filter((term) => normalized.includes(term.normalize('NFKC').toLocaleLowerCase()));
+}
+
+function contentSnippets(content: string, terms: string[]): {
+  matchedTerms: string[];
+  snippets: Array<{ lineNumber: number | null; text: string }>;
+} {
+  const matched = new Set<string>();
+  const snippets: Array<{ lineNumber: number | null; text: string }> = [];
+  const normalizedTerms = terms.map((term) => ({ raw: term, normalized: term.normalize('NFKC').toLocaleLowerCase() }));
+  const lines = content.split(/\r?\n/);
+
+  for (let index = 0; index < lines.length && snippets.length < MAX_SEARCH_SNIPPETS; index += 1) {
+    const line = lines[index];
+    const normalizedLine = line.normalize('NFKC').toLocaleLowerCase();
+    const lineTerms = normalizedTerms.filter(({ normalized }) => normalizedLine.includes(normalized));
+    if (!lineTerms.length) continue;
+    for (const term of lineTerms) matched.add(term.raw);
+    const compact = line.trim().replace(/\s+/g, ' ');
+    snippets.push({
+      lineNumber: index + 1,
+      text: compact.length > 320 ? `${compact.slice(0, 317)}…` : compact,
+    });
   }
 
-  const raw = await driveTextRequest(selected.path, token, fetchImpl);
-  const charCount = raw.length;
-  const truncated = charCount > MAX_CONTENT_CHARS;
+  if (!snippets.length && content) {
+    const normalizedContent = content.normalize('NFKC').toLocaleLowerCase();
+    let firstIndex = -1;
+    for (const { raw, normalized } of normalizedTerms) {
+      const index = normalizedContent.indexOf(normalized);
+      if (index >= 0) {
+        matched.add(raw);
+        if (firstIndex < 0 || index < firstIndex) firstIndex = index;
+      }
+    }
+    if (firstIndex >= 0) {
+      const start = Math.max(0, firstIndex - 120);
+      const end = Math.min(content.length, firstIndex + 220);
+      snippets.push({
+        lineNumber: null,
+        text: `${start > 0 ? '…' : ''}${content.slice(start, end).replace(/\s+/g, ' ').trim()}${end < content.length ? '…' : ''}`,
+      });
+    }
+  }
+
+  return { matchedTerms: [...matched], snippets };
+}
+
+function modifiedTimestamp(file: GoogleDriveFile): number {
+  const value = Date.parse(file.modifiedTime);
+  return Number.isNaN(value) ? 0 : value;
+}
+
+export async function searchGoogleDriveContent(
+  query: string,
+  limit = 10,
+  options: DriveOptions = {},
+): Promise<GoogleDriveSearchResponse> {
+  const terms = normalizeSearchTerms(query);
+  const safeLimit = Math.max(1, Math.min(20, Math.floor(limit) || 10));
+  const fetchImpl = options.fetchImpl || fetch;
+  const token = await accessToken(fetchImpl, options.now || new Date());
+
+  const params = new URLSearchParams({
+    pageSize: String(MAX_SEARCH_CANDIDATES),
+    orderBy: 'modifiedTime desc',
+    q: driveSearchQuery(terms),
+    fields: 'files(id,name,mimeType,modifiedTime,webViewLink,size)',
+    spaces: 'drive',
+  });
+  const raw = await driveRequest(`/files?${params.toString()}`, token, fetchImpl);
+  if (!isRecord(raw) || !Array.isArray(raw.files)) {
+    throw new GoogleDriveIntegrationError('malformed_response', 'Google Drive search response was malformed.');
+  }
+
+  const candidates = raw.files.map(normalizeGoogleDriveFile);
+  const prelim = candidates
+    .map((file) => {
+      const nameTerms = termMatches(file.name, terms);
+      return { file, nameTerms, nameScore: nameTerms.length * 8 };
+    })
+    .sort((left, right) => right.nameScore - left.nameScore || modifiedTimestamp(right.file) - modifiedTimestamp(left.file));
+
+  const readable = prelim.filter(({ file }) => googleDriveContentReadable(file)).slice(0, MAX_SEARCH_CONTENT_FILES);
+  const contentResults = await Promise.all(readable.map(async ({ file }) => {
+    try {
+      const content = await getGoogleDriveFileContentWithToken(file, token, fetchImpl);
+      return { fileId: file.id, ...contentSnippets(content.content, terms) };
+    } catch (error) {
+      if (error instanceof GoogleDriveIntegrationError && error.code === 'unsupported_content') {
+        return { fileId: file.id, matchedTerms: [] as string[], snippets: [] as Array<{ lineNumber: number | null; text: string }> };
+      }
+      console.warn('[drive] content search skipped', JSON.stringify({ fileId: file.id }));
+      return { fileId: file.id, matchedTerms: [] as string[], snippets: [] as Array<{ lineNumber: number | null; text: string }> };
+    }
+  }));
+  const contentById = new Map(contentResults.map((result) => [result.fileId, result]));
+
+  const items = prelim.map(({ file, nameTerms, nameScore }) => {
+    const content = contentById.get(file.id);
+    const matchedTerms = [...new Set([...nameTerms, ...(content?.matchedTerms || [])])];
+    const contentMatched = Boolean(content?.snippets.length);
+    const score = nameScore + matchedTerms.length * 2 + (content?.matchedTerms.length || 0) * 4 + (contentMatched ? 3 : 0) + 1;
+    return {
+      file,
+      score,
+      matchedTerms,
+      snippets: content?.snippets || [],
+      contentReadable: googleDriveContentReadable(file),
+      contentMatched,
+      indexedMatch: true,
+    } satisfies GoogleDriveSearchResult;
+  })
+    .sort((left, right) => right.score - left.score || modifiedTimestamp(right.file) - modifiedTimestamp(left.file))
+    .slice(0, safeLimit);
+
   return {
-    file,
-    format: selected.format,
-    content: truncated ? raw.slice(0, MAX_CONTENT_CHARS) : raw,
-    charCount,
-    truncated,
+    query: query.normalize('NFKC').trim(),
+    terms,
+    candidates: candidates.length,
+    contentInspected: readable.length,
+    items,
   };
 }
 
