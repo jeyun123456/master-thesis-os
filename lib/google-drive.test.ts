@@ -2,8 +2,10 @@ import '../app/inbox-workflow-test-safety';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearGoogleDriveTokenCacheForTests,
+  getGoogleDriveFileContent,
   getGoogleDriveFiles,
   googleDriveConfigured,
+  googleDriveContentReadable,
   normalizeGoogleDriveFile,
 } from './google-drive';
 
@@ -109,6 +111,89 @@ describe('Google Drive requests', () => {
 
     const driveCall = calls.find((call) => call.url.includes('/drive/v3/files?'));
     expect((driveCall?.init?.headers as Record<string, string>)?.Authorization).toBe('Bearer drive-access');
+  });
+
+
+  it('exports Google Docs as plain text content', async () => {
+    const calls: string[] = [];
+    const fetcher = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === TOKEN_ENDPOINT) {
+        return new Response(JSON.stringify({ access_token: 'drive-access', expires_in: 3600 }), { status: 200 });
+      }
+      if (url.includes('/drive/v3/files/doc-1?fields=')) {
+        return new Response(JSON.stringify({
+          id: 'doc-1',
+          name: '논문 메모',
+          mimeType: 'application/vnd.google-apps.document',
+          modifiedTime: '2026-10-05T08:00:00.000Z',
+          webViewLink: 'https://docs.google.com/document/d/doc-1/edit',
+        }), { status: 200 });
+      }
+      if (url.includes('/drive/v3/files/doc-1/export?') && url.includes('mimeType=text%2Fplain')) {
+        return new Response('첫 문단\n둘째 문단', { status: 200, headers: { 'Content-Type': 'text/plain' } });
+      }
+      throw new Error(`Unexpected Drive fake request: ${url}`);
+    }) as typeof fetch;
+
+    const result = await getGoogleDriveFileContent('doc-1', { fetchImpl: fetcher, now: new Date('2026-10-05T00:00:00Z') });
+    expect(result).toMatchObject({
+      format: 'text',
+      content: '첫 문단\n둘째 문단',
+      charCount: 10,
+      truncated: false,
+      file: { id: 'doc-1', kind: 'document' },
+    });
+    expect(calls.some((url) => url.includes('/export?'))).toBe(true);
+    expect(googleDriveContentReadable(result.file)).toBe(true);
+  });
+
+  it('downloads plain text files with alt=media', async () => {
+    const fetcher = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === TOKEN_ENDPOINT) {
+        return new Response(JSON.stringify({ access_token: 'drive-access', expires_in: 3600 }), { status: 200 });
+      }
+      if (url.includes('/drive/v3/files/txt-1?fields=')) {
+        return new Response(JSON.stringify({
+          id: 'txt-1',
+          name: 'notes.md',
+          mimeType: 'text/markdown',
+          modifiedTime: '2026-10-05T08:00:00.000Z',
+        }), { status: 200 });
+      }
+      if (url.endsWith('/drive/v3/files/txt-1?alt=media')) {
+        return new Response('# 제목\n내용', { status: 200, headers: { 'Content-Type': 'text/markdown' } });
+      }
+      throw new Error(`Unexpected Drive fake request: ${url}`);
+    }) as typeof fetch;
+
+    const result = await getGoogleDriveFileContent('txt-1', { fetchImpl: fetcher });
+    expect(result).toMatchObject({ format: 'text', content: '# 제목\n내용' });
+  });
+
+  it('rejects PDFs for text extraction while keeping them listable', async () => {
+    const fetcher = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === TOKEN_ENDPOINT) {
+        return new Response(JSON.stringify({ access_token: 'drive-access', expires_in: 3600 }), { status: 200 });
+      }
+      if (url.includes('/drive/v3/files/pdf-1?fields=')) {
+        return new Response(JSON.stringify({
+          id: 'pdf-1',
+          name: 'paper.pdf',
+          mimeType: 'application/pdf',
+          modifiedTime: '2026-10-05T08:00:00.000Z',
+        }), { status: 200 });
+      }
+      throw new Error(`Unexpected Drive fake request: ${url}`);
+    }) as typeof fetch;
+
+    await expect(getGoogleDriveFileContent('pdf-1', { fetchImpl: fetcher })).rejects.toMatchObject({
+      code: 'unsupported_content',
+      httpStatus: 415,
+    });
   });
 
   it('maps Drive permission failures', async () => {
