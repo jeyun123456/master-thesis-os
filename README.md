@@ -216,7 +216,7 @@ GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY  -> OAuth 검증 후 제거 가능
 
 OAuth live 검증이 끝나기 전까지 Service Account 변수를 남겨도 된다. OAuth가 완전하게 설정된 동안에는 OAuth가 우선되므로 fallback credential은 사용되지 않는다.
 
-기준 문서는 Google OAuth 2.0, OAuth refresh token, Calendar API, Gmail API, Drive API reference다. 자료실의 Google Drive 카드는 `drive.readonly` 범위에서 최근 수정 파일 metadata를 조회하고 원본 수정·삭제는 하지 않는다. 선택한 Google Docs·Slides는 plain text, Google Sheets는 첫 시트를 CSV, `text/*`·JSON/XML/JavaScript 파일은 원문 텍스트로 읽어 최대 200,000자까지 미리보기·내부 검색에 사용한다. PDF와 기타 binary 파일은 목록/원본 열기만 지원하며 텍스트 추출은 하지 않는다.
+기준 문서는 Google OAuth 2.0, OAuth refresh token, Calendar API, Gmail API, Drive API reference다. 자료실의 Google Drive 카드는 `drive.readonly` 범위에서 최근 수정 파일 metadata를 조회하고 원본 수정·삭제는 하지 않는다. 선택한 Google Docs·Slides는 plain text, Google Sheets는 첫 시트를 CSV, `text/*`·JSON/XML/JavaScript 파일은 원문 텍스트로 읽어 최대 200,000자까지 미리보기·내부 검색에 사용한다. 통합 연구자료 검색은 Drive API의 `fullText contains`/`name contains` 인덱스로 후보를 찾은 뒤 읽을 수 있는 상위 문서의 실제 본문에서 최대 3개 문맥 스니펫을 만든다. PDF와 기타 binary 파일은 Drive 인덱스 검색 결과에는 포함될 수 있지만 본문 텍스트 추출은 하지 않는다.
 
 ## Microsoft 365 학교 메일 Graph 연결(선택)
 
