@@ -1,4 +1,8 @@
-import type { GoogleDriveFile, GoogleDriveFileContent } from './google-drive';
+import type {
+  GoogleDriveFile,
+  GoogleDriveFileContent,
+  GoogleDriveSearchResponse,
+} from './google-drive';
 
 export type GoogleDriveClientState = 'ready' | 'empty' | 'unconfigured' | 'error';
 
@@ -78,5 +82,41 @@ export async function getGoogleDriveContent(fileId: string, fetchImpl: typeof fe
     content: value.content,
     charCount: typeof value.charCount === 'number' ? value.charCount : value.content.length,
     truncated: value.truncated === true,
+  };
+}
+
+
+export async function searchGoogleDriveResearch(
+  query: string,
+  fetchImpl: typeof fetch = fetch,
+  limit = 10,
+): Promise<GoogleDriveSearchResponse> {
+  let response: Response;
+  try {
+    const params = new URLSearchParams({
+      q: query.trim(),
+      limit: String(Math.max(1, Math.min(20, Math.floor(limit) || 10))),
+    });
+    response = await fetchImpl(`/api/google/drive/search?${params.toString()}`, {
+      cache: 'no-store',
+    });
+  } catch {
+    throw new GoogleDriveClientError('network_error', 'Google Drive 연구자료 검색에 연결하지 못했어.');
+  }
+
+  const value = await readJson(response);
+  if (!response.ok || value.state === 'error') {
+    throw new GoogleDriveClientError(
+      typeof value.errorCode === 'string' ? value.errorCode : 'network_error',
+      'Google Drive 연구자료를 검색하지 못했어.',
+    );
+  }
+
+  return {
+    query: typeof value.query === 'string' ? value.query : query.trim(),
+    terms: Array.isArray(value.terms) ? value.terms.filter((item): item is string => typeof item === 'string') : [],
+    candidates: typeof value.candidates === 'number' ? value.candidates : 0,
+    contentInspected: typeof value.contentInspected === 'number' ? value.contentInspected : 0,
+    items: Array.isArray(value.items) ? value.items as GoogleDriveSearchResponse['items'] : [],
   };
 }
