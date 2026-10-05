@@ -218,6 +218,19 @@ OAuth live 검증이 끝나기 전까지 Service Account 변수를 남겨도 된
 
 기준 문서는 Google OAuth 2.0, OAuth refresh token, Calendar API, Gmail API, Drive API reference다. 자료실의 Google Drive 카드는 `drive.readonly` 범위에서 최근 수정 파일 metadata를 조회하고 원본 수정·삭제는 하지 않는다. 선택한 Google Docs·Slides는 plain text, Google Sheets는 첫 시트를 CSV, `text/*`·JSON/XML/JavaScript 파일은 원문 텍스트로 읽어 최대 200,000자까지 미리보기·내부 검색에 사용한다. 통합 연구자료 검색은 Drive API의 `fullText contains`/`name contains` 인덱스로 후보를 찾은 뒤 읽을 수 있는 상위 문서의 실제 본문에서 최대 3개 문맥 스니펫을 만든다. PDF와 기타 binary 파일은 Drive 인덱스 검색 결과에는 포함될 수 있지만 본문 텍스트 추출은 하지 않는다.
 
+## Drive 연구 Q&A 모델 라우팅
+
+자료실의 Drive 통합 검색 결과는 Local Bridge의 Codex CLI로 넘겨 근거 기반 연구 Q&A에 사용할 수 있다. Google OAuth credential이나 Drive 원문 전체를 Local Bridge에 직접 전달하지 않고, 웹에서 검색된 최대 8개 자료의 제한된 문맥 스니펫만 전달한다.
+
+- **Luna 답변**: 기본 경로. `gpt-6-luna`를 사용한다. 일반적인 자료 찾기, 요약, 비교, 간단한 해석에 사용한다.
+- **Sol 정밀 분석**: 사용자가 명시적으로 선택할 때만 `gpt-6.1-sol`을 사용한다. 복잡한 논증 비교, 비판, 이론적 함의 검토용이다.
+- 두 모델 모두 Codex CLI의 기본 reasoning 설정을 사용한다.
+- 답변기는 제공된 Drive 근거만 사용하도록 프롬프트가 고정되어 있고, 근거가 부족하면 부족하다고 표시한다.
+- PDF처럼 Drive 인덱스에서만 검색된 자료는 `indexedOnly`로 전달되어 내용 근거로 추정하지 않는다.
+- 연구 Q&A 응답에는 사용 모델, 근거 source ID, 근거 부족 여부를 함께 반환한다.
+
+이 기능은 Local Bridge API v8의 `POST /research/answer`를 사용한다. 따라서 Companion/Bridge를 v8 코드로 업데이트하고 재시작해야 한다. Codex CLI에서 해당 모델에 대한 계정 접근 권한이 없으면 그 모드만 실패하며 다른 모델로 자동 강등하지 않는다.
+
 ## Microsoft 365 학교 메일 Graph 연결(선택)
 
 학교 메일은 IMAP이나 서버 저장소를 사용하지 않고, 브라우저의 `@azure/msal-browser`가 Microsoft Entra ID Authorization Code Flow + PKCE로 delegated token을 받은 뒤 Microsoft Graph를 직접 호출한다. MSAL cache는 현재 브라우저 탭/session에 한정된 `sessionStorage`를 사용하며 앱 서버·DB·Vercel 환경변수에 token을 저장하지 않는다. 현재 요청하는 Graph delegated permission은 `User.Read`와 `Mail.ReadBasic`뿐이다. 메일 본문·preview·첨부파일·메일 변경 API는 요청하지 않는다.
