@@ -24,6 +24,9 @@ const GOOGLE_API_ORIGIN = 'https://www.googleapis.com';
 const envKeys = [
   'GOOGLE_SERVICE_ACCOUNT_EMAIL',
   'GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY',
+  'GOOGLE_CLIENT_ID',
+  'GOOGLE_CLIENT_SECRET',
+  'GOOGLE_REFRESH_TOKEN',
   'GOOGLE_CALENDAR_IDS',
   'GOOGLE_CALENDAR_ID',
 ] as const;
@@ -35,6 +38,19 @@ const baseNow = new Date('2026-09-08T01:00:00Z');
 function configured(ids = 'primary') {
   process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL = 'service-account@example.iam.gserviceaccount.com';
   process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY = privateKeyPem.replace(/\n/g, '\\n');
+  delete process.env.GOOGLE_CLIENT_ID;
+  delete process.env.GOOGLE_CLIENT_SECRET;
+  delete process.env.GOOGLE_REFRESH_TOKEN;
+  process.env.GOOGLE_CALENDAR_IDS = ids;
+  delete process.env.GOOGLE_CALENDAR_ID;
+}
+
+function configuredOAuth(ids = 'primary') {
+  delete process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  delete process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
+  process.env.GOOGLE_CLIENT_ID = 'oauth-client-id';
+  process.env.GOOGLE_CLIENT_SECRET = 'oauth-client-secret';
+  process.env.GOOGLE_REFRESH_TOKEN = 'oauth-refresh-token';
   process.env.GOOGLE_CALENDAR_IDS = ids;
   delete process.env.GOOGLE_CALENDAR_ID;
 }
@@ -112,6 +128,11 @@ describe('calendar configuration and JWT helpers', () => {
     expect(parseCalendarIds(process.env.GOOGLE_CALENDAR_IDS, process.env.GOOGLE_CALENDAR_ID)).toEqual([]);
   });
 
+  it('accepts a complete OAuth refresh-token configuration without a service account', () => {
+    configuredOAuth();
+    expect(calendarConfigured()).toBe(true);
+  });
+
   it('normalizes escaped private-key newlines', () => {
     expect(normalizePrivateKey('first\\nsecond')).toBe('first\nsecond');
   });
@@ -159,7 +180,20 @@ describe('calendar normalization and ranges', () => {
   });
 });
 
-describe('service account Calendar requests', () => {
+describe('Google Calendar requests', () => {
+  it('uses OAuth refresh-token credentials when they are configured', async () => {
+    configuredOAuth();
+    const fetcher = mockGoogle({ primary: { body: { items: [] } } });
+    await getCalendarEvents(1, { fetchImpl: fetcher, now: baseNow, bypassCache: true });
+    const tokenCall = fetcher.calls.find((call) => call.url === TOKEN_ENDPOINT);
+    const body = new URLSearchParams(String(tokenCall?.init?.body || ''));
+    expect(body.get('grant_type')).toBe('refresh_token');
+    expect(body.get('client_id')).toBe('oauth-client-id');
+    expect(body.get('client_secret')).toBe('oauth-client-secret');
+    expect(body.get('refresh_token')).toBe('oauth-refresh-token');
+    expect(body.get('assertion')).toBeNull();
+  });
+
   it('rejects a date-only value for a timed candidate', async () => {
     await expect(createCalendarEvent({
       mailId: 'mail-date-only',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BRIDGE_OFFLINE_MESSAGE, BRIDGE_TIMEOUT_MESSAGE, bridgeApiVersionMismatchMessage, bridgeResponseMessage, checkLocalBridgeApiVersion } from './bridge-status';
+import { BRIDGE_OFFLINE_MESSAGE, BRIDGE_TIMEOUT_MESSAGE, SUPPORTED_LOCAL_BRIDGE_API_VERSION, bridgeApiVersionMismatchMessage, bridgeResponseMessage, checkLocalBridgeApiVersion } from './bridge-status';
 
 describe('bridge status messages', () => {
   it('distinguishes offline and response errors', () => {
@@ -12,9 +12,9 @@ describe('bridge status messages', () => {
   });
 
   it('accepts the supported bridge API version', async () => {
-    const fetchImpl = async () => new Response(JSON.stringify({ ok: true, apiVersion: 5 }), { status: 200 });
+    const fetchImpl = async () => new Response(JSON.stringify({ ok: true, apiVersion: SUPPORTED_LOCAL_BRIDGE_API_VERSION }), { status: 200 });
 
-    await expect(checkLocalBridgeApiVersion(fetchImpl)).resolves.toEqual({ state: 'compatible', apiVersion: 5 });
+    await expect(checkLocalBridgeApiVersion(fetchImpl)).resolves.toEqual({ state: 'compatible', apiVersion: SUPPORTED_LOCAL_BRIDGE_API_VERSION });
   });
 
   it('only reports outdated when the Bridge returns an older integer version', async () => {
