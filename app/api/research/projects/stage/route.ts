@@ -1,19 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { parseProjectManifest, researchPipelineStages, updateProjectStageMarkdown } from '@/lib/projects';
-import { VaultConflictError, readVaultText, vaultConfigured, vaultWritable, writeVaultText } from '@/lib/vault-repository';
+import { isValidStageValue, parseProjectManifest, updateProjectStageMarkdown } from '@/lib/projects';
+import { VaultConflictError, readVaultText, resolveVaultProjectPath, vaultConfigured, vaultWritable, writeVaultText } from '@/lib/vault-repository';
 
 export const runtime = 'nodejs';
-const allowedStages = new Set<string>(researchPipelineStages.map((stage) => stage.value));
 
 export async function PATCH(request: NextRequest) {
   if (!vaultConfigured() || !vaultWritable()) return NextResponse.json({ configured: false, error: 'Vault write access is not configured' }, { status: 503 });
   let body: unknown;
   try { body = await request.json(); } catch { return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 }); }
-  if (!isRecord(body) || typeof body.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(body.id) || typeof body.stage !== 'string' || !allowedStages.has(body.stage)) {
-    return NextResponse.json({ error: 'A valid project id and research stage are required' }, { status: 400 });
+  if (!isRecord(body) || typeof body.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(body.id) || !isValidStageValue(body.stage)) {
+    return NextResponse.json({ error: 'A valid project id and a single-line stage are required' }, { status: 400 });
   }
-  const projectPath = `projects/${body.id}/project.md`;
   try {
+    const projectPath = await resolveVaultProjectPath(body.id, { writable: true });
     const current = await readVaultText(projectPath);
     if (typeof body.sha === 'string' && body.sha && body.sha !== current.sha) return NextResponse.json({ error: 'project.md changed. Reload the project before saving again.' }, { status: 409 });
     const markdown = updateProjectStageMarkdown(current.text, body.stage);

@@ -1,4 +1,4 @@
-import type { ResearchProject } from './projects';
+import { projectFolder, type ResearchProject } from './projects';
 import type { RepositoryItem } from './repository';
 
 const RESULT_DIRECTORY_NAMES = new Set(['result', 'results', 'output', 'outputs', '결과', '산출물']);
@@ -15,7 +15,7 @@ export type ProjectResultInventory = {
 
 export function projectResultInventory(project: ResearchProject, tree: RepositoryItem[], limit = 240): ProjectResultInventory {
   const roots = new Set<string>();
-  const projectRoot = `projects/${project.id}/`;
+  const projectRoot = `${projectFolder(project)}/`;
 
   for (const value of project.resultPaths) {
     for (const candidate of projectPathCandidates(project, value, tree)) roots.add(rootPath(candidate, tree));
@@ -70,9 +70,9 @@ export function emptyProjectResultInventory(): ProjectResultInventory {
 function projectPathCandidates(project: ResearchProject, value: string, tree: RepositoryItem[]) {
   const normalized = normalizePath(value);
   if (!normalized) return [];
-  if (normalized.startsWith('projects/')) return [normalized];
+  if (normalized.startsWith('projects/') || normalized.startsWith('02_Projects/')) return [normalized];
 
-  const candidates = [`projects/${project.id}/${normalized}`, normalized];
+  const candidates = [`${projectFolder(project)}/${normalized}`, normalized];
   return candidates.filter((candidate, index) => index === 0 || hasBlobUnder(tree, candidate));
 }
 

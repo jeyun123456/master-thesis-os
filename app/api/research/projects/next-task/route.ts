@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { appendProjectTaskMarkdown, parseProjectManifest } from '@/lib/projects';
-import { VaultConflictError, readVaultText, vaultConfigured, vaultWritable, writeVaultText } from '@/lib/vault-repository';
+import { VaultConflictError, readVaultText, resolveVaultProjectPath, vaultConfigured, vaultWritable, writeVaultText } from '@/lib/vault-repository';
 
 export const runtime = 'nodejs';
 
@@ -11,8 +11,8 @@ export async function PATCH(request: NextRequest) {
   if (!isRecord(body) || typeof body.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(body.id) || typeof body.title !== 'string' || !body.title.trim() || body.title.length > 1200) {
     return NextResponse.json({ error: 'A valid project id and task title are required' }, { status: 400 });
   }
-  const path = `projects/${body.id}/project.md`;
   try {
+    const path = await resolveVaultProjectPath(body.id, { writable: true });
     const current = await readVaultText(path);
     if (typeof body.sha === 'string' && body.sha && body.sha !== current.sha) return conflictResponse();
     const result = appendProjectTaskMarkdown(current.text, body.title);

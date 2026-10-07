@@ -12,15 +12,17 @@ export type RepositoryCategory =
   | 'research'
   | 'other';
 
-const WIKI_ROOTS = ['wiki/'];
-const LITERATURE_ROOTS = ['연구/문헌/', '연구/선행연구/', 'wiki/literature/'];
+const WIKI_ROOTS = ['02_Projects/', '03_Knowledge/', 'wiki/'];
+const LITERATURE_ROOTS = ['03_Knowledge/sources/literature/', '연구/문헌/', '연구/선행연구/', 'wiki/literature/'];
 const RESULTS_ROOTS = [
+  '02_Projects/thesis/코드/결과/주요결과/',
+  '02_Projects/thesis/results/',
   'projects/thesis/코드/결과/주요결과/',
   'calc/data/results/',
   'wiki/findings/',
 ];
 const PROJECT_RESULT_SEGMENTS = new Set(['result', 'results', 'output', 'outputs', '결과', '산출물']);
-const RESEARCH_ROOTS = ['calc/', '연구/', 'wiki/'];
+const RESEARCH_ROOTS = ['01_Areas/Research/', '02_Projects/', '03_Knowledge/', '04_Data/', 'calc/', '연구/', 'wiki/'];
 
 function normalized(path: string) {
   return path.replace(/\\/g, '/').replace(/^\/+/, '').toLocaleLowerCase();
@@ -41,7 +43,9 @@ export function classifyRepositoryPath(path: string): RepositoryCategory {
 
 function isProjectResultPath(path: string) {
   const segments = path.split('/');
-  return segments[0] === 'projects' && segments.length > 2 && segments.slice(2).some((segment) => PROJECT_RESULT_SEGMENTS.has(segment));
+  return ['projects', '02_projects'].includes(segments[0])
+    && segments.length > 2
+    && segments.slice(2).some((segment) => PROJECT_RESULT_SEGMENTS.has(segment));
 }
 
 export function classifyRepositoryItems(items: RepositoryItem[]) {

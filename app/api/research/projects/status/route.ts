@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { projectStatusValues, parseProjectManifest, updateProjectStatusMarkdown } from '@/lib/projects';
-import { VaultConflictError, readVaultText, vaultConfigured, vaultWritable, writeVaultText } from '@/lib/vault-repository';
+import { normalizeProjectStatus, projectStatusValues, parseProjectManifest, updateProjectStatusMarkdown } from '@/lib/projects';
+import { VaultConflictError, readVaultText, resolveVaultProjectPath, vaultConfigured, vaultWritable, writeVaultText } from '@/lib/vault-repository';
 
 export const runtime = 'nodejs';
 
@@ -22,13 +22,13 @@ export async function PATCH(request: NextRequest) {
   if (typeof body.status !== 'string' || !allowedStatuses.has(body.status)) {
     return NextResponse.json({ error: 'Unsupported project status' }, { status: 400 });
   }
-  const projectPath = `projects/${body.id}/project.md`;
   const requestedSha = typeof body.sha === 'string' && body.sha ? body.sha : undefined;
 
   try {
+    const projectPath = await resolveVaultProjectPath(body.id, { writable: true });
     const current = await readVaultText(projectPath);
     if (requestedSha && requestedSha !== current.sha) return conflictResponse();
-    const markdown = updateProjectStatusMarkdown(current.text, body.status);
+    const markdown = updateProjectStatusMarkdown(current.text, normalizeProjectStatus(body.status));
     const saved = await writeVaultText(projectPath, markdown, current.sha, `chore(research): update ${body.id} project status`);
     return NextResponse.json({ configured: true, source: saved.source, project: { ...parseProjectManifest(markdown, projectPath), sourceSha: saved.sha }, sha: saved.sha });
   } catch (error) {

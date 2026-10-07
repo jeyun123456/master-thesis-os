@@ -45,7 +45,7 @@ export type DashboardBundle = {
   error?: string;
 };
 
-export const defaultResultsPath = 'projects/thesis/코드/결과/주요결과/dashboard';
+export const defaultResultsPath = '02_Projects/thesis/코드/결과/주요결과/dashboard';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -83,7 +83,7 @@ export async function getDashboardBundle(options: { resultsPath?: string; localR
   try {
     configuredPath = (options.resultsPath || process.env.GITHUB_RESULTS_PATH || defaultResultsPath).replace(/\/$/, '');
     if (!isSafeRepositoryPath(configuredPath)) throw new Error('Invalid results path');
-    const source = (options.preferGithub ?? githubConfigured()) ? 'github' : 'local';
+    const source = (options.preferGithub ?? (githubConfigured() && !process.env.LOCAL_REPOSITORY_ROOT?.trim())) ? 'github' : 'local';
     const documents = source === 'github' ? await loadGithubDocuments(configuredPath) : await loadLocalDocuments(configuredPath, options.localRepositoryRoot);
     validateDashboardDocuments(documents);
     return { source, resultPath: configuredPath, necessaryLabour: documents[0], decomposition: documents[1], validation: documents[2] };

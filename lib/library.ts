@@ -47,16 +47,19 @@ export function parsePaperIndex(markdown: string): LibraryPaper[] {
 
 export function classifyWikiPath(path: string): WikiCategory {
   const value = path.replace(/\\/g, '/').toLocaleLowerCase();
-  if (value === 'wiki/current_status.md' || value === 'wiki/readme.md') return 'current';
-  if (value.startsWith('wiki/concepts/')) return 'concepts';
-  if (value.startsWith('wiki/methodology/')) return 'methodology';
-  if (value.startsWith('wiki/decisions/')) return 'decisions';
-  if (value.startsWith('wiki/findings/')) return 'findings';
-  if (value.startsWith('wiki/data/')) return 'data';
+  if (value === '02_projects/thesis/project.md' || value === '01_areas/research/readme.md' || value === 'wiki/current_status.md' || value === 'wiki/readme.md') return 'current';
+  if (value.startsWith('03_knowledge/concepts/') || value.startsWith('wiki/concepts/')) return 'concepts';
+  if (value.startsWith('02_projects/thesis/methodology/') || value.startsWith('wiki/methodology/')) return 'methodology';
+  if (value.startsWith('02_projects/thesis/decisions/') || value.startsWith('wiki/decisions/')) return 'decisions';
+  if (value.startsWith('02_projects/thesis/findings/') || value.startsWith('wiki/findings/')) return 'findings';
+  if (value.startsWith('04_data/') || value.startsWith('wiki/data/')) return 'data';
   return 'other';
 }
 
 const wikiTitleOverrides: Record<string, string> = {
+  '02_Projects/thesis/project.md': '현재 연구 상태',
+  '01_Areas/Research/README.md': 'Research Area',
+  '02_Projects/thesis/findings/benchmark_results.md': '벤치마크 결과',
   'wiki/current_status.md': '현재 연구 상태',
   'wiki/README.md': '연구 Wiki 안내',
   'wiki/findings/benchmark_results.md': '벤치마크 결과',

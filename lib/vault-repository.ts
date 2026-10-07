@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getFile, getTextFileWithSha, getTree, githubConfigured, githubWritable, putTextFile, type GitHubApiError } from './github';
-import { projectManifestPaths } from './projects';
+import { parseProjectManifest, projectManifestPaths } from './projects';
 import { isSafeRepositoryPath, type RepositoryItem } from './repository';
 
 export type VaultSource = 'github' | 'local';
@@ -34,18 +34,26 @@ export class VaultConflictError extends Error {
   }
 }
 
+export function vaultSource(): VaultSource | null {
+  if (localRepositoryRoot()) return 'local';
+  if (githubConfigured()) return 'github';
+  return null;
+}
+
 export function vaultConfigured() {
-  return githubConfigured() || Boolean(process.env.LOCAL_REPOSITORY_ROOT?.trim());
+  return vaultSource() !== null;
 }
 
 export function vaultWritable() {
-  if (githubConfigured()) return process.env.GITHUB_WRITE_ENABLED?.trim().toLowerCase() === 'true' && githubWritable();
-  return Boolean(process.env.LOCAL_REPOSITORY_ROOT?.trim());
+  const source = vaultSource();
+  if (source === 'local') return true;
+  if (source === 'github') return process.env.GITHUB_WRITE_ENABLED?.trim().toLowerCase() === 'true' && githubWritable();
+  return false;
 }
 
 export async function readVaultText(repositoryPath: string): Promise<VaultTextFile> {
   validatePath(repositoryPath);
-  if (githubConfigured()) {
+  if (vaultSource() === 'github') {
     try {
       const file = await getTextFileWithSha(repositoryPath);
       return { path: repositoryPath, text: file.decoded, sha: file.sha, source: 'github' };
@@ -78,7 +86,7 @@ export async function readVaultTextIfPresent(repositoryPath: string): Promise<Va
 
 export async function readVaultBytes(repositoryPath: string): Promise<VaultBinaryFile> {
   validatePath(repositoryPath);
-  if (githubConfigured()) {
+  if (vaultSource() === 'github') {
     try {
       const file = await getFile(repositoryPath, { noStore: true });
       if (Array.isArray(file) || file.encoding !== 'base64' || typeof file.content !== 'string') {
@@ -104,7 +112,7 @@ export async function readVaultBytes(repositoryPath: string): Promise<VaultBinar
 
 export async function writeVaultText(repositoryPath: string, text: string, expectedSha: string | undefined, message: string) {
   validatePath(repositoryPath);
-  if (githubConfigured()) {
+  if (vaultSource() === 'github') {
     if (!vaultWritable()) throw new Error('Vault GitHub write access is not enabled');
     try {
       const file = await putTextFile(repositoryPath, text, message, expectedSha);
@@ -142,33 +150,36 @@ export async function writeVaultText(repositoryPath: string, text: string, expec
 }
 
 export async function vaultProjectManifestPaths(): Promise<string[]> {
-  if (githubConfigured()) return projectManifestPaths(await getTree());
+  if (vaultSource() === 'github') return projectManifestPaths(await getTree());
   const root = localRepositoryRoot();
   if (!root) return [];
-  const projectsRoot = path.join(root, 'projects');
-  let entries;
-  try {
-    entries = await readdir(projectsRoot, { withFileTypes: true });
-  } catch (error) {
-    if (isFileNotFound(error)) return [];
-    throw error;
-  }
-  const paths: string[] = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory() || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(entry.name)) continue;
-    const manifestPath = path.join(projectsRoot, entry.name, 'project.md');
+
+  const paths = new Set<string>();
+  for (const directoryName of ['02_Projects', 'projects']) {
+    const projectsRoot = path.join(root, directoryName);
+    let entries;
     try {
-      await stat(manifestPath);
-      paths.push(`projects/${entry.name}/project.md`);
+      entries = await readdir(projectsRoot, { withFileTypes: true });
     } catch (error) {
-      if (!isFileNotFound(error)) throw error;
+      if (isFileNotFound(error)) continue;
+      throw error;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(entry.name)) continue;
+      const manifestPath = path.join(projectsRoot, entry.name, 'project.md');
+      try {
+        await stat(manifestPath);
+        paths.add(`${directoryName}/${entry.name}/project.md`);
+      } catch (error) {
+        if (!isFileNotFound(error)) throw error;
+      }
     }
   }
-  return paths.sort();
+  return [...paths].sort();
 }
 
 export async function vaultRepositoryTree(): Promise<RepositoryItem[]> {
-  if (githubConfigured()) return getTree();
+  if (vaultSource() === 'github') return getTree();
   const root = localRepositoryRoot();
   if (!root) return [];
 
@@ -244,4 +255,23 @@ function isGithubConflict(error: unknown) {
 
 function isGithubStatus(error: unknown, status: number): error is GitHubApiError {
   return typeof error === 'object' && error !== null && 'status' in error && error.status === status;
+}
+
+/** Resolve a project id (frontmatter id or folder name) to its project.md path in the active vault layout. */
+export async function resolveVaultProjectPath(id: string, options: { writable?: boolean } = {}): Promise<string> {
+  const allPaths = await vaultProjectManifestPaths();
+  // Legacy projects/<folder> is readable but never a write target.
+  const paths = options.writable ? allPaths.filter((manifestPath) => manifestPath.startsWith('02_Projects/')) : allPaths;
+  const bare = id.replace(/^project-/, '');
+  const folderOf = (manifestPath: string) => manifestPath.split('/').slice(-2, -1)[0];
+  for (const manifestPath of paths) {
+    if (folderOf(manifestPath) !== id && folderOf(manifestPath) !== bare) continue;
+    return manifestPath;
+  }
+  for (const manifestPath of paths) {
+    try {
+      if (parseProjectManifest((await readVaultText(manifestPath)).text, manifestPath).id === id) return manifestPath;
+    } catch { /* skip unreadable manifest */ }
+  }
+  throw new Error(`Vault file not found: project ${id}`);
 }

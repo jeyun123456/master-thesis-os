@@ -59,7 +59,7 @@ afterEach(() => {
 describe('Companion diagnostics route', () => {
   it('renders the shell as Loaded while Bridge status starts at Checking', async () => {
     vi.stubEnv('NEXT_PUBLIC_LOCAL_BRIDGE_URL', 'http://127.0.0.1:38471');
-    installFailClosedFetch(async () => new Response(JSON.stringify({ ok: true, apiVersion: 7 }), { status: 200 }));
+    installFailClosedFetch(async () => new Response(JSON.stringify({ ok: true, apiVersion: 8 }), { status: 200 }));
 
     const page = await mountPageWithHookHarness();
 
@@ -69,9 +69,9 @@ describe('Companion diagnostics route', () => {
     await page.stateUpdated;
   });
 
-  it('shows Connected and API v7 after the single allowed health request', async () => {
+  it('shows Connected and API v8 after the single allowed health request', async () => {
     vi.stubEnv('NEXT_PUBLIC_LOCAL_BRIDGE_URL', 'http://127.0.0.1:38471');
-    const guard = installFailClosedFetch(async () => new Response(JSON.stringify({ ok: true, apiVersion: 7 }), { status: 200 }));
+    const guard = installFailClosedFetch(async () => new Response(JSON.stringify({ ok: true, apiVersion: 8 }), { status: 200 }));
 
     const page = await mountPageWithHookHarness();
     await page.stateUpdated;
@@ -79,7 +79,7 @@ describe('Companion diagnostics route', () => {
 
     expect(markup).toContain('Web UI');
     expect(markup).toContain('Connected');
-    expect(markup).toContain('API v7');
+    expect(markup).toContain('API v8');
     expect(guard.requests).toEqual([healthUrl]);
     expect(guard.violations).toEqual([]);
   });
@@ -101,22 +101,22 @@ describe('Companion diagnostics route', () => {
 
   it('shows an API mismatch and version when Bridge is older than required', async () => {
     vi.stubEnv('NEXT_PUBLIC_LOCAL_BRIDGE_URL', 'http://127.0.0.1:38471');
-    const guard = installFailClosedFetch(async () => new Response(JSON.stringify({ ok: true, apiVersion: 6 }), { status: 200 }));
+    const guard = installFailClosedFetch(async () => new Response(JSON.stringify({ ok: true, apiVersion: 7 }), { status: 200 }));
 
     const page = await mountPageWithHookHarness();
     await page.stateUpdated;
     const markup = page.renderUpdated();
 
     expect(markup).toContain('Version mismatch');
-    expect(markup).toContain('API v6');
-    expect(markup).toContain('required v7+');
+    expect(markup).toContain('API v7');
+    expect(markup).toContain('required v8+');
     expect(guard.requests).toEqual([healthUrl]);
     expect(guard.violations).toEqual([]);
   });
 
   it('does not call a configured non-loopback Bridge URL', async () => {
     vi.stubEnv('NEXT_PUBLIC_LOCAL_BRIDGE_URL', 'https://bridge.example/api');
-    const guard = installFailClosedFetch(async () => new Response(JSON.stringify({ ok: true, apiVersion: 7 }), { status: 200 }));
+    const guard = installFailClosedFetch(async () => new Response(JSON.stringify({ ok: true, apiVersion: 8 }), { status: 200 }));
 
     const page = await mountPageWithHookHarness();
     await page.stateUpdated;
@@ -128,7 +128,7 @@ describe('Companion diagnostics route', () => {
 
   it('fails closed if any request other than local Bridge health is attempted', async () => {
     vi.stubEnv('NEXT_PUBLIC_LOCAL_BRIDGE_URL', 'http://127.0.0.1:38471');
-    const guard = installFailClosedFetch(async () => new Response(JSON.stringify({ ok: true, apiVersion: 7 }), { status: 200 }));
+    const guard = installFailClosedFetch(async () => new Response(JSON.stringify({ ok: true, apiVersion: 8 }), { status: 200 }));
     const page = await mountPageWithHookHarness();
     await page.stateUpdated;
 

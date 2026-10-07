@@ -16,12 +16,20 @@ export type ResearchStatus = {
   importantFiles: ResearchLink[];
 };
 
-const DEFAULT_SOURCE_PATH = 'wiki/current_status.md';
+const DEFAULT_SOURCE_PATH = '02_Projects/thesis/project.md';
 
 function section(markdown: string, title: string) {
   const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const match = markdown.match(new RegExp(`(?:^|\\n)##\\s+${escaped}\\s*\\n([\\s\\S]*?)(?=\\n##\\s+|$)`));
   return match?.[1]?.trim() || '';
+}
+
+function firstSection(markdown: string, titles: string[]) {
+  for (const title of titles) {
+    const value = section(markdown, title);
+    if (value) return value;
+  }
+  return '';
 }
 
 function cleanInline(value: string) {
@@ -39,10 +47,10 @@ function firstParagraph(value: string) {
   return cleanInline(value.split(/\n\s*\n/).find(Boolean) || '');
 }
 
-function numberedItems(value: string) {
+function listItems(value: string) {
   return value
     .split('\n')
-    .map((line) => line.match(/^\s*\d+\.\s+(.+)$/)?.[1])
+    .map((line) => line.match(/^\s*(?:\d+\.|[-*])\s+(.+)$/)?.[1])
     .filter((item): item is string => Boolean(item))
     .map(cleanInline);
 }
@@ -73,17 +81,19 @@ function links(markdown: string, sourcePath: string, predicate: (path: string) =
 }
 
 export function parseResearchStatus(markdown: string, sourcePath = DEFAULT_SOURCE_PATH): ResearchStatus {
-  const researchQuestion = firstParagraph(section(markdown, '연구 주제와 문제의식'));
-  const currentInterpretation = firstParagraph(section(markdown, '최근 결과와 현재 해석'));
-  const unresolved = numberedItems(section(markdown, '미해결 문제'));
-  const nextActions = numberedItems(section(markdown, '바로 다음 작업'));
+  const researchQuestionSection = firstSection(markdown, ['연구 질문', '연구 주제와 문제의식']);
+  const researchQuestionItems = listItems(researchQuestionSection);
+  const researchQuestion = researchQuestionItems[0] || firstParagraph(researchQuestionSection);
+  const currentInterpretation = firstParagraph(firstSection(markdown, ['현재 해석 기준', '최근 결과와 현재 해석', '현재 결과의 요약']));
+  const unresolved = listItems(firstSection(markdown, ['막힌 부분', '미해결 문제']));
+  const nextActions = listItems(firstSection(markdown, ['다음 작업', '바로 다음 작업']));
   const auditedAt = markdown.match(/최종 감사:\s*(\d{4}-\d{2}-\d{2})/)?.[1];
   const scope = markdown.match(/범위:\s*([^\n.]+)/)?.[1]?.trim();
   const decisions = links(markdown, sourcePath, (path) => path.toLocaleLowerCase().includes('/decisions/'));
   const importantFiles = links(
     markdown,
     sourcePath,
-    (path) => /calc\/data\/results\//i.test(path) || /^projects\/[^/]+\/(?:코드\/)?결과\//.test(path),
+    (path) => /calc\/data\/results\//i.test(path) || /^(?:projects|02_Projects)\/[^/]+\/(?:코드\/)?결과\//.test(path),
   );
 
   let currentStage = '연구 진행';

@@ -309,7 +309,7 @@ class WorkspaceStoreTests(WorkspaceTestSafetyMixin, unittest.TestCase):
         self.store = WorkspaceFixture(self, self.root)
 
     def write_manifest(self, project_id, content):
-        project_root = self.root / 'projects' / project_id
+        project_root = self.root / '02_Projects' / project_id
         project_root.mkdir(parents=True, exist_ok=True)
         path = project_root / 'project.md'
         path.write_bytes(content.encode('utf-8'))
@@ -320,6 +320,75 @@ class WorkspaceStoreTests(WorkspaceTestSafetyMixin, unittest.TestCase):
 
     def assert_no_temp_files(self, directory, pattern):
         self.assertEqual(list(directory.glob(pattern)), [])
+
+    def update(self, project_id, operation, value, path):
+        return self.store.update_project_metadata({
+            'projectId': project_id, 'operation': operation, 'value': value,
+            'expectedSha': self.manifest_revision(path),
+        })
+
+    def test_project_resolves_by_frontmatter_id_or_folder_and_missing_is_not_found(self):
+        path = self.write_manifest('thesis', '---\nid: project-thesis\nstatus: 대기\n---\n\n# T\n')
+        by_folder = self.store.project_workspace('thesis')
+        by_id = self.store.project_workspace('project-thesis')
+        self.assertEqual(by_folder['rootPath'], '02_Projects/thesis')
+        self.assertEqual(by_id['rootPath'], '02_Projects/thesis')
+        self.assertEqual(by_id['manifestSha'], self.manifest_revision(path))
+        # id that differs from the folder name is found through the frontmatter id
+        other = self.write_manifest('folder-x', '---\nid: project-custom-id\n---\n\n# X\n')
+        self.assertEqual(self.store.project_workspace('project-custom-id')['rootPath'], '02_Projects/folder-x')
+        with self.assertRaises(FileNotFoundError):
+            self.store.project_workspace('project-does-not-exist')
+        with self.assertRaises(FileNotFoundError):
+            self.update('does-not-exist', 'status', '완료', other)
+
+    def test_legacy_projects_folder_is_read_only(self):
+        legacy = self.root / 'projects' / 'old'
+        legacy.mkdir(parents=True)
+        manifest = legacy / 'project.md'
+        manifest.write_bytes('---\nid: old\nstatus: active\n---\n\n# Old\n'.encode('utf-8'))
+        before = manifest.read_bytes()
+        self.assertEqual(self.store.project_workspace('old')['rootPath'], 'projects/old')
+        with self.assertRaises(FileNotFoundError):
+            self.update('old', 'status', '완료', manifest)
+        with self.assertRaises(FileNotFoundError):
+            self.update('old', 'stage', '분석', manifest)
+        self.assertEqual(manifest.read_bytes(), before)
+
+    def test_status_writes_canonical_korean_and_normalizes_legacy_english(self):
+        path = self.write_manifest('s', '---\nid: s\nstatus: active\n---\n\n# S\n')
+        for given, stored in (('active', '진행중'), ('writing', '진행중'), ('paused', '대기'), ('waiting', '대기'),
+                              ('blocked', '막힘'), ('complete', '완료'), ('취소', '취소'), ('보관', '보관')):
+            result = self.update('s', 'status', given, path)
+            self.assertIn(f'status: {stored}\n', result['manifestText'])
+        for bad in ('done', '', 3, None, '진행 중'):
+            with self.assertRaises(ValueError):
+                self.update('s', 'status', bad, path)
+
+    def test_stage_is_a_trimmed_single_line_string_up_to_64_chars(self):
+        path = self.write_manifest('g', '---\nid: g\nstage: 설계\n---\n\n# G\n')
+        self.assertIn('stage: 구현\n', self.update('g', 'stage', '  구현  ', path)['manifestText'])
+        self.assertIn('stage: custom stage\n', self.update('g', 'stage', 'custom stage', path)['manifestText'])
+        self.assertIn('stage: ' + 'x' * 64 + '\n', self.update('g', 'stage', 'x' * 64, path)['manifestText'])
+        before = path.read_bytes()
+        for bad in ('', '   ', 'a\nb', 'a\rb', 'x' * 65, 7, None):
+            with self.assertRaises(ValueError):
+                self.update('g', 'stage', bad, path)
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_bom_manifest_is_read_and_written_without_losing_the_bom(self):
+        bom = b'\xef\xbb\xbf'
+        folder = self.root / '02_Projects' / 'bom'
+        folder.mkdir(parents=True)
+        manifest = folder / 'project.md'
+        manifest.write_bytes(bom + '---\r\nid: project-bom\r\nstatus: 대기\r\n---\r\n# B\r\n'.encode('utf-8'))
+        workspace = self.store.project_workspace('project-bom')
+        self.assertTrue(workspace['manifestText'].startswith('---'))
+        result = self.update('project-bom', 'status', '진행중', manifest)
+        saved = manifest.read_bytes()
+        self.assertTrue(saved.startswith(bom))
+        self.assertEqual(saved[len(bom):], '---\r\nid: project-bom\r\nstatus: 진행중\r\n---\r\n# B\r\n'.encode('utf-8'))
+        self.assertTrue(result['manifestText'].startswith('---'))
 
     def test_inbox_raw_authority_newest_ai_cleanup_and_tombstone(self):
         original = _raw_entry(raw_text='보낼 자료는 2026-11-03까지 정리')
@@ -706,7 +775,7 @@ def _compile_actual_workspace_handler():
     namespace = {
         'json': json,
         'WORKSPACE_STORE': None,
-        'BRIDGE_API_VERSION': 7,
+        'BRIDGE_API_VERSION': 8,
         'MAX_BODY_BYTES': 16 * 1024,
         'MAX_INBOX_BODY_BYTES': 4 * 1024 * 1024,
         'MAX_PLANNER_BODY_BYTES': 512 * 1024,
@@ -779,7 +848,7 @@ class WorkspaceHandlerCharacterizationTests(WorkspaceTestSafetyMixin, unittest.T
 
         status, _ = self.request('POST', '/inbox', {'entries': [_ai_entry('route-entry')]})
         self.assertEqual(status, 200)
-        project_root = self.root / 'projects' / 'route-project'
+        project_root = self.root / '02_Projects' / 'route-project'
         project_root.mkdir(parents=True)
         (project_root / 'project.md').write_text(
             '---\nid: route-project\n---\n', encoding='utf-8'

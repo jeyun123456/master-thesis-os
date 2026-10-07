@@ -42,6 +42,31 @@ describe('local vault repository', () => {
     await expect(readVaultBytes('projects/alpha/results/matrix.xlsx')).resolves.toMatchObject({ source: 'local', bytes: Uint8Array.from([0, 1, 255]) });
   });
 
+  it('resolves projects by frontmatter id or folder and never writes to the legacy projects/ layout', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'master-thesis-os-vault-'));
+    temporaryRoots.push(root);
+    vi.resetModules();
+    vi.stubEnv('GITHUB_OWNER', 'invalid/owner');
+    vi.stubEnv('GITHUB_REPO', 'invalid/repo/extra');
+    vi.stubEnv('GITHUB_REPOSITORY', 'invalid/repository/extra');
+    vi.stubEnv('LOCAL_REPOSITORY_ROOT', root);
+    const { resolveVaultProjectPath } = await import('./vault-repository');
+
+    await mkdir(path.join(root, '02_Projects', 'thesis'), { recursive: true });
+    await writeFile(path.join(root, '02_Projects', 'thesis', 'project.md'), '﻿---\nid: project-thesis\n---\n# T\n', 'utf8');
+    await mkdir(path.join(root, '02_Projects', 'renamed-folder'), { recursive: true });
+    await writeFile(path.join(root, '02_Projects', 'renamed-folder', 'project.md'), '---\nid: project-custom\n---\n# C\n', 'utf8');
+    await mkdir(path.join(root, 'projects', 'old'), { recursive: true });
+    await writeFile(path.join(root, 'projects', 'old', 'project.md'), '---\nid: old\n---\n# O\n', 'utf8');
+
+    await expect(resolveVaultProjectPath('project-thesis')).resolves.toBe('02_Projects/thesis/project.md');
+    await expect(resolveVaultProjectPath('thesis')).resolves.toBe('02_Projects/thesis/project.md');
+    await expect(resolveVaultProjectPath('project-custom')).resolves.toBe('02_Projects/renamed-folder/project.md');
+    await expect(resolveVaultProjectPath('old')).resolves.toBe('projects/old/project.md');
+    await expect(resolveVaultProjectPath('old', { writable: true })).rejects.toThrow(/not found/);
+    await expect(resolveVaultProjectPath('missing')).rejects.toThrow(/not found/);
+  });
+
   it('requires explicit opt-in before a GitHub-backed vault can be written', async () => {
     vi.resetModules();
     vi.stubEnv('GITHUB_OWNER', 'owner');

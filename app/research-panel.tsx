@@ -5,6 +5,7 @@ import { dashboardApi } from '@/lib/client-api';
 import { ResultsPanel as LegacyResultsPanel } from '@/app/results-panel';
 import { StandardResultsView } from '@/app/standard-results-view';
 import type { DashboardBundle } from '@/lib/results';
+import { projectFolder } from '@/lib/projects';
 import { emptyProjectResultInventory, projectResultInventory } from '@/lib/project-results';
 import type { RepositoryItem } from '@/lib/repository';
 import {
@@ -13,6 +14,7 @@ import {
   projectStatusLabel,
   projectStatusOptions,
   researchPipelineStages,
+  stageLabel,
   type ResearchProject,
 } from '@/lib/projects';
 import { getProjectWorkspace, ProjectWorkspaceError, updateProjectMetadata, type ProjectWorkspace, type ProjectWorkspaceItem, type RecentProjectFile } from '@/lib/project-workspace-client';
@@ -54,7 +56,7 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
     ? parseProjectManifest(workspace.manifestText, selectedBase.sourcePath)
     : null;
   const selected = selectedBase && localManifest ? { ...selectedBase, ...localManifest, sourceSha: selectedBase.sourceSha } : selectedBase;
-  const fallbackFiles = useMemo(() => selected ? tree.filter((item) => item.type === 'blob' && item.path.startsWith(`projects/${selected.id}/`)) : [], [selected, tree]);
+  const fallbackFiles = useMemo(() => selected ? tree.filter((item) => item.type === 'blob' && item.path.startsWith(`${projectFolder(selected)}/`)) : [], [selected, tree]);
   const hasWorkspace = Boolean(selected && workspace && workspace.projectId === selected.id);
   const files = useMemo<RepositoryItem[]>(() => {
     const source = selected && workspace && workspace.projectId === selected.id ? workspace.items : workspaceState === 'offline' ? fallbackFiles : [];
@@ -112,7 +114,7 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
   if (!projects.length) {
     if (projectsLoading) return <div className="card empty project-empty" role="status">연구 프로젝트를 불러오는 중…</div>;
     if (projectsError) return <div className="card error project-empty" role="alert">연구 프로젝트를 불러오지 못했어. {projectsError}</div>;
-    return <div className="card empty project-empty"><code>projects/*/project.md</code>가 생기면 프로젝트별 연구 화면이 자동으로 구성돼.</div>;
+    return <div className="card empty project-empty"><code>02_Projects/*/project.md</code>가 생기면 프로젝트별 연구 화면이 자동으로 구성돼.</div>;
   }
 
   function selectProject(id: string) {
@@ -144,7 +146,7 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
   }
 
   async function updateStage(stage: string) {
-    if (!selected || pipelineStageValue(selected.stage) === stage || stageSaving) return;
+    if (!selected || selected.stage === stage || stageSaving) return;
     setStageSaving(true);
     setStatusMessage('단계를 저장 중…');
     try {
@@ -160,7 +162,7 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
   }
 
   const workingFolders = hasWorkspace && workspace ? workspace.folders : workspaceState === 'offline' ? inferFolders(files.map((file) => file.path)) : [];
-  const keyFilePaths = selected ? selected.keyFiles.map((path) => path.startsWith('projects/') ? path : `projects/${selected.id}/${path}`) : [];
+  const keyFilePaths = selected ? selected.keyFiles.map((path) => path.startsWith('projects/') || path.startsWith('02_Projects/') ? path : `${projectFolder(selected)}/${path}`) : [];
   const keyFiles = files.filter((file) => keyFilePaths.includes(file.path));
 
   async function toggleFavorite(path: string) {
@@ -204,7 +206,8 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
       </section>
 
       <section className="card section project-pipeline-section">
-        <div className="head"><h3>연구 파이프라인</h3><label className="project-stage-editor">현재 단계<select value={pipelineStageValue(selected.stage)} disabled={stageSaving || workspaceState !== 'ready' || !workspace?.manifestSha} onChange={(event) => void updateStage(event.target.value)}>
+        <div className="head"><h3>연구 파이프라인</h3><label className="project-stage-editor">현재 단계<select value={selected.stage} disabled={stageSaving || workspaceState !== 'ready' || !workspace?.manifestSha} onChange={(event) => void updateStage(event.target.value)}>
+          {!pipelineStageValue(selected.stage) || !researchPipelineStages.some((stage) => stage.value === selected.stage) ? <option value={selected.stage}>{stageLabel(selected.stage)}</option> : null}
           {researchPipelineStages.map((stage) => <option key={stage.value} value={stage.value}>{stage.label}</option>)}
         </select></label></div>
         <div className="research-pipeline-compact" aria-label="6단계 연구 파이프라인">
@@ -259,10 +262,10 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
       </section>
 
       <section className="card section section-gap research-folder-section">
-        <div className="head"><h3>작업 폴더</h3><button className="mini" type="button" onClick={() => onOpenFolder(`projects/${selected.id}`)}>프로젝트 폴더 열기</button></div>
+        <div className="head"><h3>작업 폴더</h3><button className="mini" type="button" onClick={() => onOpenFolder(projectFolder(selected))}>프로젝트 폴더 열기</button></div>
         {workspaceState === 'offline' && <small className="muted">Local Bridge 사용 불가 · 저장소 파일 목록을 표시 중</small>}
         {workspaceMessage && workspaceState !== 'offline' && <small className="muted">{workspaceMessage}</small>}
-        {workspaceState === 'loading' ? <div className="empty compact-empty">프로젝트 작업 폴더를 불러오는 중…</div> : <ProjectFolderTree root={`projects/${selected.id}`} files={files} folders={workingFolders} expandedFolders={expandedFolders} keyFilePaths={keyFilePaths} favoriteSaving={favoriteSaving} canSaveMetadata={Boolean(workspace?.manifestSha)} onToggleExpanded={onToggleProjectFolder} onToggleFavorite={toggleFavorite} onOpen={onOpen} onOpenFolder={onOpenFolder} />}
+        {workspaceState === 'loading' ? <div className="empty compact-empty">프로젝트 작업 폴더를 불러오는 중…</div> : <ProjectFolderTree root={projectFolder(selected)} files={files} folders={workingFolders} expandedFolders={expandedFolders} keyFilePaths={keyFilePaths} favoriteSaving={favoriteSaving} canSaveMetadata={Boolean(workspace?.manifestSha)} onToggleExpanded={onToggleProjectFolder} onToggleFavorite={toggleFavorite} onOpen={onOpen} onOpenFolder={onOpenFolder} />}
       </section>
     </div>}
   </div>;

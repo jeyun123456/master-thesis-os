@@ -17,6 +17,43 @@ class ProjectManifestConflict(Exception):
     pass
 
 
+PROJECT_ID_PATTERN = '[A-Za-z0-9][A-Za-z0-9._-]{0,127}'
+CANONICAL_PROJECTS_DIR = '02_Projects'
+LEGACY_PROJECTS_DIR = 'projects'
+UTF8_BOM = b'\xef\xbb\xbf'
+CANONICAL_PROJECT_STATUSES = ('아이디어', '계획', '진행중', '대기', '막힘', '완료', '취소', '보관')
+# Legacy English values are accepted so older manifests and clients keep working; they are written back as Korean.
+LEGACY_PROJECT_STATUS_ALIASES = {
+    'writing': '진행중',
+    'active': '진행중',
+    'paused': '대기',
+    'waiting': '대기',
+    'blocked': '막힘',
+    'complete': '완료',
+}
+
+
+def normalize_project_status(value: object) -> str:
+    """Return the canonical Korean status for a canonical or legacy value, or raise ValueError."""
+    if isinstance(value, str):
+        candidate = value.strip()
+        if candidate in CANONICAL_PROJECT_STATUSES:
+            return candidate
+        if candidate in LEGACY_PROJECT_STATUS_ALIASES:
+            return LEGACY_PROJECT_STATUS_ALIASES[candidate]
+    raise ValueError('invalid project status')
+
+
+def validate_project_stage(value: object) -> str:
+    """Stage is a per-project workflow string, not a global enum: any single-line value up to 64 chars."""
+    if isinstance(value, str):
+        candidate = value.strip()
+        if candidate and re.fullmatch(r'[^\r\n\x00-\x1f]{1,64}', candidate):
+            return candidate
+    raise ValueError('invalid project stage')
+
+
+
 class WorkspaceStore:
     def __init__(self, root: Path):
         self._root = root
@@ -401,17 +438,59 @@ class WorkspaceStore:
             self._atomic_write_planner_tasks(remaining, deleted_task_ids)
             return (remaining, deleted_task_ids)
 
-    def _project_manifest_path(self, project_id: object) -> tuple[str, Path, Path]:
-        if not isinstance(project_id, str) or not re.fullmatch('[A-Za-z0-9][A-Za-z0-9._-]{0,127}', project_id):
-            raise ValueError('invalid project id')
-        project_root = self._root / 'projects' / project_id
-        if not project_root.is_dir() or project_root.is_symlink():
-            raise FileNotFoundError('project folder not found')
-        resolved_root = project_root.resolve(strict=True)
+    @staticmethod
+    def _manifest_frontmatter_id(manifest: Path) -> str | None:
         try:
-            resolved_root.relative_to(self._root.resolve())
-        except ValueError as exc:
-            raise ValueError('project folder is outside the Vault') from exc
+            text = manifest.read_bytes().decode('utf-8-sig')
+        except (OSError, UnicodeDecodeError):
+            return None
+        match = re.match(r'\A---\r?\n(.*?)\r?\n---', text, flags=re.DOTALL)
+        if not match:
+            return None
+        id_match = re.search(r'^id\s*:\s*(.+?)\s*$', match.group(1), flags=re.MULTILINE)
+        return id_match.group(1).strip('"\'') if id_match else None
+
+    def _resolve_project_folder(self, project_id: object, *, writable: bool = False) -> tuple[Path, str]:
+        """Find a project folder by frontmatter id (project-thesis) or folder name (thesis).
+
+        Canonical location is 02_Projects/<folder>/project.md. The legacy projects/<folder> layout is
+        only searched for reads; writes never target it.
+        """
+        if not isinstance(project_id, str) or not re.fullmatch(PROJECT_ID_PATTERN, project_id):
+            raise ValueError('invalid project id')
+        vault_root = self._root.resolve()
+        bare_id = project_id[len('project-'):] if project_id.startswith('project-') else project_id
+        locations = (CANONICAL_PROJECTS_DIR,) if writable else (CANONICAL_PROJECTS_DIR, LEGACY_PROJECTS_DIR)
+        for directory in locations:
+            base = self._root / directory
+            if not base.is_dir() or base.is_symlink():
+                continue
+            found: Path | None = None
+            for name in dict.fromkeys((project_id, bare_id)):
+                candidate = base / name
+                if candidate.is_dir() and not candidate.is_symlink() and (candidate / 'project.md').is_file():
+                    found = candidate
+                    break
+            if found is None:
+                for candidate in sorted(base.iterdir(), key=lambda item: item.name.casefold()):
+                    manifest = candidate / 'project.md'
+                    if candidate.is_dir() and not candidate.is_symlink() and manifest.is_file() and not manifest.is_symlink() and self._manifest_frontmatter_id(manifest) == project_id:
+                        found = candidate
+                        break
+            if found is None:
+                continue
+            resolved = found.resolve(strict=True)
+            try:
+                resolved.relative_to(vault_root)
+            except ValueError as exc:
+                raise ValueError('project folder is outside the Vault') from exc
+            return (resolved, f'{directory}/{found.name}')
+        if writable and (self._root / LEGACY_PROJECTS_DIR).is_dir():
+            raise FileNotFoundError('project folder not found under 02_Projects (legacy projects/ is read-only)')
+        raise FileNotFoundError('project folder not found')
+
+    def _project_manifest_path(self, project_id: object, *, writable: bool = False) -> tuple[str, Path, Path]:
+        resolved_root, _ = self._resolve_project_folder(project_id, writable=writable)
         manifest_path = resolved_root / 'project.md'
         if manifest_path.is_symlink() or not manifest_path.is_file():
             raise FileNotFoundError('project.md not found in Vault')
@@ -420,13 +499,13 @@ class WorkspaceStore:
             resolved_manifest.relative_to(resolved_root)
         except ValueError as exc:
             raise ValueError('project.md is outside the project folder') from exc
-        return (project_id, resolved_root, resolved_manifest)
+        return (str(project_id), resolved_root, resolved_manifest)
 
-    def _project_manifest_snapshot(self, project_id: object) -> tuple[str, str, Path, bytes]:
-        normalized_id, project_root, manifest_path = self._project_manifest_path(project_id)
+    def _project_manifest_snapshot(self, project_id: object, *, writable: bool = False) -> tuple[str, str, Path, bytes]:
+        _, project_root, manifest_path = self._project_manifest_path(project_id, writable=writable)
         raw = manifest_path.read_bytes()
-        raw.decode('utf-8')
-        return (raw.decode('utf-8'), hashlib.sha256(raw).hexdigest(), manifest_path, raw)
+        # A leading UTF-8 BOM (common from Windows editors) must not hide the frontmatter; it is restored on write.
+        return (raw.decode('utf-8-sig'), hashlib.sha256(raw).hexdigest(), manifest_path, raw)
 
     def _update_project_frontmatter(self, markdown: str, key: str, value: str) -> str:
         match = re.match('\\A---(?P<first>\\r?\\n)(?P<body>.*?)(?P<last>\\r?\\n)---', markdown, flags=re.DOTALL)
@@ -449,8 +528,8 @@ class WorkspaceStore:
         frontmatter = f"---{match.group('first')}{newline.join(updated)}{match.group('last')}---"
         return frontmatter + markdown[match.end():]
 
-    def _update_project_key_file(self, markdown: str, project_id: str, path: str, pinned: bool) -> str:
-        if not path.startswith('projects/') or '\\' in path or '\x00' in path:
+    def _update_project_key_file(self, markdown: str, project_root: str, path: str, pinned: bool) -> str:
+        if not path.startswith(f'{project_root}/') or '\\' in path or '\x00' in path:
             raise ValueError('invalid project file path')
         parts = path.split('/')
         if any((part in {'', '.', '..'} for part in parts)):
@@ -466,7 +545,7 @@ class WorkspaceStore:
         section_end = match.end() + next_heading.start() if next_heading else len(markdown)
         section = markdown[match.end():section_end]
         lines = section.splitlines(keepends=True)
-        relative_path = path.removeprefix(f'projects/{project_id}/')
+        relative_path = path.removeprefix(f'{project_root}/')
         stored_entries = {f'- {path}', f'* {path}', f'- {relative_path}', f'* {relative_path}'}
         entry = f'- {path}'
         has_entry = any((line.strip() in stored_entries for line in lines))
@@ -518,32 +597,28 @@ class WorkspaceStore:
         if not isinstance(expected_sha, str) or not re.fullmatch('[a-f0-9]{64}', expected_sha):
             raise ValueError('a valid project metadata revision is required')
         with self._project_metadata_lock:
-            markdown, current_sha, manifest_path, original = self._project_manifest_snapshot(project_id)
+            markdown, current_sha, manifest_path, original = self._project_manifest_snapshot(project_id, writable=True)
             if current_sha != expected_sha:
                 raise ProjectManifestConflict('project.md changed. Reload the project before saving again.')
             task_added: bool | None = None
             if operation == 'stage':
-                if value not in {'planning', 'collection', 'analysis', 'interpretation', 'writing', 'complete'}:
-                    raise ValueError('invalid research stage')
-                updated = self._update_project_frontmatter(markdown, 'stage', str(value))
+                updated = self._update_project_frontmatter(markdown, 'stage', validate_project_stage(value))
             elif operation == 'status':
-                if value not in {'writing', 'active', 'paused', 'waiting', 'blocked', 'complete'}:
-                    raise ValueError('invalid project status')
-                updated = self._update_project_frontmatter(markdown, 'status', str(value))
+                updated = self._update_project_frontmatter(markdown, 'status', normalize_project_status(value))
             elif operation in {'favorite_add', 'favorite_remove'}:
                 if not isinstance(value, str):
                     raise ValueError('invalid project file path')
-                normalized_id = str(project_id)
-                if not value.startswith(f'projects/{normalized_id}/'):
+                project_folder, project_root_path = self._resolve_project_folder(project_id, writable=True)
+                if not value.startswith(f'{project_root_path}/'):
                     raise ValueError('file must be inside the project folder')
                 target = self._root.joinpath(*value.split('/'))
                 if operation == 'favorite_add' and (target.is_symlink() or not target.is_file()):
                     raise FileNotFoundError('project file not found')
                 try:
-                    target.resolve(strict=operation == 'favorite_add').relative_to((self._root / 'projects' / normalized_id).resolve(strict=True))
+                    target.resolve(strict=operation == 'favorite_add').relative_to(project_folder)
                 except (OSError, ValueError) as exc:
                     raise ValueError('project file is outside the project folder') from exc
-                updated = self._update_project_key_file(markdown, normalized_id, value, operation == 'favorite_add')
+                updated = self._update_project_key_file(markdown, project_root_path, value, operation == 'favorite_add')
             elif operation == 'next_task_add':
                 updated, task_added = self._append_project_next_task(markdown, value)
             elif operation == 'next_tasks_reset':
@@ -558,7 +633,7 @@ class WorkspaceStore:
             if manifest_path.read_bytes() != original:
                 raise ProjectManifestConflict('project.md changed. Reload the project before saving again.')
             newline = '\r\n' if b'\r\n' in original else '\n'
-            encoded = updated.replace('\r\n', '\n').replace('\n', newline).encode('utf-8')
+            encoded = (UTF8_BOM if original.startswith(UTF8_BOM) else b'') + updated.replace('\r\n', '\n').replace('\n', newline).encode('utf-8')
             temporary_path: Path | None = None
             try:
                 with tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=manifest_path.parent, prefix='.project-', suffix='.tmp') as temporary_file:
@@ -573,23 +648,13 @@ class WorkspaceStore:
                 if temporary_path is not None and temporary_path.exists():
                     temporary_path.unlink()
             saved = manifest_path.read_bytes()
-            result = {'ok': True, 'source': 'vault', 'projectId': project_id, 'manifestText': saved.decode('utf-8'), 'manifestSha': hashlib.sha256(saved).hexdigest()}
+            result = {'ok': True, 'source': 'vault', 'projectId': project_id, 'manifestText': saved.decode('utf-8-sig'), 'manifestSha': hashlib.sha256(saved).hexdigest()}
             if task_added is not None:
                 result['added'] = task_added
             return result
 
     def project_workspace(self, project_id: object) -> dict[str, object]:
-        if not isinstance(project_id, str) or not re.fullmatch('[A-Za-z0-9][A-Za-z0-9._-]{0,127}', project_id):
-            raise ValueError('invalid project id')
-        root = self._root / 'projects' / project_id
-        if not root.is_dir() or root.is_symlink():
-            raise FileNotFoundError('project folder not found')
-        resolved_root = root.resolve(strict=True)
-        try:
-            resolved_root.relative_to(self._root.resolve())
-        except ValueError as exc:
-            raise ValueError('project folder is outside the Vault') from exc
-        root = resolved_root
+        root, project_root_path = self._resolve_project_folder(project_id)
         files: list[dict[str, object]] = []
         folders: set[str] = set()
         recent: list[dict[str, object]] = []
@@ -600,7 +665,7 @@ class WorkspaceStore:
             names[:] = [name for name in names if name.lower() not in ignored and (not (current / name).is_symlink())]
             relative_directory = current.relative_to(root).as_posix()
             if relative_directory != '.':
-                folders.add(f'projects/{project_id}/{relative_directory}')
+                folders.add(f'{project_root_path}/{relative_directory}')
             for name in filenames:
                 file_path = current / name
                 if file_path.is_symlink() or not file_path.is_file():
@@ -616,9 +681,9 @@ class WorkspaceStore:
                 if file_path.suffix.lower() in allowed_recent:
                     recent.append({**row, 'name': file_path.name, 'extension': file_path.suffix.lower()})
                 parent = relative_path.rpartition('/')[0]
-                while parent.startswith(f'projects/{project_id}'):
+                while parent.startswith(project_root_path):
                     folders.add(parent)
-                    if parent == f'projects/{project_id}':
+                    if parent == project_root_path:
                         break
                     parent = parent.rpartition('/')[0]
         recent.sort(key=lambda item: str(item['modifiedAt']), reverse=True)
@@ -628,4 +693,4 @@ class WorkspaceStore:
             manifest_text, manifest_sha, _, _ = self._project_manifest_snapshot(project_id)
         except FileNotFoundError:
             pass
-        return {'ok': True, 'source': 'vault', 'projectId': project_id, 'rootPath': f'projects/{project_id}', 'items': sorted(files, key=lambda item: str(item['path']).casefold()), 'folders': sorted(folders, key=str.casefold), 'recentFiles': recent[:10], 'manifestText': manifest_text, 'manifestSha': manifest_sha}
+        return {'ok': True, 'source': 'vault', 'projectId': project_id, 'rootPath': project_root_path, 'items': sorted(files, key=lambda item: str(item['path']).casefold()), 'folders': sorted(folders, key=str.casefold), 'recentFiles': recent[:10], 'manifestText': manifest_text, 'manifestSha': manifest_sha}

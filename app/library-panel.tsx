@@ -22,14 +22,14 @@ export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: Repositor
   const [query, setQuery] = useState('');
   const [isComposing, setIsComposing] = useState(false);
   const [papers, setPapers] = useState<LibraryPaper[]>([]);
-  const [paperSourcePath, setPaperSourcePath] = useState('연구/문헌/논문 리스트.md');
+  const [paperSourcePath, setPaperSourcePath] = useState('03_Knowledge/sources/literature/논문 리스트.md');
   const [paperError, setPaperError] = useState('');
 
   useEffect(() => {
     dashboardApi.papers()
       .then((response) => {
         setPapers(response.items || []);
-        setPaperSourcePath(response.sourcePath || '연구/문헌/논문 리스트.md');
+        setPaperSourcePath(response.sourcePath || '03_Knowledge/sources/literature/논문 리스트.md');
         setPaperError(response.error || '');
       })
       .catch((error) => setPaperError(error instanceof Error ? error.message : '문헌 인덱스를 불러오지 못했어.'));
@@ -67,9 +67,9 @@ export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: Repositor
 
   const keyResources = useMemo(() => {
     const candidates: KeyResource[] = [
-      { label: '현재 연구 상태', path: researchStatus?.sourcePath || 'wiki/current_status.md', category: '현재 상태' },
-      { label: '연구 Wiki 안내', path: 'wiki/README.md', category: '연구 기준' },
-      { label: '벤치마크 결과', path: 'wiki/findings/benchmark_results.md', category: '결과 기준' },
+      { label: '현재 연구 상태', path: researchStatus?.sourcePath || '02_Projects/thesis/project.md', category: '현재 상태' },
+      { label: '연구 Wiki 안내', path: '01_Areas/Research/README.md', category: '연구 기준' },
+      { label: '벤치마크 결과', path: '02_Projects/thesis/findings/benchmark_results.md', category: '결과 기준' },
       { label: '대표 논문 목록', path: paperSourcePath, category: '문헌 인덱스' },
       ...(researchStatus?.decisions || []).map((item) => ({ ...item, category: '연구 결정' })),
       ...(researchStatus?.importantFiles || []).map((item) => ({ ...item, category: '계산 결과' })),

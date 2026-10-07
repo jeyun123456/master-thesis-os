@@ -1,17 +1,33 @@
 import type { RepositoryItem } from './repository';
 
-export type ProjectStatus = 'writing' | 'active' | 'paused' | 'waiting' | 'blocked' | 'complete' | string;
+export type ProjectStatus = string;
 
 export const projectStatusOptions = [
-  { value: 'writing', label: '작성중' },
-  { value: 'active', label: '진행 중' },
-  { value: 'paused', label: '보류' },
-  { value: 'waiting', label: '대기' },
-  { value: 'blocked', label: '막힘' },
-  { value: 'complete', label: '완료' },
+  { value: '아이디어', label: '아이디어' },
+  { value: '계획', label: '계획' },
+  { value: '진행중', label: '진행 중' },
+  { value: '대기', label: '대기' },
+  { value: '막힘', label: '막힘' },
+  { value: '완료', label: '완료' },
+  { value: '취소', label: '취소' },
+  { value: '보관', label: '보관' },
 ] as const;
 
-export const projectStatusValues = projectStatusOptions.map((option) => option.value);
+const legacyProjectStatusValues = ['writing', 'active', 'paused', 'waiting', 'blocked', 'complete'] as const;
+const legacyProjectStatusMap: Record<string, ProjectStatus> = {
+  writing: '진행중',
+  active: '진행중',
+  paused: '대기',
+  waiting: '대기',
+  blocked: '막힘',
+  complete: '완료',
+};
+
+export const projectStatusValues = [...projectStatusOptions.map((option) => option.value), ...legacyProjectStatusValues];
+
+export function normalizeProjectStatus(status: string): ProjectStatus {
+  return legacyProjectStatusMap[status] || status || '대기';
+}
 
 export type ResearchProject = {
   id: string;
@@ -49,6 +65,7 @@ const sectionAliases: Record<string, keyof Pick<ResearchProject, 'currentFocus' 
 };
 
 export function parseProjectManifest(markdown: string, sourcePath: string): ResearchProject {
+  markdown = stripBom(markdown);
   const frontmatter = parseFrontmatter(markdown);
   const sections = parseSections(markdown);
   const title = frontmatter.title || headingOne(markdown) || frontmatter.id || sourcePath;
@@ -56,7 +73,7 @@ export function parseProjectManifest(markdown: string, sourcePath: string): Rese
   return {
     id: frontmatter.id || projectIdFromPath(sourcePath),
     title,
-    status: frontmatter.status || 'waiting',
+    status: normalizeProjectStatus(frontmatter.status || '대기'),
     priority: frontmatter.priority || 'medium',
     stage: frontmatter.stage || 'unknown',
     updated: frontmatter.updated || '',
@@ -77,7 +94,7 @@ export function parseProjectManifest(markdown: string, sourcePath: string): Rese
 
 export function projectManifestPaths(tree: RepositoryItem[]): string[] {
   return tree
-    .filter((item) => item.type === 'blob' && /^projects\/[^/]+\/project\.md$/i.test(item.path))
+    .filter((item) => item.type === 'blob' && /^(?:projects|02_Projects)\/[^/]+\/project\.md$/i.test(item.path))
     .map((item) => item.path)
     .sort();
 }
@@ -92,9 +109,9 @@ export function projectRelatedFiles(project: ResearchProject, tree: RepositoryIt
 }
 
 function relatedPathMatches(project: ResearchProject, itemPath: string, relatedPath: string) {
-  const candidates = relatedPath.startsWith('projects/')
+  const candidates = relatedPath.startsWith('projects/') || relatedPath.startsWith('02_Projects/')
     ? [relatedPath]
-    : [relatedPath, `projects/${project.id}/${relatedPath}`];
+    : [relatedPath, `${projectFolder(project)}/${relatedPath}`];
   return candidates.some((path) => path.endsWith('/') ? itemPath.startsWith(path) : itemPath === path);
 }
 
@@ -121,48 +138,47 @@ function compareText(left: string, right: string) {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-export function stageLabel(stage: string): string {
-  const pipeline = pipelineStageValue(stage);
-  const pipelineLabels: Record<string, string> = {
-    planning: '기획', collection: '자료 수집', analysis: '분석', interpretation: '해석', writing: '집필', complete: '완료',
-  };
-  if (pipelineLabels[pipeline]) return pipelineLabels[pipeline];
-  const labels: Record<string, string> = {
-    data: '자료',
-    mapping: '부문통합',
-    labour: '노동시간',
-    calculation: '계산',
-    validation: '검증',
-    interpretation: '해석',
-    writing: '집필',
-    literature: '문헌 정리',
-    presentation: '발표 준비',
-    complete: '완료',
-  };
-  return labels[stage] || stage || '미지정';
-}
-
+/**
+ * `stage` is a per-project workflow state, not a global enum. Any manifest value is preserved;
+ * these are only the canonical candidates offered for Research Projects.
+ */
 export const researchPipelineStages = [
-  { value: 'planning', label: '기획' },
-  { value: 'collection', label: '자료 수집' },
-  { value: 'analysis', label: '분석' },
-  { value: 'interpretation', label: '해석' },
-  { value: 'writing', label: '집필' },
-  { value: 'complete', label: '완료' },
+  { value: '탐색', label: '탐색' },
+  { value: '설계', label: '설계' },
+  { value: '자료수집', label: '자료수집' },
+  { value: '분석', label: '분석' },
+  { value: '집필', label: '집필' },
+  { value: '제출', label: '제출' },
 ] as const;
 
-export function pipelineStageValue(stage: string): string {
-  const normalized = stage.toLocaleLowerCase();
-  if (['complete', 'completed', 'done'].includes(normalized)) return 'complete';
-  if (['interpretation', 'interpret', 'analysis-interpretation'].includes(normalized)) return 'interpretation';
-  if (['writing', 'presentation', 'draft', 'write'].includes(normalized)) return 'writing';
-  if (['labour', 'calculation', 'validation', 'analysis', '분석'].includes(normalized)) return 'analysis';
-  if (['mapping', 'data', 'literature', 'collection', '자료', '부문통합'].includes(normalized)) return 'collection';
-  return 'planning';
+const researchStageAliases: Record<string, string> = {
+  exploration: '탐색', explore: '탐색',
+  planning: '설계', 기획: '설계',
+  collection: '자료수집', data: '자료수집', mapping: '자료수집', literature: '자료수집', 자료: '자료수집', '자료 수집': '자료수집', 부문통합: '자료수집',
+  analysis: '분석', labour: '분석', calculation: '분석', validation: '분석', interpretation: '분석', interpret: '분석', 해석: '분석',
+  writing: '집필', draft: '집필', write: '집필', presentation: '집필',
+  complete: '제출', completed: '제출', done: '제출', 완료: '제출',
+};
+
+/** Canonical Research stage for a manifest value, or null when the value belongs to another workflow (e.g. 구현). */
+export function pipelineStageValue(stage: string): string | null {
+  const trimmed = stage.trim();
+  if (researchPipelineStages.some((candidate) => candidate.value === trimmed)) return trimmed;
+  return researchStageAliases[trimmed.toLocaleLowerCase()] || null;
+}
+
+/** A stage is any single-line, bounded string; the manifest value is stored as given. */
+export function isValidStageValue(value: unknown): value is string {
+  return typeof value === 'string' && /^[^\r\n\x00-\x1f]{1,64}$/.test(value.trim());
+}
+
+export function stageLabel(stage: string): string {
+  const value = stage.trim();
+  return pipelineStageValue(value) || value || '미지정';
 }
 
 export function updateProjectStageMarkdown(markdown: string, stage: string): string {
-  return updateFrontmatterValue(markdown, 'stage', stage);
+  return updateFrontmatterValue(markdown, 'stage', stage.trim());
 }
 
 export function appendProjectTaskMarkdown(markdown: string, value: string): { markdown: string; added: boolean } {
@@ -190,6 +206,7 @@ export function appendProjectTaskMarkdown(markdown: string, value: string): { ma
 }
 
 function updateFrontmatterValue(markdown: string, key: string, value: string): string {
+  markdown = stripBom(markdown);
   const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!match) throw new Error('project.md frontmatter is missing');
   const lineBreak = markdown.includes('\r\n') ? '\r\n' : '\n';
@@ -205,12 +222,19 @@ function updateFrontmatterValue(markdown: string, key: string, value: string): s
   return `${updatedFrontmatter}${markdown.slice(match[0].length)}`;
 }
 
+/** Folder that holds a project's project.md (e.g. 02_Projects/thesis). Falls back to the legacy projects/<id> layout. */
+export function projectFolder(project: Pick<ResearchProject, 'id' | 'sourcePath'>): string {
+  const separator = project.sourcePath.lastIndexOf('/');
+  return separator > 0 ? project.sourcePath.slice(0, separator) : `projects/${project.id}`;
+}
+
 export function projectStatusLabel(status: string): string {
   const labels = Object.fromEntries(projectStatusOptions.map((option) => [option.value, option.label]));
   return labels[status] || status || '미지정';
 }
 
 export function updateProjectStatusMarkdown(markdown: string, status: string): string {
+  markdown = stripBom(markdown);
   const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!match) throw new Error('project.md frontmatter is missing');
   const lineBreak = markdown.includes('\r\n') ? '\r\n' : '\n';
@@ -227,6 +251,11 @@ export function updateProjectStatusMarkdown(markdown: string, status: string): s
   }
   const updatedFrontmatter = `---${lineBreak}${updatedLines.join(lineBreak)}${lineBreak}---`;
   return `${updatedFrontmatter}${markdown.slice(match[0].length)}`;
+}
+
+/** project.md files saved by Windows tools may start with a UTF-8 BOM. */
+function stripBom(markdown: string): string {
+  return markdown.charCodeAt(0) === 0xfeff ? markdown.slice(1) : markdown;
 }
 
 function parseFrontmatter(markdown: string): Record<string, string> {

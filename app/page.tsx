@@ -312,7 +312,7 @@ export default function Page() {
   }
 
   const schedule = useMemo(() => groupCalendarEvents(calendar.items), [calendar.items]);
-  const activeProject = useMemo(() => projects.find((project) => project.id === 'thesis') || projects.find((project) => project.status === 'active') || projects[0] || null, [projects]);
+  const activeProject = useMemo(() => projects.find((project) => project.id === 'thesis') || projects.find((project) => project.status === '진행중') || projects[0] || null, [projects]);
   const homeTasks = useMemo(() => {
     const projectTasks = activeProject?.nextTasks || [];
     return projectTasks.length ? projectTasks : researchStatus?.nextActions || [];
@@ -326,7 +326,7 @@ export default function Page() {
           {group.items.map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}><span>{item.icon}</span>{item.label}</button>)}
         </div>)}</nav>
         <div className="sidebar-settings"><span className="nav-group-label">SYSTEM</span><button className={page === 'settings' ? 'active' : ''} onClick={() => setPage('settings')}><span>⚙</span>설정</button></div>
-        <div className="sidebar-source"><span>연구 기준</span><b>Obsidian Vault</b><small>projects/ + shared/ · {repositorySource === 'local' ? 'local live' : repositorySource === 'github' ? 'GitHub live' : '연결 필요'}</small></div>
+        <div className="sidebar-source"><span>연구 기준</span><b>Obsidian Vault</b><small>01_Areas + 02_Projects + 03_Knowledge · {repositorySource === 'local' ? 'local live' : repositorySource === 'github' ? 'GitHub live' : '연결 필요'}</small></div>
       </aside>
 
       <main className="main">
@@ -425,7 +425,7 @@ export default function Page() {
 
         {page === 'settings' && <section className="page active">
           <div className="grid2">
-            <Card title="연구 저장소" right={repositorySource === 'none' ? '설정 필요' : repositorySource === 'local' ? '로컬' : 'GitHub'}><div className="note">Obsidian Vault가 연구 데이터의 기준이야. 프로젝트는 <code>projects/*/project.md</code>에서 자동 발견하고, 기존 <code>wiki/ · Calc/ · 연구/</code> 경로는 manifest가 연결해.</div></Card>
+            <Card title="연구 저장소" right={repositorySource === 'none' ? '설정 필요' : repositorySource === 'local' ? '로컬' : 'GitHub'}><div className="note">Obsidian Vault가 연구 데이터의 기준이야. 프로젝트는 <code>02_Projects/*/project.md</code>에서 자동 발견하고, 기존 <code>wiki/ · Calc/ · 연구/</code> 경로는 manifest가 연결해.</div></Card>
             <Card title="로컬 브리지" right="127.0.0.1 전용"><div className="note">로컬 파일·볼트 폴더 열기는 PC에서 bridge를 실행했을 때만 동작해. 토큰은 이 브라우저의 localStorage에 저장돼.</div><div className="toolbar bridge-toolbar"><button className="btn" type="button" onClick={() => openLocalFolder()}>볼트 폴더 열기</button></div><BridgeToken onSave={bridgeTokenSaved} onNotice={pop} /></Card>
           </div>
           <div className="grid2 section-gap">
@@ -447,7 +447,7 @@ function CurrentResearchCard({ project, researchStatus, onOpen }: { project: Res
   const focus = project?.currentFocus || researchStatus?.currentInterpretation || '현재 문제의식이 등록되지 않았어.';
   const stage = project ? stageLabel(project.stage) : researchStatus?.currentStage || '연구 단계 확인 필요';
   const status = project ? projectStatusLabel(project.status) : '연결 필요';
-  const summary = project?.summary || researchStatus?.currentInterpretation || 'projects/와 wiki/current_status.md에서 현재 연구 상태를 읽어와.';
+  const summary = project?.summary || researchStatus?.currentInterpretation || '02_Projects의 project.md와 baseline에서 현재 연구 상태를 읽어와.';
 
   return <Card title="현재 연구" right={status} className="home-current-research-card">
     <div className="home-current-research">

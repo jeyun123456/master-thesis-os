@@ -421,10 +421,19 @@ class InboxBridgeEndpointTests(unittest.TestCase):
             'ai': None,
         }
 
+    def test_research_answer_route_is_wired_and_validates_before_calling_a_model(self):
+        # An invalid request must be rejected by validation; no Codex subprocess is started.
+        status, payload = self.request('POST', '/research/answer', {'question': '', 'sources': []})
+        self.assertEqual(status, 400, payload)
+        self.assertEqual(payload['errorCode'], 'research_qa_invalid')
+        status, payload = self.request('POST', '/research/answer', {'question': '질문입니다', 'sources': [], 'mode': 'nope'})
+        self.assertEqual(status, 400, payload)
+        self.assertEqual(payload['errorCode'], 'research_qa_invalid')
+
     def test_inbox_get_and_post_persist_to_vault_json(self):
         health_status, health = self.request('GET', '/health')
         self.assertEqual(health_status, 200)
-        self.assertEqual(health['apiVersion'], 7)
+        self.assertEqual(health['apiVersion'], 8)
 
         status, data = self.request('GET', '/inbox')
         self.assertEqual(status, 200)
@@ -460,7 +469,7 @@ class InboxBridgeEndpointTests(unittest.TestCase):
         self.assertEqual([entry['id'] for entry in repeated['entries']], ['keep-me'])
 
     def test_project_metadata_update_and_conflict_safety(self):
-        project_root = self.root / 'projects' / 'thesis'
+        project_root = self.root / '02_Projects' / 'thesis'
         project_root.mkdir(parents=True)
         manifest_path = project_root / 'project.md'
         original = '---\nid: thesis\nstage: planning\nstatus: active\n---\n\n사용자 메모는 보존되어야 한다.\n'
@@ -482,19 +491,19 @@ class InboxBridgeEndpointTests(unittest.TestCase):
         self.assertEqual(manifest_path.read_bytes().decode('utf-8'), saved['manifestText'])
 
         status, saved = self.request('POST', '/projects/update', {
-            'projectId': 'thesis', 'operation': 'favorite_add', 'value': 'projects/thesis/paper.md',
+            'projectId': 'thesis', 'operation': 'favorite_add', 'value': '02_Projects/thesis/paper.md',
             'expectedSha': saved['manifestSha'],
         })
         self.assertEqual(status, 200)
-        self.assertIn('## 주요 파일\n- projects/thesis/paper.md', saved['manifestText'].replace('\r\n', '\n'))
+        self.assertIn('## 주요 파일\n- 02_Projects/thesis/paper.md', saved['manifestText'].replace('\r\n', '\n'))
         current_sha = saved['manifestSha']
 
         status, saved = self.request('POST', '/projects/update', {
-            'projectId': 'thesis', 'operation': 'favorite_remove', 'value': 'projects/thesis/paper.md',
+            'projectId': 'thesis', 'operation': 'favorite_remove', 'value': '02_Projects/thesis/paper.md',
             'expectedSha': current_sha,
         })
         self.assertEqual(status, 200)
-        self.assertNotIn('- projects/thesis/paper.md', saved['manifestText'])
+        self.assertNotIn('- 02_Projects/thesis/paper.md', saved['manifestText'])
 
         before_stale_write = manifest_path.read_bytes()
         status, conflict = self.request('POST', '/projects/update', {
@@ -505,8 +514,8 @@ class InboxBridgeEndpointTests(unittest.TestCase):
         self.assertEqual(manifest_path.read_bytes(), before_stale_write)
 
     def test_project_next_task_update_targets_only_selected_project(self):
-        target_root = self.root / 'projects' / 'inbox-task-target'
-        other_root = self.root / 'projects' / 'inbox-task-other'
+        target_root = self.root / '02_Projects' / 'inbox-task-target'
+        other_root = self.root / '02_Projects' / 'inbox-task-other'
         target_root.mkdir(parents=True, exist_ok=True)
         other_root.mkdir(parents=True, exist_ok=True)
         target_manifest = target_root / 'project.md'
