@@ -15,7 +15,7 @@ from thunderbird_send import (
 
 
 class ThunderbirdSendFixture:
-    def __init__(self, auth_method=3, socket_type=3):
+    def __init__(self, auth_method=3, socket_type=2):
         self.temp = tempfile.TemporaryDirectory()
         self.profile = Path(self.temp.name) / 'profile'
         self.profile.mkdir(parents=True)
