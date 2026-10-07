@@ -18,6 +18,7 @@ internal sealed class BridgeProcessManager : IDisposable
         "bridge_security.py",
         "shortcut_launcher.py",
         "thunderbird_mail.py",
+        "thunderbird_send.py",
         "mail_db.py",
         "mail_cli.py",
         "research_qa.py",
