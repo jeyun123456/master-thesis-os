@@ -73,8 +73,10 @@ class SmtpSettings:
     def status_dict(self) -> dict[str, object]:
         password_configured = bool(os.environ.get('THUNDERBIRD_SMTP_PASSWORD', '').strip())
         oauth2 = self.auth_method == 10
-        needs_password = self.auth_method != 0
-        ready = not oauth2 and (not needs_password or password_configured)
+        no_auth = self.auth_method == 1
+        password_auth = self.auth_method in {3, 4, 9}
+        supported = no_auth or password_auth
+        ready = not oauth2 and supported and (no_auth or password_configured)
         return {
             'host': self.hostname,
             'port': self.port,
@@ -199,9 +201,9 @@ def _as_int(value: object, default: int = 0) -> int:
 
 def _security_from_socket_type(socket_type: int) -> str:
     if socket_type == 2:
-        return 'ssl'
-    if socket_type == 3:
         return 'starttls'
+    if socket_type == 3:
+        return 'ssl'
     return 'plain'
 
 
@@ -427,8 +429,10 @@ def _build_message(smtp: SmtpSettings, draft: OutgoingDraft) -> EmailMessage:
 def _smtp_login(client: smtplib.SMTP, smtp: SmtpSettings) -> None:
     if smtp.auth_method == 10:
         raise ThunderbirdSendError('smtp_oauth2_unsupported', http_status=503)
-    if smtp.auth_method == 0:
+    if smtp.auth_method == 1:
         return
+    if smtp.auth_method not in {3, 4, 9}:
+        raise ThunderbirdSendError('smtp_settings_not_found', http_status=503)
     password = os.environ.get('THUNDERBIRD_SMTP_PASSWORD', '')
     if not password:
         raise ThunderbirdSendError('smtp_secret_missing', http_status=503)
