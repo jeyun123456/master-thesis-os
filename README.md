@@ -316,6 +316,20 @@ CLI의 `login` 명령과 웹 UI의 **동기화용 로그인**은 같은 Playwrig
 
 공지 상세의 **AI 분석**은 자동 동기화에 포함되지 않으며 사용자가 상세 패널의 버튼을 눌렀을 때만 실행된다. 기존 `MAIL_AI_*` provider 경계를 재사용해 한국어 요약·본문 번역·일정 후보를 `portal_notice_ai`와 `portal_notice_calendar_candidates`에 저장한다. 후보는 `pending` 상태로 남고, 사용자가 제목·날짜·시간을 확인한 뒤 **캘린더 추가**를 눌러야 `/api/calendar/events`가 실행된다. 분석 실패는 해당 공지에만 `failed`와 오류 코드를 남기며, 학교 계정·비밀번호·브라우저 cookie·AI key는 SQLite에 저장하지 않는다.
 
+
+## Thunderbird 메일 발송
+
+Local Bridge는 Thunderbird profile에서 SMTP의 **비밀이 아닌 설정**(host, port, 보안 방식, username, 발신 주소)을 읽을 수 있다. Thunderbird의 저장된 비밀번호나 OAuth token은 읽지 않는다. 비밀번호 인증 SMTP인 경우 서버 PC의 로컬 `.env.local`에 `THUNDERBIRD_SMTP_PASSWORD`를 별도로 설정하고, 필요한 경우에만 `THUNDERBIRD_SMTP_HOST`, `THUNDERBIRD_SMTP_PORT`, `THUNDERBIRD_SMTP_SECURITY`, `THUNDERBIRD_SMTP_USERNAME`, `THUNDERBIRD_SMTP_FROM`, `THUNDERBIRD_SMTP_FROM_NAME`으로 자동 발견 값을 override한다.
+
+발송은 실수 방지를 위해 두 단계로 제한한다.
+
+1. `POST /mail/send/preview`가 수신자·제목·본문·답장 thread를 검증하고 10분짜리 일회용 confirmation token을 만든다.
+2. 동일한 내용과 token을 `POST /mail/send`에 다시 보내야 실제 SMTP 전송이 실행된다. 내용이 바뀌었거나 token이 만료·재사용되면 발송하지 않는다.
+
+`POST /mail/send/status`는 SMTP host/port/security/auth method와 마스킹된 계정, secret 설정 여부, 발송 준비 상태만 반환한다. 답장은 `replyToMailId`와 선택적 `folder`를 사용하며 원본 발신자와 Message-ID를 읽어 `Re:`, `In-Reply-To`, `References`를 구성한다. 현재 발송 본문은 plain text 단일 수신자만 지원한다.
+
+Thunderbird profile이 OAuth2 SMTP(`authMethod=10`)를 사용하는 경우 status에서는 이를 감지하지만 비밀번호 경로로 발송하지 않는다. 이 경우 provider의 정식 OAuth2/XOAUTH2 또는 Graph 경로를 별도로 구성해야 한다.
+
 ## 학교 메일 AI 분석
 
 Codex CLI를 Luna Max로 사용할 때는 먼저 Codex CLI 인증을 완료한다.

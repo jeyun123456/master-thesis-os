@@ -20,6 +20,7 @@ from thunderbird_mail import (
     launch_thunderbird,
     normalize_folder_id,
 )
+from thunderbird_send import get_smtp_status, preview_mail, send_confirmed_mail
 
 
 HERE = Path(__file__).resolve().parent
@@ -27,6 +28,7 @@ CONFIG = resolve_config_path(HERE)
 MAX_BODY_BYTES = 16 * 1024
 MAX_INBOX_BODY_BYTES = 4 * 1024 * 1024
 MAX_RESEARCH_QA_BODY_BYTES = 128 * 1024
+MAX_MAIL_SEND_BODY_BYTES = 128 * 1024
 
 BRIDGE_API_VERSION = 8
 MAIL_PATH_PREFIX = '/mail/'
@@ -403,6 +405,12 @@ class Handler(BaseHTTPRequestHandler):
             except ThunderbirdMailError as exc:
                 return self.json_out(exc.http_status, {'ok': False, 'source': 'thunderbird', 'error': exc.code})
             return self.json_out(200, {'ok': True, 'source': 'thunderbird'})
+        if path == '/mail/send/status':
+            return self.json_out(200, get_smtp_status(bridge_config.thunderbird))
+        if path == '/mail/send/preview':
+            return self.json_out(200, preview_mail(bridge_config.thunderbird, body))
+        if path == '/mail/send':
+            return self.json_out(200, send_confirmed_mail(bridge_config.thunderbird, body))
         return None
 
     def _analysis_post(self, path: str, body: dict[str, object]):
@@ -603,7 +611,8 @@ class Handler(BaseHTTPRequestHandler):
         path = self._path()
         allowed = (
             '/open', '/open-folder', '/launch', '/mail/recent', '/mail/folders',
-            '/mail/message', '/mail/open', '/mail/sync', '/mail/analysis/candidate', '/mail/task',
+            '/mail/message', '/mail/open', '/mail/send/status', '/mail/send/preview', '/mail/send',
+            '/mail/sync', '/mail/analysis/candidate', '/mail/task',
             '/portal/sync', '/portal/login', '/portal/ai/backfill', '/portal/open-url', '/inbox', '/inbox/delete', '/inbox/organize', '/planner/tasks',
             '/planner/tasks/sync-inbox', '/planner/tasks/update', '/planner/tasks/delete', '/research/answer',
             '/projects/workspace', '/projects/update',
@@ -615,7 +624,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_out(404, {'error': 'not found'})
         if not self._origin_allowed():
             return
-        body_limit = MAX_INBOX_BODY_BYTES if path in {'/inbox', '/inbox/delete'} else MAX_RESEARCH_QA_BODY_BYTES if path == '/research/answer' else MAX_PLANNER_BODY_BYTES if path.startswith('/planner/tasks') else MAX_BODY_BYTES
+        body_limit = (
+            MAX_INBOX_BODY_BYTES if path in {'/inbox', '/inbox/delete'}
+            else MAX_RESEARCH_QA_BODY_BYTES if path == '/research/answer'
+            else MAX_PLANNER_BODY_BYTES if path.startswith('/planner/tasks')
+            else MAX_MAIL_SEND_BODY_BYTES if path in {'/mail/send/preview', '/mail/send'}
+            else MAX_BODY_BYTES
+        )
         body = self._read_json_body(body_limit)
         if body is None:
             return
