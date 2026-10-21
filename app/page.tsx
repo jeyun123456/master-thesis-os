@@ -331,12 +331,12 @@ export default function Page() {
       </aside>
 
       <main className="main">
-        <header className={`top${page === 'home' ? ' top-home' : ''}`}>
+        {page !== 'home' && <header className={`top${page === 'home' ? ' top-home' : ''}`}>
           <div>{page === 'home' ? <><h2>Chocomint Lab</h2><p>{todayLabel || '오늘'} · 할 일을 확인하고 하나씩 끝내세요</p></> : <><h2>{pageMeta[page][0]}</h2><p>{pageMeta[page][1]}</p></>}</div>
           <div className="badges"><div className="badge">Vault {repositorySource === 'local' ? '● 로컬' : repositorySource === 'github' ? '● GitHub' : '○ 설정 필요'}</div><div className="badge">Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '● 연결됨' : '○ 확인 필요'}</div><div className="badge">v{APP_VERSION}</div></div>
-        </header>
+        </header>}
 
-        {errors.length > 0 && <div className="error page-error">{errors[0]}</div>}
+        {page !== 'home' && errors.length > 0 && <div className="error page-error">{errors[0]}</div>}
 
         {page === 'home' && <section className="page active home-page">
           <HomeTodoPanel projects={projects} onOpenPlanner={() => setPage('planner')} />
