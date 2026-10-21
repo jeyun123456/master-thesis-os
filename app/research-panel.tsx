@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { dashboardApi } from '@/lib/client-api';
 import { ResultsPanel as LegacyResultsPanel } from '@/app/results-panel';
 import { StandardResultsView } from '@/app/standard-results-view';
+import { ResearchKanban } from '@/app/research-kanban';
+import kanbanStyles from './research-kanban.module.css';
 import type { DashboardBundle } from '@/lib/results';
 import { emptyProjectResultInventory, projectResultInventory } from '@/lib/project-results';
 import type { RepositoryItem } from '@/lib/repository';
@@ -38,6 +40,7 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
   const tree = Array.isArray(treeInput) ? treeInput : [];
   const defaultId = projects.find((project) => project.id === 'thesis')?.id || projects.find((project) => project.status === 'active')?.id || projects[0]?.id || '';
   const selectedId = selectedProjectId && projects.some((project) => project.id === selectedProjectId) ? selectedProjectId : defaultId;
+  const [researchView, setResearchView] = useState<'board' | 'detail'>(selectedProjectId ? 'detail' : 'board');
   const [statusSaving, setStatusSaving] = useState(false);
   const [stageSaving, setStageSaving] = useState(false);
   const [favoriteSaving, setFavoriteSaving] = useState<string | null>(null);
@@ -178,7 +181,13 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
       setFavoriteSaving(null);
     }
   }
-  return <div className="project-workspace">
+  if (researchView === 'board') {
+    return <ResearchKanban projects={projects} onSelect={(id) => { selectProject(id); setResearchView('detail'); }} />;
+  }
+
+  return <>
+    <button type="button" className={kanbanStyles.backButton} onClick={() => setResearchView('board')}>← 전체 연구 프로젝트 보드</button>
+    <div className="project-workspace">
     <aside className="card project-list" aria-label="연구 프로젝트">
       <div className="project-list-head"><b>프로젝트</b><span>{projects.length}개</span></div>
       {projects.map((project) => <button key={project.id} className={selected?.id === project.id ? 'active' : ''} onClick={() => selectProject(project.id)}>
@@ -265,7 +274,8 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
         {workspaceState === 'loading' ? <div className="empty compact-empty">프로젝트 작업 폴더를 불러오는 중…</div> : <ProjectFolderTree root={`projects/${selected.id}`} files={files} folders={workingFolders} expandedFolders={expandedFolders} keyFilePaths={keyFilePaths} favoriteSaving={favoriteSaving} canSaveMetadata={Boolean(workspace?.manifestSha)} onToggleExpanded={onToggleProjectFolder} onToggleFavorite={toggleFavorite} onOpen={onOpen} onOpenFolder={onOpenFolder} />}
       </section>
     </div>}
-  </div>;
+    </div>
+  </>;
 }
 
 function DashboardResultView({ path, onOpen, onOpenFolder }: { path: string; onOpen: (path: string) => void; onOpenFolder: (path: string) => void }) {
