@@ -11,6 +11,7 @@ import { PlannerPanel } from '@/app/planner-panel';
 import { PortalNoticesPanel } from '@/app/portal-notices-panel';
 import { MicrosoftMailPanel } from '@/app/microsoft-mail-panel';
 import { ResearchPanel } from '@/app/research-panel';
+import { HomeTodoPanel } from '@/app/home-todo-panel';
 import { ResearchMiniTrend } from '@/app/research-mini-trend';
 import { ResultsPanel as ResultsDashboardPanel } from '@/app/results-panel';
 import { DailyChecklist } from '@/app/daily-checklist';
@@ -53,16 +54,16 @@ const initialDashboard: DashboardBundle = {
 };
 
 const pageMeta: Record<Page, [string, string]> = {
-  home: ['홈', '오늘의 연구 작업과 다음 행동을 한눈에'],
+  home: ['홈', '오늘 할 일에 집중하는 화면'], 
   inbox: ['AI 인박스', '떠오른 내용을 저장하고 검토 후 정리'],
-  research: ['연구', '프로젝트별 질문 · 진행 단계 · 다음 작업 · 관련 자료'],
+  research: ['연구 프로젝트', '프로젝트별 진행 단계 · 다음 작업 · 관련 자료'],
   results: ['분석 결과', '프로젝트별 계산 결과와 산출물'],
   library: ['자료실', 'Google Drive · 주요 자료 · 대표 문헌 · 연구 Wiki'],
   slot: ['슬롯', '다음 연구 작업을 작은 보상 단위로 관리'],
   shortcuts: ['바로가기', '반복해서 여는 연구 파일 · 폴더 · 웹 주소'],
   mail: ['메일', '학교 업무 · 국제과를 폴더별로 확인'],
   portal: ['학교 공지', 'RITSUMEIKAN STUDENT PORTAL의 ALL · DM 공지'],
-  planner: ['플래너', '메일에서 나온 할 일과 일정 후보를 정리'],
+  planner: ['일정 및 할 일', '할 일과 일정 후보를 정리'],
   settings: ['설정', '연구 저장소 · Google Calendar · 학교 메일 · 로컬 브리지'],
 };
 
@@ -71,27 +72,25 @@ type NavigationGroup = { label: string; items: NavigationItem[] };
 
 const navigationGroups: NavigationGroup[] = [
   {
-    label: 'WORK',
+    label: 'RESEARCH',
     items: [
       { id: 'home', label: '홈', icon: '⌂' },
-      { id: 'research', label: '연구', icon: '⌕' },
-      { id: 'results', label: '분석 결과', icon: '▥' },
-      { id: 'library', label: '자료실', icon: '▤' },
+      { id: 'research', label: '연구 프로젝트', icon: '⌕' },
     ],
   },
   {
-    label: 'INBOX',
+    label: 'WORKFLOW',
     items: [
       { id: 'inbox', label: 'AI 인박스', icon: '✦' },
+      { id: 'planner', label: '일정 및 할 일', icon: '✓' },
       { id: 'mail', label: '메일', icon: '✉' },
       { id: 'portal', label: '학교 공지', icon: '▣' },
-      { id: 'planner', label: '플래너', icon: '✓' },
     ],
   },
   {
     label: 'TOOLS',
     items: [
-      { id: 'slot', label: '슬롯', icon: '◉' },
+      { id: 'slot', label: '작업 슬롯', icon: '◉' },
       { id: 'shortcuts', label: '바로가기', icon: '↗' },
     ],
   },
@@ -333,33 +332,14 @@ export default function Page() {
 
       <main className="main">
         <header className={`top${page === 'home' ? ' top-home' : ''}`}>
-          <div>{page === 'home' ? <><h2>Chocomint Lab</h2><p>{todayLabel || '오늘'} · 떠오른 생각을 기록하고 다음 행동을 시작하세요</p></> : <><h2>{pageMeta[page][0]}</h2><p>{pageMeta[page][1]}</p></>}</div>
+          <div>{page === 'home' ? <><h2>Chocomint Lab</h2><p>{todayLabel || '오늘'} · 할 일을 확인하고 하나씩 끝내세요</p></> : <><h2>{pageMeta[page][0]}</h2><p>{pageMeta[page][1]}</p></>}</div>
           <div className="badges"><div className="badge">Vault {repositorySource === 'local' ? '● 로컬' : repositorySource === 'github' ? '● GitHub' : '○ 설정 필요'}</div><div className="badge">Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '● 연결됨' : '○ 확인 필요'}</div><div className="badge">v{APP_VERSION}</div></div>
         </header>
 
         {errors.length > 0 && <div className="error page-error">{errors[0]}</div>}
 
         {page === 'home' && <section className="page active home-page">
-          <div className="home-workspace-grid">
-            <QuickCapturePanel entries={inboxEntries} loaded={inboxLoaded} busy={inboxOrganizing} storageStatus={inboxStorageStatus} storageError={inboxStorageError} bridgeApiWarning={bridgeApiWarning} bridgeTokenWarning={bridgeTokenWarning} onAdd={addInboxEntry} onOrganize={() => void organizeInbox()} onOpenInbox={() => setPage('inbox')} onRetrySave={retryInboxSave} />
-            <DailyChecklist todayEventCount={schedule.today.length} onShowToday={focusTodaySchedule} />
-          </div>
-          <div className="home-status-grid">
-            <HomeStatusCard id="today-schedule-card" label="오늘 일정" value={schedule.today.length ? `${schedule.today.length}건` : '없음'} detail={schedule.today[0]?.title || calendarStateText(calendar)} tone="blue" />
-            <HomeStatusCard label="다음 마감" value={schedule.nextDeadline ? deadlineLabel(schedule.nextDeadline) : '없음'} detail={schedule.nextDeadline?.title || '등록된 마감이 없어.'} tone="orange" />
-          </div>
-          <div className="home-lower-grid section-gap">
-            <CurrentResearchCard project={activeProject} researchStatus={researchStatus} onOpen={openResearchProject} />
-            <Card title="최근 분석 결과" right={dashboard.necessaryLabour?.source.yearRange || '결과 데이터'} className="home-results-card"><ResearchMiniTrend series={dashboard.necessaryLabour?.series || []} /></Card>
-          </div>
-          <div className="home-attention-grid section-gap">
-            <MailActionCandidates compact />
-            <PortalAttention onOpen={() => setPage('portal')} />
-            <Card title="최근 변경" right="연구 저장소 GitHub" className="home-recent-changes"><CommitList commits={commits.slice(0, 4)} /></Card>
-          </div>
-          <div className="section-gap">
-            <Card title="빠른 접근" right={homeShortcuts.length ? `${homeShortcuts.length}개` : '설정 필요'} className="home-quick-access"><ShortcutList shortcuts={homeShortcuts} onOpenFile={openLocal} onOpenFolder={openLocalFolder} /></Card>
-          </div>
+          <HomeTodoPanel projects={projects} onOpenPlanner={() => setPage('planner')} />
         </section>}
 
         {page === 'research' && <section className="page active"><ResearchPanel
