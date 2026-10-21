@@ -12,6 +12,10 @@ export function ResearchKanban({ projects, onSelect }: { projects: ResearchProje
     return !['paused', 'waiting', 'blocked', 'complete'].includes(project.status);
   }), [projects, filter]);
 
+  const unclassified = (project: ResearchProject) => !project.stage.trim() || ['unknown', '미확인', '미지정'].includes(project.stage.trim().toLowerCase());
+  const stageOf = (project: ResearchProject) => unclassified(project) ? 'unknown' : pipelineStageValue(project.stage);
+  const columns = visible.some(unclassified) ? [...researchPipelineStages, { value: 'unknown', label: '미확인' }] : [...researchPipelineStages];
+
   return <div className={styles.root}>
     <div className={styles.toolbar}>
       <div><h3>연구 프로젝트 보드</h3><p>연구 단계를 한눈에 보고, 카드를 눌러 기존 프로젝트 작업공간으로 이동해.</p></div>
@@ -22,8 +26,8 @@ export function ResearchKanban({ projects, onSelect }: { projects: ResearchProje
       </div>
     </div>
     <div className={styles.board} aria-label="연구 단계별 프로젝트">
-      {researchPipelineStages.map((stage) => {
-        const entries = visible.filter((project) => pipelineStageValue(project.stage) === stage.value);
+      {columns.map((stage) => {
+        const entries = visible.filter((project) => stageOf(project) === stage.value);
         return <section className={styles.column} key={stage.value} aria-label={stage.label}>
           <header className={styles.columnHeading}><h4>{stage.label}</h4><span>{entries.length}</span></header>
           <div className={styles.cards}>
