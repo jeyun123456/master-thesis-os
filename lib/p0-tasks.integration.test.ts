@@ -3,6 +3,8 @@ import { NextRequest } from 'next/server';
 import { DELETE as sessionDelete, GET as sessionGet, POST as sessionPost } from '../app/api/p0/session/route';
 import { GET as tasksGet, POST as tasksPost } from '../app/api/p0/tasks/route';
 import { PATCH as taskPatch } from '../app/api/p0/tasks/[id]/route';
+import { GET as sessionsGet } from '../app/api/p0/sessions/route';
+import { DELETE as sessionRevoke } from '../app/api/p0/sessions/[id]/route';
 import { GET as nativeProxyGet, POST as nativeProxyPost } from '../app/api/p0/native/[[...path]]/route';
 import { P0_SESSION_COOKIE } from './p0-server';
 // @ts-expect-error The sibling P0 repository's JS harness is intentionally used only for local integration tests.
@@ -199,6 +201,41 @@ describe('Next.js P0 proxy integration', () => {
     expect(response.headers.get('set-cookie')).toContain('Max-Age=0');
   });
 
+  it('lists P0 device sessions and revokes another device without revoking the current one', async () => {
+    const currentLogin = await sessionPost(request('/api/p0/session', undefined, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id_token: idToken(), device_label: 'Current test device' }),
+    }));
+    const currentCookie = cookieFrom(currentLogin);
+
+    const remoteLogin = await sessionPost(request('/api/p0/session', undefined, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id_token: idToken(), device_label: 'Remote test device' }),
+    }));
+    const remoteCookie = cookieFrom(remoteLogin);
+
+    const listed = await sessionsGet(request('/api/p0/sessions', currentCookie));
+    expect(listed.status).toBe(200);
+    const listing = await listed.json();
+    expect(listing.sessions).toHaveLength(2);
+    const remote = listing.sessions.find((session: { id: string }) => session.id !== listing.current);
+    if (!remote) throw new Error('A second P0 session was not created');
+    expect(remote).toMatchObject({ device_label: 'Remote test device', revoked: false });
+
+    const context = { params: Promise.resolve({ id: remote.id }) };
+    const crossOrigin = await sessionRevoke(request(`/api/p0/sessions/${remote.id}`, currentCookie, {
+      method: 'DELETE', headers: { origin: 'https://attacker.example' },
+    }), context);
+    expect(crossOrigin.status).toBe(403);
+
+    const revoked = await sessionRevoke(request(`/api/p0/sessions/${remote.id}`, currentCookie, { method: 'DELETE' }), context);
+    expect(revoked.status).toBe(200);
+    expect(await revoked.json()).toEqual({ revoked: true });
+
+    const remoteRead = await tasksGet(request('/api/p0/tasks', remoteCookie));
+    expect(remoteRead.status).toBe(401);
+    const currentRead = await tasksGet(request('/api/p0/tasks', currentCookie));
+    expect(currentRead.status).toBe(200);
+  });
+
   it('returns a safe unavailable response when the P0 server is down', async () => {
     const loggedIn = await sessionPost(request('/api/p0/session', undefined, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id_token: idToken() }),
@@ -207,6 +244,6 @@ describe('Next.js P0 proxy integration', () => {
     process.env.P0_API_URL = 'http://127.0.0.1:1';
     const response = await tasksGet(request('/api/p0/tasks', cookie));
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ error: 'P0 서버에 연결할 수 없어. 로컬 P0 서버 상태를 확인해줘.' });
+    expect(await response.json()).toEqual({ error: 'P0 서버에 연결할 수 없어. P0 서버 상태와 접근 인증 설정을 확인해줘.' });
   });
 });

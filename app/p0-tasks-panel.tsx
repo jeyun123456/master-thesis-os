@@ -1,32 +1,16 @@
 'use client';
 
-import Script from 'next/script';
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   createP0Task,
-  getP0Session,
   listP0Tasks,
-  loginToP0,
-  logoutFromP0,
   updateP0Task,
   type P0Task,
   type P0TaskCategory,
   type P0TaskList,
 } from '@/lib/p0-tasks-client';
 import { clearP0PendingCreate, readP0PendingCreate, saveP0PendingCreate, type P0PendingCreate } from '@/lib/p0-pending-create';
-
-declare global {
-  interface Window {
-    google?: {
-      accounts?: {
-        id?: {
-          initialize: (options: { client_id: string; callback: (response: { credential?: string }) => void }) => void;
-          renderButton: (parent: HTMLElement, options: Record<string, string>) => void;
-        };
-      };
-    };
-  }
-}
+import { useP0Auth } from '@/app/p0-auth-gate';
 
 const categoryLabels: Record<P0TaskCategory, string> = { research: '연구', school: '학교', personal: '개인' };
 type CategoryFilter = 'all' | P0TaskCategory;
@@ -40,12 +24,10 @@ function sessionStorageOrNull(): Storage | null {
 }
 
 export function P0TasksPanel() {
-  const [configured, setConfigured] = useState(false);
-  const [clientId, setClientId] = useState<string | null>(null);
-  const [authenticated, setAuthenticated] = useState(false);
+  const { authenticated } = useP0Auth();
   const [tasks, setTasks] = useState<P0Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [authBusy, setAuthBusy] = useState(false);
+
   const [createBusy, setCreateBusy] = useState(false);
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -58,8 +40,7 @@ export function P0TasksPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState('');
   const [recoveryOpen, setRecoveryOpen] = useState(false);
-  const googleButton = useRef<HTMLDivElement>(null);
-  const googleInitialized = useRef(false);
+
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -85,51 +66,7 @@ export function P0TasksPanel() {
     setPendingCreateReady(true);
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    void getP0Session().then((session) => {
-      if (!active) return;
-      setConfigured(session.configured);
-      setClientId(session.googleClientId);
-      setAuthenticated(session.authenticated);
-      if (session.authenticated) void loadTasks();
-      else setLoading(false);
-    }).catch((reason) => {
-      if (active) {
-        setError(reason instanceof Error ? reason.message : 'P0 연결을 확인하지 못했어.');
-        setLoading(false);
-      }
-    });
-    return () => { active = false; };
-  }, [loadTasks]);
-
-  const initializeGoogle = useCallback(() => {
-    const googleId = window.google?.accounts?.id;
-    if (!clientId || !googleId || !googleButton.current || googleInitialized.current) return;
-    googleInitialized.current = true;
-    googleId.initialize({
-      client_id: clientId,
-      callback: (credential) => {
-        if (!credential.credential) {
-          setError('Google 로그인을 완료하지 못했어.');
-          return;
-        }
-        setAuthBusy(true);
-        setError('');
-        void loginToP0(credential.credential).then(async () => {
-          setAuthenticated(true);
-          await loadTasks();
-        }).catch((reason) => {
-          setError(reason instanceof Error ? reason.message : 'P0 로그인에 실패했어.');
-        }).finally(() => setAuthBusy(false));
-      },
-    });
-    googleId.renderButton(googleButton.current, { theme: 'outline', size: 'large', text: 'signin_with', shape: 'rectangular' });
-  }, [clientId, loadTasks]);
-
-  useEffect(() => {
-    if (clientId && !authenticated && window.google?.accounts?.id) initializeGoogle();
-  }, [authenticated, clientId, initializeGoogle]);
+  useEffect(() => { void loadTasks(); }, [loadTasks]);
 
   const orderedTasks = useMemo(() => tasks
     .filter((task) => filter === 'all' || task.category === filter)
@@ -200,33 +137,15 @@ export function P0TasksPanel() {
     await changeTask(task, { title: nextTitle });
   }
 
-  async function signOut() {
-    setAuthBusy(true);
-    try {
-      const result = await logoutFromP0();
-      setAuthenticated(false);
-      setTasks([]);
-      googleInitialized.current = false;
-      setError(result.serverRevoked ? '' : '브라우저 쿠키는 지웠지만 P0 서버에서 세션 해지를 확인하지 못했어. P0 서버가 복구되면 다시 로그인한 뒤 로그아웃을 확인해줘.');
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'P0 로그아웃에 실패했어.');
-    } finally {
-      setAuthBusy(false);
-    }
-  }
-
   return <section className="card section planner-tasks-card" aria-labelledby="p0-tasks-title">
-    {clientId && !authenticated && <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" onLoad={initializeGoogle} />}
     <div className="head">
       <div><h3 id="p0-tasks-title">오늘 집중 · SQLite 할 일</h3><small>P0가 실행 상태의 원본이야. 기존 Planner 항목은 따로 보존돼.</small></div>
-      <div><span>{openCount}개 미완료</span>{configured && <button className="mini" type="button" aria-expanded={recoveryOpen} onClick={() => setRecoveryOpen((open) => !open)}>{recoveryOpen ? '간단 화면' : '오프라인·복구'}</button>}{authenticated && !recoveryOpen && <button className="mini" type="button" disabled={authBusy} onClick={() => void signOut()}>로그아웃</button>}</div>
+      <div><span>{openCount}개 미완료</span><button className="mini" type="button" aria-expanded={recoveryOpen} onClick={() => setRecoveryOpen((open) => !open)}>{recoveryOpen ? '간단 화면' : '오프라인·복구'}</button></div>
     </div>
     {recoveryOpen ? <>
       <p className="p0-recovery-note">검증된 P0 화면을 same-origin 프록시로 불러와. 로그인 bearer token은 HttpOnly·SameSite 쿠키에 저장되고 브라우저 JavaScript나 localStorage에서 읽을 수 없어.</p>
       <div className="p0-native-shell"><iframe src="/api/p0/native/" title="P0 오프라인·충돌·거부 복구 화면" loading="lazy" /></div>
     </> : <>
-    {!configured && <div className="error">P0 로그인 설정이 없어. P0 서버의 Google OAuth 설정을 확인해줘.</div>}
-    {!authenticated && configured && <div className="p0-login"><span>Google 계정으로 P0에 연결해줘.</span><div ref={googleButton} />{authBusy && <small>로그인 중…</small>}</div>}
     {authenticated && <>
       <form className="planner-task-create p0-task-create" onSubmit={(event) => void submitTask(event)}>
         <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="새 할 일" aria-label="P0 새 할 일" maxLength={500} disabled={!pendingCreateReady || createBusy || Boolean(pendingCreate)} />

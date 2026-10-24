@@ -9,6 +9,8 @@ import { MailActionCandidates } from '@/app/mail-action-candidates';
 import { MailPanel } from '@/app/mail-panel';
 import { PlannerPanel } from '@/app/planner-panel';
 import { P0HomeTasks } from '@/app/p0-home-tasks';
+import { P0AuthGate, useP0Auth } from '@/app/p0-auth-gate';
+import { P0SessionsPanel } from '@/app/p0-sessions-panel';
 import { PortalNoticesPanel } from '@/app/portal-notices-panel';
 import { MicrosoftMailPanel } from '@/app/microsoft-mail-panel';
 import { ResearchPanel } from '@/app/research-panel';
@@ -149,6 +151,11 @@ async function postBridge(endpoint: string, path: string, token: string) {
 }
 
 export default function Page() {
+  return <P0AuthGate><AuthenticatedPage /></P0AuthGate>;
+}
+
+function AuthenticatedPage() {
+  const { authBusy, logout } = useP0Auth();
   const [page, setPage] = useState<Page>('home');
   const [tree, setTree] = useState<RepositoryItem[]>([]);
   const [calendar, setCalendar] = useState<CalendarApiResponse>(initialCalendar);
@@ -265,6 +272,10 @@ export default function Page() {
     window.setTimeout(() => setToast(''), 1700);
   }
 
+  async function signOut() {
+    if (!await logout()) pop('로그아웃 요청에 실패했어. 연결을 확인한 뒤 다시 시도해줘.');
+  }
+
   async function openLocal(path: string) {
     pop('로컬 파일을 여는 중…');
     try {
@@ -335,7 +346,7 @@ export default function Page() {
       <main className="main">
         <header className={`top${page === 'home' ? ' top-home' : ''}`}>
           <div>{page === 'home' ? <><h2>Chocomint Lab</h2><p>{todayLabel || '오늘'} · 떠오른 생각을 기록하고 다음 행동을 시작하세요</p></> : <><h2>{pageMeta[page][0]}</h2><p>{pageMeta[page][1]}</p></>}</div>
-          <div className="badges"><div className="badge">Vault {repositorySource === 'local' ? '● 로컬' : repositorySource === 'github' ? '● GitHub' : '○ 설정 필요'}</div><div className="badge">Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '● 연결됨' : '○ 확인 필요'}</div><div className="badge">v{APP_VERSION}</div></div>
+          <div className="badges"><div className="badge">Vault {repositorySource === 'local' ? '● 로컬' : repositorySource === 'github' ? '● GitHub' : '○ 설정 필요'}</div><div className="badge">Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '● 연결됨' : '○ 확인 필요'}</div><div className="badge">v{APP_VERSION}</div><button className="mini" type="button" disabled={authBusy} onClick={() => void signOut()}>로그아웃</button></div>
         </header>
 
         {errors.length > 0 && <div className="error page-error">{errors[0]}</div>}
@@ -437,6 +448,7 @@ export default function Page() {
             <SchoolMailPanel variant="settings" folder="school-work" />
           </div>
           <div className="section-gap"><MicrosoftMailPanel variant="settings" /></div>
+          <div className="section-gap"><P0SessionsPanel /></div>
           <div className="section-gap"><Card title="버전" right={`v${APP_VERSION}`}><div className="note">프로젝트 기반 연구탭 · repo project manifest · 한국어 UI · 큐레이션 자료실 · 모바일 내비게이션.</div></Card></div>
         </section>}
       </main>

@@ -6,6 +6,7 @@ import type { ResearchStatus } from './research-status';
 import type { LibraryPaper } from './library';
 import type { ResearchProject } from './projects';
 import type { Shortcut } from './shortcuts';
+import { notifyP0SessionInvalid } from './p0-tasks-client';
 
 type ApiEnvelope<T> = { configured: boolean; items: T; error?: string };
 export type RepositorySource = 'github' | 'local' | 'none';
@@ -19,12 +20,14 @@ export type ShortcutSaveResponse = { configured:boolean; source:'github'|'local'
 
 async function request<T>(url: string): Promise<T> {
   const response = await fetch(url);
+  notifyP0SessionInvalid(response);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || `Request failed: ${response.status}`);
   return data;
 }
 async function mutate<T>(url: string, method: 'PUT' | 'PATCH', body: unknown): Promise<T> {
   const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  notifyP0SessionInvalid(response);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || `Request failed: ${response.status}`);
   return data as T;
@@ -34,6 +37,7 @@ async function calendarRequest():Promise<CalendarApiResponse>{
   for(let attempt=0;attempt<2;attempt+=1){
     try{
       const response=await fetch('/api/calendar/events?days=14',{cache:'no-store'});
+      notifyP0SessionInvalid(response);
       const data=await response.json() as CalendarApiResponse;
       if(!data||!Array.isArray(data.items)||!data.state)throw new Error('Calendar API returned an invalid response');
       if(data.state!=='error'||attempt===1)return data;
@@ -50,6 +54,7 @@ async function calendarRequest():Promise<CalendarApiResponse>{
 async function calendarMonthRequest(month: string): Promise<CalendarApiResponse> {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Calendar month must use YYYY-MM format');
   const response = await fetch(`/api/calendar/events?month=${encodeURIComponent(month)}`, { cache: 'no-store' });
+  notifyP0SessionInvalid(response);
   const data = await response.json() as CalendarApiResponse;
   if (!response.ok || !data || !Array.isArray(data.items) || !data.state) {
     throw new Error(data && typeof data.error === 'string' ? data.error : 'Calendar API returned an invalid response');
@@ -63,6 +68,7 @@ async function calendarRangeRequest(days: number, startDate: string): Promise<Ca
   }
   const query = new URLSearchParams({ days: String(days), startDate });
   const response = await fetch(`/api/calendar/events?${query}`, { cache: 'no-store' });
+  notifyP0SessionInvalid(response);
   const data = await response.json() as CalendarApiResponse;
   if (!response.ok || !data || !Array.isArray(data.items) || !data.state) {
     throw new Error(data && typeof data.error === 'string' ? data.error : 'Calendar API returned an invalid response');

@@ -17,6 +17,7 @@ export const runtime = 'nodejs';
 
 type P0Config = { google_client_id?: string };
 type P0Login = { token?: string; session_id?: string };
+type P0LoginRequest = { id_token: string; device_label?: string };
 
 export async function GET(request: NextRequest) {
   try {
@@ -60,9 +61,13 @@ export async function POST(request: NextRequest) {
     return noStore(NextResponse.json({ error: '유효한 Google 로그인 응답이 필요해.' }, { status: 400 }));
   }
   try {
+    const loginRequest = body as P0LoginRequest;
+    const deviceLabel = typeof loginRequest.device_label === 'string'
+      ? loginRequest.device_label.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 100) || 'Master Thesis OS'
+      : 'Master Thesis OS';
     const result = await p0Request<P0Login>('/api/auth/google', {
       method: 'POST',
-      body: { id_token: (body as Record<string, string>).id_token, device_label: 'Master Thesis OS' },
+      body: { id_token: loginRequest.id_token, device_label: deviceLabel },
     });
     if (!result.token) throw new P0ApiError(502, 'P0 로그인 응답에 세션이 없어.');
     return setP0SessionCookie(NextResponse.json({ authenticated: true }), result.token);
