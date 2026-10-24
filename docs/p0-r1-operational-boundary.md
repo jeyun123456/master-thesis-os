@@ -11,7 +11,7 @@
 - 기존 `hermes-dashboard`, `hermes-location` 터널은 변경하지 않았다. 별도 tunnel `master-thesis-os-p0`를 만들고 로컬 설정 `C:/Users/yeonj/.cloudflared/config-p0.yml`에서 `127.0.0.1:8787`로 라우팅했다. `cloudflared tunnel info`에서 connector 연결을 확인했다. Windows 서비스나 재부팅 자동 시작은 구성하지 않았다.
 - `p0-api.chocomintudon.com` DNS CNAME은 새 P0 tunnel을 가리키며 proxied 상태다. 해당 hostname의 Cloudflare Access 앱 `Master Thesis OS P0 API`와 `everyone` 대상 `deny` 정책을 만들었다.
 - 외부 unauthenticated GET은 P0 JSON 대신 Cloudflare Access의 `Sign in` HTML을 반환했다. 따라서 Access 경계는 응답 수준에서 확인했지만, machine service-token 인증 성공은 아직 확인하지 않았다.
-- Vercel MCP로 `master-thesis-os` 프로젝트와 팀 OWNER 권한을 확인했다. `P0_API_URL=https://p0-api.chocomintudon.com`을 Preview/Production 대상으로 추가했다. 기존 배포는 이 환경변수 변경 뒤 재배포되지 않았다.
+- Vercel MCP로 `master-thesis-os` 프로젝트와 팀 OWNER 권한을 확인했다. `P0_API_URL=https://p0-api.chocomintudon.com`을 Preview/Production 대상으로 추가했다. 그 뒤 커밋 `ee4a370d5f0affc414db37d260fc69fda0d4ec1b`의 Preview deployment `dpl_EVqNxLPyQcHfACGZKZXiDZneHS2x`는 `READY`로 빌드됐다. 기존 Production deployment는 새 환경변수 설정 전의 `main` 빌드로 유지 중이다.
 - Vercel Preview/Production 환경에서 `P0_ACCESS_CLIENT_ID`와 `P0_ACCESS_CLIENT_SECRET`은 아직 설정되지 않았다. 비밀값은 조회하거나 기록하지 않았다.
 
 ## 미확인 / 병합 차단
