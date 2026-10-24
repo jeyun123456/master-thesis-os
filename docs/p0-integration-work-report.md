@@ -11,7 +11,7 @@
 - R3–R4: 홈 중심 P0 task workspace, 미분류/read-state, offline CRUD queue/bridge, 모바일 More 메뉴의 캘린더·메일·공지·바로가기·설정 접근을 구현했다. Planner/Slot은 데스크톱 주 내비게이션에서 숨기고 More에는 보존했다.
 - R5: 전용 Drive service account(`drive.file`), encrypted upload/download/hash verification, DPAPI setup 및 restore guard를 구현했다. 지금까지는 mock Drive API와 임시 SQLite만 테스트했으며 실제 credentials/folder, 실제 backup/restore, schedule, retention은 설정하지 않았다.
 - 검증: Standalone `pnpm lint`, `pnpm build`, 선택 Vitest 5 files/19 tests 통과. P0 `node --test` 40 tests 통과, JS syntax checks와 PowerShell parser 통과. 통합 브라우저 로그인/오프라인 실기기 검증은 미완료.
-- PR #15은 열려 있고 Production deployment/SQLite, 기존 Cloudflare/Tailscale 매핑은 건드리지 않았다. Merge/Production 승격은 R1–R5 운영 설정과 R6 확인 전까지 금지한다.
+- PR #15은 열려 있고 Production deployment/SQLite, 기존 Cloudflare/Tailscale 매핑은 건드리지 않았다. Merge/Production 승격은 R1–R5 운영 설정과 R6 확인 전까지 금지한다. G1–G7 상세 상태는 `docs/p0-r6-release-gate.md`에 기록했다.
 
 ## 1. 기획서의 작업 목적
 
