@@ -12,7 +12,7 @@ import {
 import { clearP0PendingCreate, readP0PendingCreate, saveP0PendingCreate, type P0PendingCreate } from '@/lib/p0-pending-create';
 import { useP0Auth } from '@/app/p0-auth-gate';
 
-const categoryLabels: Record<P0TaskCategory, string> = { research: '연구', school: '학교', personal: '개인' };
+const categoryLabels: Record<P0TaskCategory, string> = { research: '연구', school: '학교', personal: '개인', unclassified: '미분류' };
 type CategoryFilter = 'all' | P0TaskCategory;
 
 function sessionStorageOrNull(): Storage | null {
@@ -33,7 +33,7 @@ export function P0TasksPanel() {
   const [error, setError] = useState('');
   const [title, setTitle] = useState('');
   const [dueDate, setDueDate] = useState('');
-  const [category, setCategory] = useState<P0TaskCategory>('personal');
+  const [category, setCategory] = useState<P0TaskCategory>('unclassified');
   const [filter, setFilter] = useState<CategoryFilter>('all');
   const [pendingCreate, setPendingCreate] = useState<P0PendingCreate | null>(null);
   const [pendingCreateReady, setPendingCreateReady] = useState(false);
@@ -151,11 +151,11 @@ export function P0TasksPanel() {
         <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="새 할 일" aria-label="P0 새 할 일" maxLength={500} disabled={!pendingCreateReady || createBusy || Boolean(pendingCreate)} />
         <input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} aria-label="P0 할 일 마감일" disabled={!pendingCreateReady || createBusy || Boolean(pendingCreate)} />
         <select value={category} onChange={(event) => setCategory(event.target.value as P0TaskCategory)} aria-label="P0 할 일 분류" disabled={!pendingCreateReady || createBusy || Boolean(pendingCreate)}>
-          <option value="research">연구</option><option value="school">학교</option><option value="personal">개인</option>
+          <option value="research">연구</option><option value="school">학교</option><option value="personal">개인</option><option value="unclassified">미분류</option>
         </select>
         <button className="btn primary" type="submit" disabled={!pendingCreateReady || createBusy || (!pendingCreate && !title.trim())}>{createBusy ? '저장 중…' : pendingCreate ? '같은 요청 재시도' : '추가'}</button>
       </form>
-      <div className="planner-persistence-status"><span className="saved">SQLite · P0 서버</span><label>분류 <select value={filter} onChange={(event) => setFilter(event.target.value as CategoryFilter)} aria-label="P0 할 일 분류 필터"><option value="all">전체</option><option value="research">연구</option><option value="school">학교</option><option value="personal">개인</option></select></label><button className="mini" type="button" disabled={loading} onClick={() => void loadTasks()}>새로고침</button></div>
+      <div className="planner-persistence-status"><span className="saved">SQLite · P0 서버</span><label>분류 <select value={filter} onChange={(event) => setFilter(event.target.value as CategoryFilter)} aria-label="P0 할 일 분류 필터"><option value="all">전체</option><option value="research">연구</option><option value="school">학교</option><option value="personal">개인</option><option value="unclassified">미분류</option></select></label><button className="mini" type="button" disabled={loading} onClick={() => void loadTasks()}>새로고침</button></div>
       {tasks.length ? <div className="planner-task-list">{orderedTasks.map((task) => {
         const done = task.status === 'done';
         return <article className={done ? 'planner-user-task done' : 'planner-user-task'} key={task.id}>

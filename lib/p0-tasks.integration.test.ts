@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { NextRequest } from 'next/server';
 import { DELETE as sessionDelete, GET as sessionGet, POST as sessionPost } from '../app/api/p0/session/route';
 import { GET as tasksGet, POST as tasksPost } from '../app/api/p0/tasks/route';
-import { PATCH as taskPatch } from '../app/api/p0/tasks/[id]/route';
+import { DELETE as taskDelete, PATCH as taskPatch } from '../app/api/p0/tasks/[id]/route';
+import { POST as tasksSeenPost } from '../app/api/p0/tasks/seen/route';
 import { GET as sessionsGet } from '../app/api/p0/sessions/route';
 import { DELETE as sessionRevoke } from '../app/api/p0/sessions/[id]/route';
 import { GET as nativeProxyGet, POST as nativeProxyPost } from '../app/api/p0/native/[[...path]]/route';
@@ -129,6 +130,40 @@ describe('Next.js P0 proxy integration', () => {
     expect(script).toContain('caches.open(CACHE)');
     expect(script).not.toContain('caches.match(');
     expect(script).not.toContain('ks.filter((k) => k !== CACHE)');
+  });
+
+  it('supports unclassified creation, shared read-state, native sync access, and soft deletion', async () => {
+    const loggedIn = await sessionPost(request('/api/p0/session', undefined, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id_token: idToken() }),
+    }));
+    const cookie = cookieFrom(loggedIn);
+    const created = await tasksPost(request('/api/p0/tasks', cookie, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'p0-unclassified-task', op_id: 'p0-unclassified-create', fields: { title: '미분류 항목' } }),
+    }));
+    expect(created.status).toBe(201);
+    const task = (await created.json()).task;
+    expect(task).toMatchObject({ category: 'unclassified', is_new: true });
+
+    const seen = await tasksSeenPost(request('/api/p0/tasks/seen', cookie, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids: [task.id] }),
+    }));
+    expect(seen.status).toBe(200);
+    expect(await seen.json()).toEqual({ marked: 1 });
+
+    const nativeList = await nativeProxyGet(request('/api/p0/native/api/tasks', cookie), {
+      params: Promise.resolve({ path: ['api', 'tasks'] }),
+    });
+    expect(nativeList.status).toBe(200);
+    expect((await nativeList.json()).tasks[0]).toMatchObject({ id: task.id, is_new: false });
+
+    const deleted = await taskDelete(request(`/api/p0/tasks/${task.id}`, cookie, { method: 'DELETE' }), {
+      params: Promise.resolve({ id: task.id }),
+    });
+    expect(deleted.status).toBe(200);
+    expect((await deleted.json()).task.deleted).toBe(true);
+    const afterDelete = await tasksGet(request('/api/p0/tasks', cookie));
+    expect(await afterDelete.json()).toMatchObject({ tasks: [] });
   });
 
   it('clears a stale session cookie after revocation or expiry', async () => {

@@ -1,5 +1,7 @@
 # P0 R1 운영 경계 확인
 
+> **기준선 시점:** 2026-10-24의 R1 환경 관찰 기록이다. 이후 P0 checkout에는 task/auth/sync/Drive-backup 변경이 미커밋으로 추가되었으므로 아래의 당시 HEAD/clean 표시는 현재 상태가 아니다. 최신 상태는 `docs/p0-integration-work-report.md`의 2026-10-25 요약을 따른다. Preview deployment ID는 이전 코드의 배포이며 최신 변경을 검증한 결과가 아니다.
+
 ## 확인된 기준선
 
 - 저장소 `jeyun123456/master-thesis-os`, 작업 브랜치 `feat/integrate-p0-tasks`; PR #15은 열린 상태다.

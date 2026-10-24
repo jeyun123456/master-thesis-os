@@ -8,7 +8,7 @@ import { GmailMailPanel } from '@/app/gmail-mail-panel';
 import { MailActionCandidates } from '@/app/mail-action-candidates';
 import { MailPanel } from '@/app/mail-panel';
 import { PlannerPanel } from '@/app/planner-panel';
-import { P0HomeTasks } from '@/app/p0-home-tasks';
+import { P0HomeWorkspace } from '@/app/p0-home-workspace';
 import { P0AuthGate, useP0Auth } from '@/app/p0-auth-gate';
 import { P0SessionsPanel } from '@/app/p0-sessions-panel';
 import { PortalNoticesPanel } from '@/app/portal-notices-panel';
@@ -23,7 +23,7 @@ import { SchoolMailPanel } from '@/app/school-mail-panel';
 import { ShortcutList, ShortcutsPanel } from '@/app/shortcuts-panel';
 import { dashboardApi, type CalendarApiResponse, type RepositorySource, type ShortcutSource } from '@/lib/client-api';
 import type { CalendarEvent } from '@/lib/calendar';
-import { daysUntil, groupCalendarEvents } from '@/lib/calendar-view';
+import { daysUntil, eventDateKey, groupCalendarEvents } from '@/lib/calendar-view';
 import type { GitHubCommitSummary } from '@/lib/github';
 import { projectStatusLabel, stageLabel, type ResearchProject } from '@/lib/projects';
 import type { RepositoryItem } from '@/lib/repository';
@@ -34,7 +34,7 @@ import { getEnabledShortcuts, getHomeShortcuts, loadShortcutState, shortcuts, ty
 import { useInboxWorkflow } from '@/app/use-inbox-workflow';
 import appPackage from '../package.json';
 
-type Page = 'home' | 'research' | 'results' | 'library' | 'slot' | 'shortcuts' | 'inbox' | 'mail' | 'portal' | 'planner' | 'settings';
+type Page = 'home' | 'research' | 'results' | 'library' | 'calendar' | 'slot' | 'shortcuts' | 'inbox' | 'mail' | 'portal' | 'planner' | 'settings';
 
 const APP_VERSION = appPackage.version;
 
@@ -61,6 +61,7 @@ const pageMeta: Record<Page, [string, string]> = {
   research: ['연구', '프로젝트별 질문 · 진행 단계 · 다음 작업 · 관련 자료'],
   results: ['분석 결과', '프로젝트별 계산 결과와 산출물'],
   library: ['자료실', 'Google Drive · 주요 자료 · 대표 문헌 · 연구 Wiki'],
+  calendar: ['캘린더', '앞으로 14일 일정 · 읽기 전용'],
   slot: ['슬롯', '다음 연구 작업을 작은 보상 단위로 관리'],
   shortcuts: ['바로가기', '반복해서 여는 연구 파일 · 폴더 · 웹 주소'],
   mail: ['메일', '학교 업무 · 국제과를 폴더별로 확인'],
@@ -71,6 +72,7 @@ const pageMeta: Record<Page, [string, string]> = {
 
 type NavigationItem = { id: Page; label: string; icon: string };
 type NavigationGroup = { label: string; items: NavigationItem[] };
+type MobileNavigationItem = { id: Page | 'more'; label: string; icon: string };
 
 const navigationGroups: NavigationGroup[] = [
   {
@@ -80,6 +82,7 @@ const navigationGroups: NavigationGroup[] = [
       { id: 'research', label: '연구', icon: '⌕' },
       { id: 'results', label: '분석 결과', icon: '▥' },
       { id: 'library', label: '자료실', icon: '▤' },
+      { id: 'calendar', label: '캘린더', icon: '▦' },
     ],
   },
   {
@@ -103,6 +106,14 @@ const navigationGroups: NavigationGroup[] = [
 const navigation: NavigationItem[] = [
   ...navigationGroups.flatMap((group) => group.items),
   { id: 'settings', label: '설정', icon: '⚙' },
+];
+const mobilePrimaryPages = new Set<Page>(['home', 'research', 'inbox']);
+const mobileMoreItems = navigation.filter((item) => !mobilePrimaryPages.has(item.id));
+const mobileNavigation: MobileNavigationItem[] = [
+  { id: 'home', label: '홈', icon: '⌂' },
+  { id: 'research', label: '연구 프로젝트', icon: '⌕' },
+  { id: 'inbox', label: 'AI 인박스', icon: '✦' },
+  { id: 'more', label: '더보기', icon: '•••' },
 ];
 
 const BRIDGE_REQUEST_TIMEOUT_MS = 5000;
@@ -157,6 +168,9 @@ export default function Page() {
 function AuthenticatedPage() {
   const { authBusy, logout } = useP0Auth();
   const [page, setPage] = useState<Page>('home');
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [focusCreateRequest, setFocusCreateRequest] = useState(0);
   const [tree, setTree] = useState<RepositoryItem[]>([]);
   const [calendar, setCalendar] = useState<CalendarApiResponse>(initialCalendar);
   const [dashboard, setDashboard] = useState<DashboardBundle>(initialDashboard);
@@ -179,6 +193,15 @@ function AuthenticatedPage() {
   const [todayLabel, setTodayLabel] = useState('');
   const enabledShortcuts = useMemo(() => getEnabledShortcuts(shortcutItems), [shortcutItems]);
   const homeShortcuts = useMemo(() => getHomeShortcuts(enabledShortcuts), [enabledShortcuts]);
+
+  useEffect(() => {
+    if (!mobileMoreOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileMoreOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [mobileMoreOpen]);
 
   useEffect(() => {
     const updateDate = () => setTodayLabel(formatTodayDate(new Date()));
@@ -332,14 +355,15 @@ function AuthenticatedPage() {
     return projectTasks.length ? projectTasks : researchStatus?.nextActions || [];
   }, [activeProject, researchStatus]);
   return (
-    <div className="shell">
-      <aside className="sidebar">
+    <div className={`shell${sidebarExpanded ? ' sidebar-expanded' : ''}`}>
+      <aside className={`sidebar${sidebarExpanded ? ' expanded' : ''}`}>
         <div className="brand"><div className="logo">C</div><div><h1>Chocomint Lab</h1><p>Research Workspace · v{APP_VERSION}</p></div></div>
+        <button className="sidebar-toggle" type="button" aria-label={sidebarExpanded ? '메뉴 접기' : '메뉴 펼치기'} aria-expanded={sidebarExpanded} onClick={() => setSidebarExpanded((expanded) => !expanded)}><span>{sidebarExpanded ? '‹' : '›'}</span></button>
         <nav className="nav" aria-label="주 메뉴">{navigationGroups.map((group) => <div className="nav-group" key={group.label}>
           <span className="nav-group-label">{group.label}</span>
-          {group.items.map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}><span>{item.icon}</span>{item.label}</button>)}
+          {group.items.filter((item) => item.id !== 'slot' && item.id !== 'planner').map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} aria-label={item.label} title={sidebarExpanded ? undefined : item.label} onClick={() => setPage(item.id)}><span>{item.icon}</span>{item.label}</button>)}
         </div>)}</nav>
-        <div className="sidebar-settings"><span className="nav-group-label">SYSTEM</span><button className={page === 'settings' ? 'active' : ''} onClick={() => setPage('settings')}><span>⚙</span>설정</button></div>
+        <div className="sidebar-settings"><span className="nav-group-label">SYSTEM</span><button className={page === 'settings' ? 'active' : ''} aria-label="설정" title={sidebarExpanded ? undefined : '설정'} onClick={() => setPage('settings')}><span>⚙</span>설정</button></div>
         <div className="sidebar-source"><span>연구 기준</span><b>Obsidian Vault</b><small>projects/ + shared/ · {repositorySource === 'local' ? 'local live' : repositorySource === 'github' ? 'GitHub live' : '연결 필요'}</small></div>
       </aside>
 
@@ -352,6 +376,7 @@ function AuthenticatedPage() {
         {errors.length > 0 && <div className="error page-error">{errors[0]}</div>}
 
         {page === 'home' && <section className="page active home-page">
+          <div className="section-gap"><P0HomeWorkspace projects={projects} onOpenPlanner={() => setPage('planner')} focusCreateRequest={focusCreateRequest} /></div>
           <div className="home-workspace-grid">
             <QuickCapturePanel entries={inboxEntries} loaded={inboxLoaded} busy={inboxOrganizing} storageStatus={inboxStorageStatus} storageError={inboxStorageError} bridgeApiWarning={bridgeApiWarning} bridgeTokenWarning={bridgeTokenWarning} onAdd={addInboxEntry} onOrganize={() => void organizeInbox()} onOpenInbox={() => setPage('inbox')} onRetrySave={retryInboxSave} />
             <DailyChecklist todayEventCount={schedule.today.length} onShowToday={focusTodaySchedule} />
@@ -360,7 +385,6 @@ function AuthenticatedPage() {
             <HomeStatusCard id="today-schedule-card" label="오늘 일정" value={schedule.today.length ? `${schedule.today.length}건` : '없음'} detail={schedule.today[0]?.title || calendarStateText(calendar)} tone="blue" />
             <HomeStatusCard label="다음 마감" value={schedule.nextDeadline ? deadlineLabel(schedule.nextDeadline) : '없음'} detail={schedule.nextDeadline?.title || '등록된 마감이 없어.'} tone="orange" />
           </div>
-          <div className="section-gap"><P0HomeTasks onOpenPlanner={() => setPage('planner')} /></div>
           <div className="home-lower-grid section-gap">
             <CurrentResearchCard project={activeProject} researchStatus={researchStatus} onOpen={openResearchProject} />
             <Card title="최근 분석 결과" right={dashboard.necessaryLabour?.source.yearRange || '결과 데이터'} className="home-results-card"><ResearchMiniTrend series={dashboard.necessaryLabour?.series || []} /></Card>
@@ -401,6 +425,7 @@ function AuthenticatedPage() {
           onOpenFolder={openLocalFolder}
         /></section>}
         {page === 'library' && <section className="page active"><GoogleDrivePanel /><div className="section-gap"><LibraryPanel tree={tree} researchStatus={researchStatus} onOpen={openLocal} /></div></section>}
+        {page === 'calendar' && <section className="page active"><Card title="캘린더" right={`${calendar.items.length}건 · 읽기 전용`} className="calendar-card"><CalendarAgenda calendar={calendar} /></Card></section>}
         {page === 'slot' && <section className="page active"><RewardSlotPanel tasks={activeProject?.nextTasks || researchStatus?.nextActions || []} projectTitle={activeProject ? activeProject.title : 'Wiki live'} onNotice={pop} /></section>}
         {page === 'shortcuts' && <section className="page active"><ShortcutsPanel
           shortcuts={shortcutItems}
@@ -453,7 +478,20 @@ function AuthenticatedPage() {
         </section>}
       </main>
 
-      <nav className="mobile-nav" aria-label="모바일 메뉴">{navigation.map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}><span>{item.icon}</span><small>{item.label}</small></button>)}</nav>
+      {mobileMoreOpen && <div className="mobile-more-backdrop" onClick={() => setMobileMoreOpen(false)}>
+        <nav className="mobile-more-menu" aria-label="더 보기 메뉴" onClick={(event) => event.stopPropagation()}>
+          {mobileMoreItems.map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => { setPage(item.id); setMobileMoreOpen(false); }}><span>{item.icon}</span>{item.label}</button>)}
+        </nav>
+      </div>}
+      <nav className="mobile-nav" aria-label="모바일 메뉴">{mobileNavigation.map((item) => {
+        const isMore = item.id === 'more';
+        const active = isMore ? mobileMoreOpen || !mobilePrimaryPages.has(page) : page === item.id;
+        return <button key={item.id} className={active ? 'active' : ''} aria-expanded={isMore ? mobileMoreOpen : undefined} aria-current={active && !isMore ? 'page' : undefined} onClick={() => {
+          if (item.id === 'more') setMobileMoreOpen((open) => !open);
+          else { setPage(item.id); setMobileMoreOpen(false); }
+        }}><span>{item.icon}</span><small>{item.label}</small></button>;
+      })}</nav>
+      <button className="mobile-fab" type="button" aria-label="새 할 일 추가" onClick={() => { setMobileMoreOpen(false); setPage('home'); setFocusCreateRequest((request) => request + 1); }}>＋</button>
       <div className={`toast ${toast ? 'show' : ''}`}>{toast}</div>
     </div>
   );
@@ -486,6 +524,31 @@ function HomeStatusCard({ id, label, value, detail, tone }: { id?: string; label
 }
 
 function Card({ title, right, children, className = '' }: { title: string; right?: string; children: React.ReactNode; className?: string }) { return <div className={`card section${className ? ` ${className}` : ''}`}><div className="head"><h3>{title}</h3><span>{right}</span></div>{children}</div>; }
+function CalendarAgenda({ calendar }: { calendar: CalendarApiResponse }) {
+  const grouped = new Map<string, CalendarEvent[]>();
+  for (const event of calendar.items) {
+    const date = eventDateKey(event);
+    grouped.set(date, [...(grouped.get(date) ?? []), event]);
+  }
+  if (!calendar.items.length) return <div className="calendar-agenda-empty">{calendarStateText(calendar)}</div>;
+  return <div className="calendar-agenda">
+    {[...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([date, events]) => <section className="calendar-agenda-day" key={date}>
+      <h4>{formatCalendarDay(date)}</h4>
+      <div className="calendar-events">{events.map((event) => <article className="event calendar-agenda-event" key={event.id}>
+        <span className="calendar-agenda-time">{event.allDay ? '종일' : formatCalendarTime(event.start, event.end)}</span>
+        <div className="calendar-agenda-copy"><b>{event.title}</b><small>{event.category}{event.location ? ` · ${event.location}` : ''}</small></div>
+      </article>)}</div>
+    </section>)}
+  </div>;
+}
+function formatCalendarDay(value: string) {
+  const date = new Date(`${value}T12:00:00+09:00`);
+  return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(date);
+}
+function formatCalendarTime(start: string, end: string) {
+  const formatter = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  return `${formatter.format(new Date(start))}–${formatter.format(new Date(end))}`;
+}
 function calendarStateText(calendar: CalendarApiResponse) { if (calendar.state === 'unconfigured') return 'Google Calendar 설정이 필요해.'; if (calendar.state === 'empty') return '오늘부터 14일 안에 일정이 없어.'; if (calendar.errorCode === 'auth_error' || calendar.errorCode === 'insufficient_permissions') return 'Calendar 서비스 계정의 읽기/쓰기 권한을 확인해야 해.'; if (calendar.errorCode === 'provider_bad_request') return 'Calendar 요청 형식 또는 날짜·시간을 확인해줘.'; if (calendar.errorCode === 'invalid_calendar') return 'Calendar ID 또는 공유 권한을 확인해줘.'; if (calendar.errorCode === 'quota_error') return 'Google Calendar API quota를 확인해줘.'; if (calendar.errorCode === 'malformed_response') return 'Calendar 응답 형식을 확인할 수 없어.'; if (calendar.state === 'error') return 'Calendar 네트워크 연결을 확인해줘.'; return '해당 일정이 없어.'; }
 function CommitList({ commits }: { commits: GitHubCommitSummary[] }) { if (!commits.length) return <div className="empty compact-empty">최근 GitHub 변경을 불러오는 중이거나 연결 정보가 없어.</div>; return <div>{commits.map((commit) => <div className="commit" key={commit.sha}><div><b>{commit.message}</b><small>{commit.author} · {relativeDate(commit.date)}</small></div><code>{commit.sha.slice(0, 7)}</code></div>)}</div>; }
 

@@ -28,3 +28,18 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     return p0AuthenticatedErrorResponse(error);
   }
 }
+
+export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const originError = sameOriginMutationError(request);
+  if (originError) return originError;
+  const token = p0SessionToken(request);
+  if (!token) return noStore(NextResponse.json({ error: 'P0 로그인이 필요해.' }, { status: 401 }));
+  const { id } = await context.params;
+  if (!safeId.test(id)) return noStore(NextResponse.json({ error: '할 일 ID가 올바르지 않아.' }, { status: 400 }));
+  try {
+    const result = await p0Request(`/api/tasks/${encodeURIComponent(id)}`, { method: 'DELETE', token });
+    return noStore(NextResponse.json(result));
+  } catch (error) {
+    return p0AuthenticatedErrorResponse(error);
+  }
+}

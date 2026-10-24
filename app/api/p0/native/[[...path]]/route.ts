@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { p0ErrorResponse, p0Fetch, readRequestBytesLimited, sameOriginMutationError } from '../../../../../lib/p0-server';
+import { p0ErrorResponse, p0Fetch, p0SessionToken, readRequestBytesLimited, sameOriginMutationError } from '../../../../../lib/p0-server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,7 @@ const STATIC_FILES = new Set(['index.html', 'app.js', 'home.js', 'sync-client.js
 const TASK_ID = '[\\w-]+';
 const API_ROUTES: Array<{ method: string; pattern: RegExp }> = [
   { method: 'GET', pattern: /^\/api\/(?:health|config|tasks|conflicts|sessions)$/ },
-  { method: 'POST', pattern: /^\/api\/(?:auth\/google|auth\/logout|tasks)$/ },
+  { method: 'POST', pattern: /^\/api\/(?:auth\/google|auth\/logout|tasks|tasks\/seen)$/ },
   { method: 'PATCH', pattern: new RegExp(`^/api/tasks/${TASK_ID}$`) },
   { method: 'DELETE', pattern: new RegExp(`^/api/(?:tasks|sessions)/${TASK_ID}$`) },
   { method: 'GET', pattern: new RegExp(`^/api/tasks/${TASK_ID}/revisions$`) },
@@ -63,7 +63,7 @@ async function proxy(request: NextRequest, context: RouteContext) {
     const originError = sameOriginMutationError(request);
     if (originError) return originError;
   }
-  const nativeToken = request.cookies.get(NATIVE_SESSION_COOKIE)?.value ?? '';
+  const nativeToken = request.cookies.get(NATIVE_SESSION_COOKIE)?.value || p0SessionToken(request);
 
   let body: ArrayBuffer | undefined;
   if (!['GET', 'HEAD'].includes(method)) {

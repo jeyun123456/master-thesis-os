@@ -8,7 +8,7 @@ export type P0PendingCreate = {
     due_date: string | null;
     category: P0TaskCategory;
     status: 'open';
-    is_today: false;
+    is_today: boolean;
   };
 };
 
@@ -16,7 +16,7 @@ type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 const STORAGE_KEY = 'mtos-p0-pending-create';
 const safeId = /^[A-Za-z0-9_-]{1,200}$/;
-const categories = new Set<P0TaskCategory>(['research', 'school', 'personal']);
+const categories = new Set<P0TaskCategory>(['research', 'school', 'personal', 'unclassified']);
 
 function parsePendingCreate(value: unknown): P0PendingCreate | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
@@ -28,7 +28,7 @@ function parsePendingCreate(value: unknown): P0PendingCreate | null {
   if (typeof fields.title !== 'string' || !fields.title.trim() || fields.title.length > 500
     || (fields.due_date !== null && (typeof fields.due_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(fields.due_date)))
     || typeof fields.category !== 'string' || !categories.has(fields.category as P0TaskCategory)
-    || fields.status !== 'open' || fields.is_today !== false) return null;
+    || fields.status !== 'open' || typeof fields.is_today !== 'boolean') return null;
   return {
     id: candidate.id,
     op_id: candidate.op_id,
@@ -37,7 +37,7 @@ function parsePendingCreate(value: unknown): P0PendingCreate | null {
       due_date: fields.due_date as string | null,
       category: fields.category as P0TaskCategory,
       status: 'open',
-      is_today: false,
+      is_today: fields.is_today,
     },
   };
 }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getP0Session, listP0Tasks, type P0Task } from '@/lib/p0-tasks-client';
 
-const categoryLabels = { research: '연구', school: '학교', personal: '개인' } as const;
+const categoryLabels = { research: '연구', school: '학교', personal: '개인', unclassified: '미분류' } as const;
 type HomeState = 'loading' | 'ready' | 'empty' | 'login' | 'unconfigured' | 'error';
 
 export function P0HomeTasks({ onOpenPlanner }: { onOpenPlanner: () => void }) {

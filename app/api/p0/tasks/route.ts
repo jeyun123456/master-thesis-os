@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isRecord, noStore, p0AuthenticatedErrorResponse, p0Request, p0SessionToken, P0ApiError, readJsonLimited, sameOriginMutationError } from '../../../../lib/p0-server';
 
 export const runtime = 'nodejs';
-const categories = new Set(['research', 'school', 'personal']);
+const categories = new Set(['research', 'school', 'personal', 'unclassified']);
 const safeId = /^[A-Za-z0-9_-]{1,200}$/;
 
 export async function GET(request: NextRequest) {
