@@ -11,6 +11,8 @@ type P0RequestOptions = {
   body?: unknown;
 };
 
+type P0FetchOptions = Pick<RequestInit, 'method' | 'headers' | 'body'>;
+
 export class P0ApiError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
@@ -108,11 +110,15 @@ function p0BaseUrl() {
     throw new P0ApiError(503, 'P0 API URL is invalid');
   }
   const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  const loopback = host === 'localhost' || host === '::1' || /^127(?:\.\d{1,3}){3}$/.test(host);
+  const loopback = isLoopbackHost(host);
   if ((url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) || url.username || url.password || url.search || url.hash || (url.pathname !== '/' && url.pathname !== '')) {
     throw new P0ApiError(503, 'P0 API must use HTTPS or a loopback HTTP URL');
   }
   return url;
+}
+
+function isLoopbackHost(hostname: string) {
+  return hostname === 'localhost' || hostname === '::1' || /^127(?:\.\d{1,3}){3}$/.test(hostname);
 }
 
 export function p0UpstreamUrl(path: string) {
@@ -122,23 +128,47 @@ export function p0UpstreamUrl(path: string) {
   return new URL(path, p0BaseUrl());
 }
 
+export async function p0Fetch(path: string, options: P0FetchOptions = {}) {
+  const url = p0UpstreamUrl(path);
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const loopback = isLoopbackHost(hostname);
+  const accessClientId = process.env.P0_ACCESS_CLIENT_ID?.trim() || '';
+  const accessClientSecret = process.env.P0_ACCESS_CLIENT_SECRET?.trim() || '';
+  if (Boolean(accessClientId) !== Boolean(accessClientSecret)) {
+    throw new P0ApiError(503, 'P0 Access service credentials are incomplete');
+  }
+  const headers = new Headers(options.headers);
+  headers.delete('CF-Access-Client-Id');
+  headers.delete('CF-Access-Client-Secret');
+  if (!loopback) {
+    if (url.protocol !== 'https:' || !accessClientId || !accessClientSecret) {
+      throw new P0ApiError(503, 'P0 server access authentication is not configured');
+    }
+    headers.set('CF-Access-Client-Id', accessClientId);
+    headers.set('CF-Access-Client-Secret', accessClientSecret);
+  }
+  try {
+    return await fetch(url, {
+      ...options,
+      headers,
+      cache: 'no-store',
+      redirect: 'error',
+    });
+  } catch {
+    throw new P0ApiError(503, 'P0 서버에 연결할 수 없어. P0 서버 상태와 접근 인증 설정을 확인해줘.');
+  }
+}
+
 export async function p0Request<T>(path: string, options: P0RequestOptions = {}): Promise<T> {
   if (!path.startsWith('/api/') || path.startsWith('//')) throw new P0ApiError(500, 'Invalid internal P0 path');
   const headers = new Headers({ accept: 'application/json' });
   if (options.body !== undefined) headers.set('content-type', 'application/json');
   if (options.token) headers.set('authorization', `Bearer ${options.token}`);
-  let response: Response;
-  try {
-    response = await fetch(new URL(path, p0BaseUrl()), {
-      method: options.method ?? 'GET',
-      headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      cache: 'no-store',
-      redirect: 'error',
-    });
-  } catch {
-    throw new P0ApiError(503, 'P0 서버에 연결할 수 없어. 로컬 P0 서버 상태를 확인해줘.');
-  }
+  const response = await p0Fetch(path, {
+    method: options.method ?? 'GET',
+    headers,
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
   const payload: unknown = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = isRecord(payload) && typeof payload.error === 'string' ? payload.error : `P0 request failed (${response.status})`;

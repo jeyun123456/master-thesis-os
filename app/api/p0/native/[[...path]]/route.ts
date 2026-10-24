@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { p0ErrorResponse, p0UpstreamUrl, readRequestBytesLimited, sameOriginMutationError } from '../../../../../lib/p0-server';
+import { p0ErrorResponse, p0Fetch, readRequestBytesLimited, sameOriginMutationError } from '../../../../../lib/p0-server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -86,15 +86,13 @@ async function proxy(request: NextRequest, context: RouteContext) {
   const upstreamPath = `${path === '/' ? '/' : path}${request.nextUrl.search}`;
   let upstream: Response;
   try {
-    upstream = await fetch(p0UpstreamUrl(upstreamPath), {
+    upstream = await p0Fetch(upstreamPath, {
       method,
       headers,
       body,
-      cache: 'no-store',
-      redirect: 'error',
     });
-  } catch {
-    const response = jsonError(503, 'P0 서버에 연결할 수 없어. 로컬 P0 서버 상태를 확인해줘.');
+  } catch (error) {
+    const response = p0ErrorResponse(error, 'P0 서버에 연결할 수 없어. P0 서버 상태와 접근 인증 설정을 확인해줘.');
     return path === '/api/auth/logout' && method === 'POST' ? clearNativeSessionCookie(response) : response;
   }
 
