@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GmailIntegrationError, getGmailMessages, gmailConfigured } from '@/lib/gmail';
+import { requireP0Session } from '@/lib/p0-server';
 
 export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
+  const authError = await requireP0Session(req);
+  if (authError) return authError;
   const requestedLimit = Number(req.nextUrl.searchParams.get('limit') || 20);
   const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(50, Math.floor(requestedLimit))) : 20;
   const base = { configured: gmailConfigured(), source: 'gmail' as const };

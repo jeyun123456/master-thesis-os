@@ -4,6 +4,7 @@ import {
   googleDriveConfigured,
   GoogleDriveIntegrationError,
 } from '@/lib/google-drive';
+import { requireP0Session } from '@/lib/p0-server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,6 +12,8 @@ export const dynamic = 'force-dynamic';
 const PRIVATE_RESPONSE = { 'Cache-Control': 'private, no-store' };
 
 export async function GET(req: NextRequest) {
+  const authError = await requireP0Session(req);
+  if (authError) return authError;
   const requestedLimit = Number(req.nextUrl.searchParams.get('limit') || 30);
   const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(100, Math.floor(requestedLimit))) : 30;
   const base = { configured: googleDriveConfigured(), source: 'google-drive' as const };

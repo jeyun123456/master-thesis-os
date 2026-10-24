@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 export const P0_SESSION_COOKIE = 'mtos_p0_session';
+export const P0_APP_SESSION_COOKIE = 'mtos_app_session';
 export const P0_SESSION_MAX_AGE = 30 * 24 * 60 * 60;
 const DEFAULT_P0_URL = 'http://127.0.0.1:8787';
 
@@ -150,6 +151,17 @@ export function p0SessionToken(request: NextRequest) {
   return request.cookies.get(P0_SESSION_COOKIE)?.value || '';
 }
 
+export async function requireP0Session(request: NextRequest) {
+  const token = request.cookies.get(P0_APP_SESSION_COOKIE)?.value || '';
+  if (!token) return noStore(NextResponse.json({ error: 'P0 로그인이 필요해.' }, { status: 401 }));
+  try {
+    await p0Request('/api/tasks', { token });
+    return null;
+  } catch (error) {
+    return p0AuthenticatedErrorResponse(error, 'P0 세션을 확인하지 못했어.');
+  }
+}
+
 export function p0ErrorResponse(error: unknown, fallback = 'P0 요청을 처리하지 못했어.') {
   const status = error instanceof P0ApiError ? error.status : 503;
   const message = error instanceof P0ApiError ? error.message : fallback;
@@ -170,6 +182,17 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+export function setP0AppSessionCookie(response: NextResponse, token: string) {
+  response.cookies.set(P0_APP_SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: P0_SESSION_MAX_AGE,
+  });
+  return noStore(response);
+}
+
 export function setP0SessionCookie(response: NextResponse, token: string) {
   response.cookies.set(P0_SESSION_COOKIE, token, {
     httpOnly: true,
@@ -178,16 +201,18 @@ export function setP0SessionCookie(response: NextResponse, token: string) {
     path: '/api/p0',
     maxAge: P0_SESSION_MAX_AGE,
   });
-  return noStore(response);
+  return setP0AppSessionCookie(response, token);
 }
 
 export function clearP0SessionCookie(response: NextResponse) {
-  response.cookies.set(P0_SESSION_COOKIE, '', {
-    httpOnly: true,
-    sameSite: 'strict',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/api/p0',
-    maxAge: 0,
-  });
+  for (const [name, path] of [[P0_SESSION_COOKIE, '/api/p0'], [P0_APP_SESSION_COOKIE, '/']] as const) {
+    response.cookies.set(name, '', {
+      httpOnly: true,
+      sameSite: 'strict',
+      secure: process.env.NODE_ENV === 'production',
+      path,
+      maxAge: 0,
+    });
+  }
   return noStore(response);
 }

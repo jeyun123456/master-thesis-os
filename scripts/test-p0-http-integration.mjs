@@ -43,13 +43,55 @@ try {
   const nextNode = process.env.MTOS_NEXT_NODE_EXE?.trim() || process.execPath;
   next = spawn(nextNode, ['node_modules/next/dist/bin/next', production ? 'start' : 'dev', '--hostname', '127.0.0.1', '--port', String(port)], {
     cwd: root,
-    env: { ...process.env, P0_API_URL: p0.base, MTOS_PUBLIC_ORIGIN: baseUrl },
+    env: {
+      ...process.env,
+      P0_API_URL: p0.base,
+      MTOS_PUBLIC_ORIGIN: baseUrl,
+      GITHUB_REPO: '',
+      GITHUB_REPOSITORY: '',
+      GITHUB_OWNER: '',
+      GITHUB_TOKEN: '',
+      LOCAL_REPOSITORY_ROOT: '',
+      GOOGLE_SERVICE_ACCOUNT_EMAIL: '',
+      GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: '',
+      GOOGLE_CLIENT_ID: '',
+      GOOGLE_CLIENT_SECRET: '',
+      GOOGLE_REFRESH_TOKEN: '',
+      GOOGLE_CALENDAR_IDS: '',
+      GOOGLE_CALENDAR_ID: '',
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
   next.stdout.on('data', recordOutput);
   next.stderr.on('data', recordOutput);
   await waitForNext(baseUrl);
+
+  const protectedReadPaths = [
+    '/api/github/file?path=private.md',
+    '/api/google/drive/content?fileId=private-file',
+    '/api/calendar/events',
+    '/api/research/projects',
+    '/api/results',
+  ];
+  for (const path of protectedReadPaths) {
+    const response = await fetch(`${baseUrl}${path}`);
+    assert.equal(response.status, 401, `${path} must reject an unauthenticated request`);
+  }
+  const protectedWriteRequests = [
+    { path: '/api/calendar/events', method: 'POST' },
+    { path: '/api/research/projects/status', method: 'PATCH' },
+    { path: '/api/shortcuts', method: 'PUT' },
+  ];
+  for (const { path, method } of protectedWriteRequests) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method,
+      headers: { origin: baseUrl, 'content-type': 'application/json' },
+      body: '{}',
+    });
+    assert.equal(response.status, 401, `${method} ${path} must reject an unauthenticated request`);
+  }
+  assert.equal(p0.tasks.list().length, 0, 'unauthenticated requests must not mutate P0 data');
 
   const page = await fetch(baseUrl);
   assert.equal(page.status, 200);
@@ -92,11 +134,40 @@ try {
   assert.equal(login.status, 200, await login.clone().text());
   assert.deepEqual(await login.json(), { authenticated: true });
   const setCookie = login.headers.get('set-cookie') || '';
-  assert.match(setCookie, /HttpOnly/i);
-  assert.match(setCookie, /SameSite=strict/i);
-  if (production) assert.match(setCookie, /Secure/i);
-  const cookie = setCookie.split(';', 1)[0];
-  const headers = { cookie, origin: baseUrl, 'content-type': 'application/json' };
+  const cookieHeaders = login.headers.getSetCookie?.() || [setCookie];
+  const p0CookieHeader = cookieHeaders.find((value) => value.startsWith('mtos_p0_session=')) || setCookie.match(/(?:^|,\s*)(mtos_p0_session=[^,]*)/)?.[1] || '';
+  const loginAppCookieHeader = cookieHeaders.find((value) => value.startsWith('mtos_app_session=')) || setCookie.match(/(?:^|,\s*)(mtos_app_session=[^,]*)/)?.[1] || '';
+  assert.ok(p0CookieHeader, 'P0 session cookie must be set');
+  assert.ok(loginAppCookieHeader, 'app-wide P0 session cookie must be set');
+  assert.match(p0CookieHeader, /Path=\/api\/p0/i);
+  assert.match(loginAppCookieHeader, /Path=\/(?:;|$)/i);
+  for (const value of [p0CookieHeader, loginAppCookieHeader]) {
+    assert.match(value, /HttpOnly/i);
+    assert.match(value, /SameSite=strict/i);
+    if (production) assert.match(value, /Secure/i);
+  }
+  const p0Cookie = p0CookieHeader.split(';', 1)[0];
+  const legacyStatus = await fetch(`${baseUrl}/api/p0/session`, { headers: { cookie: p0Cookie } });
+  assert.deepEqual(await legacyStatus.json(), { configured: true, googleClientId: 'test-client.apps.googleusercontent.com', authenticated: true });
+  const migrationCookieHeaders = legacyStatus.headers.getSetCookie?.() || [legacyStatus.headers.get('set-cookie') || ''];
+  const migratedAppCookieHeader = migrationCookieHeaders.find((value) => value.startsWith('mtos_app_session=')) || '';
+  assert.ok(migratedAppCookieHeader, 'an existing P0-only session must receive the app-wide cookie');
+  assert.match(migratedAppCookieHeader, /Path=\/(?:;|$)/i);
+  const appCookie = migratedAppCookieHeader.split(';', 1)[0];
+  const headers = { cookie: `${p0Cookie}; ${appCookie}`, origin: baseUrl, 'content-type': 'application/json' };
+
+  const authorizedGitHub = await fetch(`${baseUrl}/api/github/file?path=private.md`, { headers: { cookie: appCookie } });
+  assert.equal(authorizedGitHub.status, 200);
+  assert.deepEqual(await authorizedGitHub.json(), { configured: false });
+  const authorizedCalendarRead = await fetch(`${baseUrl}/api/calendar/events`, { headers: { cookie: appCookie } });
+  assert.equal(authorizedCalendarRead.status, 200);
+  assert.equal((await authorizedCalendarRead.json()).state, 'unconfigured');
+  const authorizedCalendarWrite = await fetch(`${baseUrl}/api/calendar/events`, { method: 'POST', headers, body: '{}' });
+  assert.equal(authorizedCalendarWrite.status, 503, 'a valid P0 session should reach the disabled provider configuration check');
+  const crossOriginCalendarWrite = await fetch(`${baseUrl}/api/calendar/events`, {
+    method: 'POST', headers: { ...headers, origin: 'https://attacker.example' }, body: '{}',
+  });
+  assert.equal(crossOriginCalendarWrite.status, 403);
   const endpoint = `${baseUrl}/api/p0/tasks`;
 
   const payload = {
@@ -163,7 +234,7 @@ try {
   });
   assert.equal((await completed.json()).task.status, 'done');
 
-  const afterReload = await fetch(endpoint, { headers: { cookie } });
+  const afterReload = await fetch(endpoint, { headers: { cookie: p0Cookie } });
   const persisted = await afterReload.json();
   assert.equal(afterReload.status, 200);
   assert.equal(persisted.tasks[0].title, 'HTTP 수정된 할 일');

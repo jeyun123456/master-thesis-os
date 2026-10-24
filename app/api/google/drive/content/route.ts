@@ -4,6 +4,7 @@ import {
   googleDriveConfigured,
   GoogleDriveIntegrationError,
 } from '@/lib/google-drive';
+import { requireP0Session } from '@/lib/p0-server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,6 +12,8 @@ export const dynamic = 'force-dynamic';
 const PRIVATE_RESPONSE = { 'Cache-Control': 'private, no-store' };
 
 export async function GET(req: NextRequest) {
+  const authError = await requireP0Session(req);
+  if (authError) return authError;
   const fileId = (req.nextUrl.searchParams.get('fileId') || '').trim();
   const base = { configured: googleDriveConfigured(), source: 'google-drive' as const };
 

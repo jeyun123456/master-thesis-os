@@ -5,6 +5,8 @@ import {
   p0ErrorResponse,
   p0Request,
   p0SessionToken,
+  P0_APP_SESSION_COOKIE,
+  setP0AppSessionCookie,
   setP0SessionCookie,
   P0ApiError,
   readJsonLimited,
@@ -36,7 +38,9 @@ export async function GET(request: NextRequest) {
       googleClientId: config.google_client_id || null,
       authenticated,
     });
-    return staleToken ? clearP0SessionCookie(response) : noStore(response);
+    if (staleToken || (!token && request.cookies.get(P0_APP_SESSION_COOKIE)?.value)) return clearP0SessionCookie(response);
+    if (authenticated && request.cookies.get(P0_APP_SESSION_COOKIE)?.value !== token) return setP0AppSessionCookie(response, token);
+    return noStore(response);
   } catch (error) {
     return p0ErrorResponse(error, 'P0 인증 상태를 확인하지 못했어.');
   }
