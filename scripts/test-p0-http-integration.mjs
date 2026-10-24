@@ -40,7 +40,8 @@ try {
   p0 = await startServer();
   const port = await availablePort();
   const baseUrl = `http://127.0.0.1:${port}`;
-  next = spawn(process.execPath, ['node_modules/next/dist/bin/next', production ? 'start' : 'dev', '--hostname', '127.0.0.1', '--port', String(port)], {
+  const nextNode = process.env.MTOS_NEXT_NODE_EXE?.trim() || process.execPath;
+  next = spawn(nextNode, ['node_modules/next/dist/bin/next', production ? 'start' : 'dev', '--hostname', '127.0.0.1', '--port', String(port)], {
     cwd: root,
     env: { ...process.env, P0_API_URL: p0.base, MTOS_PUBLIC_ORIGIN: baseUrl },
     stdio: ['ignore', 'pipe', 'pipe'],
