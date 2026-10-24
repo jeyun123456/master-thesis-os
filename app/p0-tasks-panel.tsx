@@ -222,7 +222,7 @@ export function P0TasksPanel() {
       <div><span>{openCount}개 미완료</span>{configured && <button className="mini" type="button" aria-expanded={recoveryOpen} onClick={() => setRecoveryOpen((open) => !open)}>{recoveryOpen ? '간단 화면' : '오프라인·복구'}</button>}{authenticated && !recoveryOpen && <button className="mini" type="button" disabled={authBusy} onClick={() => void signOut()}>로그아웃</button>}</div>
     </div>
     {recoveryOpen ? <>
-      <p className="p0-recovery-note">검증된 P0 화면을 그대로 불러와. 이 화면은 P0 방식으로 별도 로그인하고, P0 세션 토큰은 기존 앱과 같이 이 브라우저에 저장돼.</p>
+      <p className="p0-recovery-note">검증된 P0 화면을 same-origin 프록시로 불러와. 로그인 bearer token은 HttpOnly·SameSite 쿠키에 저장되고 브라우저 JavaScript나 localStorage에서 읽을 수 없어.</p>
       <div className="p0-native-shell"><iframe src="/api/p0/native/" title="P0 오프라인·충돌·거부 복구 화면" loading="lazy" /></div>
     </> : <>
     {!configured && <div className="error">P0 로그인 설정이 없어. P0 서버의 Google OAuth 설정을 확인해줘.</div>}

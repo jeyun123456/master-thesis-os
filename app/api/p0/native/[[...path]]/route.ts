@@ -129,9 +129,12 @@ async function proxy(request: NextRequest, context: RouteContext) {
     const worker = await upstream.text();
     const cacheScoped = worker.replace("const CACHE = 'mtos-p0-v1';", "const CACHE = 'mtos-p0-native-v1';")
       .replace("ks.filter((k) => k !== CACHE)", "ks.filter((k) => k.startsWith('mtos-p0-native-') && k !== CACHE)")
+      .replace("url.pathname.startsWith('/api/')", "url.pathname.startsWith(new URL('./api/', self.registration.scope).pathname)")
       .replace("caches.match(e.request).then((r) => r ?? caches.match('index.html'))", "caches.open(CACHE).then((c) => c.match(e.request).then((r) => r ?? c.match(new URL('./index.html', self.registration.scope).href)))");
     if (cacheScoped === worker
       || !cacheScoped.includes("k.startsWith('mtos-p0-native-')")
+      || !cacheScoped.includes("url.pathname.startsWith(new URL('./api/', self.registration.scope).pathname)")
+      || cacheScoped.includes("url.pathname.startsWith('/api/')")
       || !cacheScoped.includes('caches.open(CACHE)')
       || cacheScoped.includes('caches.match(')) {
       return jsonError(502, 'P0 service worker could not be safely scoped.');

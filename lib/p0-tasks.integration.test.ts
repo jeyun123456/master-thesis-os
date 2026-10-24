@@ -122,6 +122,8 @@ describe('Next.js P0 proxy integration', () => {
     expect(worker.status).toBe(200);
     expect(script).toContain("const CACHE = 'mtos-p0-native-v1';");
     expect(script).toContain("ks.filter((k) => k.startsWith('mtos-p0-native-') && k !== CACHE)");
+    expect(script).toContain("url.pathname.startsWith(new URL('./api/', self.registration.scope).pathname)");
+    expect(script).not.toContain("url.pathname.startsWith('/api/')");
     expect(script).toContain('caches.open(CACHE)');
     expect(script).not.toContain('caches.match(');
     expect(script).not.toContain('ks.filter((k) => k !== CACHE)');

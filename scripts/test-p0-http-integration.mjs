@@ -74,6 +74,8 @@ try {
   assert.match(serviceWorker, /const CACHE = 'mtos-p0-native-v1'/);
   assert.match(serviceWorker, /k\.startsWith\('mtos-p0-native-'\) && k !== CACHE/);
   assert.doesNotMatch(serviceWorker, /ks\.filter\(\(k\) => k !== CACHE\)/);
+  assert.match(serviceWorker, /url\.pathname\.startsWith\(new URL\('\.\/api\/', self\.registration\.scope\)\.pathname\)/);
+  assert.doesNotMatch(serviceWorker, /url\.pathname\.startsWith\('\/api\/'\)/);
   assert.match(serviceWorker, /caches\.open\(CACHE\)/);
   assert.doesNotMatch(serviceWorker, /caches\.match\(/);
   assert.equal((await fetch(`${baseUrl}/api/p0/native/api/tasks`)).status, 401);
