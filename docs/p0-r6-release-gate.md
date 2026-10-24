@@ -27,7 +27,7 @@
 
 - The dedicated `drive.file` uploader/downloader, DPAPI setup, local encryption, hash verification, deduplication, and restore guard are implemented.
 - Tests use temporary SQLite databases and a mocked Drive API. No actual Drive folder/service account, uploaded backup, Drive download, isolated full restore, or selective restore has been performed.
-- The scheduled task has not been registered. Backup time and retention are not selected; automatic deletion is intentionally disabled.
+- The scheduled task has not been registered. The selected time is 03:00 Asia/Seoul and the selected retention is indefinite with no automatic deletion; Drive provisioning is deferred.
 
 ## G6 — Existing data: partial / block
 
@@ -43,7 +43,7 @@
 
 1. Configure and validate the actual Google allowlist and HTTPS origin through protected settings; verify both allowed and disallowed account behavior on current Preview.
 2. Provision the dedicated Drive service account/folder, enter the existing P0 backup key only in the masked local DPAPI setup, then confirm a real upload, downloaded hash, and isolated full/selective restore.
-3. Choose backup time and retention before registering the scheduled task or implementing pruning.
+3. After Drive provisioning and one successful manual upload, register the scheduled task for 03:00 Asia/Seoul. Preserve backups indefinitely; do not add pruning unless a later policy changes.
 4. Push the reviewed feature commits to their respective branches; verify current Preview and latest GitHub Actions without changing Production.
 5. Complete the G3/G4 real browser/device checks and G6 representative-screen check.
 6. Recheck protected staging/Production boundaries and document the rollback target. Only then reconsider PR #15 merge and the automatic Production release.

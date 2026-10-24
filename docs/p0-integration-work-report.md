@@ -9,7 +9,7 @@
 - R1: 전용 Cloudflare tunnel/Access와 Vercel Preview upstream 경로는 구성됐지만 tunnel 재부팅 자동 시작 및 최신 브랜치 Preview 검증은 미완료다.
 - R2: 앱 공통 Google sign-in/session UI와 P0 API 인증 테스트가 구현됐지만 실제 `ALLOWED_GOOGLE_SUB`/OAuth 설정 및 최신 Preview에서의 로그인 검증은 미완료다. Vercel MCP 인증 상태는 변경하지 않았다.
 - R3–R4: 홈 중심 P0 task workspace, 미분류/read-state, offline CRUD queue/bridge, 모바일 More 메뉴의 캘린더·메일·공지·바로가기·설정 접근을 구현했다. Planner/Slot은 데스크톱 주 내비게이션에서 숨기고 More에는 보존했다.
-- R5: 전용 Drive service account(`drive.file`), encrypted upload/download/hash verification, DPAPI setup 및 restore guard를 구현했다. 지금까지는 mock Drive API와 임시 SQLite만 테스트했으며 실제 credentials/folder, 실제 backup/restore, schedule, retention은 설정하지 않았다.
+- R5: 전용 Drive service account(`drive.file`), encrypted upload/download/hash verification, DPAPI setup 및 restore guard를 구현했다. 테스트는 mock Drive API/임시 SQLite만 사용했다. 실제 계정·폴더/backup/restore는 미진행이며, 사용자가 Drive 설정을 나중으로 미뤘다. 백업은 매일 03:00 Asia/Seoul, 무기한 보존(자동 삭제 없음)으로 선택됐지만, Drive provisioning 전이라 스케줄 작업은 등록하지 않았다.
 - 검증: Standalone `pnpm lint`, `pnpm build`, 선택 Vitest 5 files/19 tests 통과. P0 `node --test` 40 tests 통과, JS syntax checks와 PowerShell parser 통과. 통합 브라우저 로그인/오프라인 실기기 검증은 미완료.
 - PR #15은 열려 있고 Production deployment/SQLite, 기존 Cloudflare/Tailscale 매핑은 건드리지 않았다. Merge/Production 승격은 R1–R5 운영 설정과 R6 확인 전까지 금지한다. G1–G7 상세 상태는 `docs/p0-r6-release-gate.md`에 기록했다.
 
