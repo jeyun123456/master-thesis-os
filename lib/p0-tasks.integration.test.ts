@@ -187,6 +187,18 @@ describe('Next.js P0 proxy integration', () => {
     expect(p0!.tasks.list()).toHaveLength(0);
   });
 
+  it('clears the browser cookie and returns unconfirmed server revocation when upstream is down', async () => {
+    const loggedIn = await sessionPost(request('/api/p0/session', undefined, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id_token: idToken() }),
+    }));
+    const cookie = cookieFrom(loggedIn);
+    process.env.P0_API_URL = 'http://127.0.0.1:1';
+    const response = await sessionDelete(request('/api/p0/session', cookie, { method: 'DELETE' }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ authenticated: false, serverRevoked: false });
+    expect(response.headers.get('set-cookie')).toContain('Max-Age=0');
+  });
+
   it('returns a safe unavailable response when the P0 server is down', async () => {
     const loggedIn = await sessionPost(request('/api/p0/session', undefined, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id_token: idToken() }),

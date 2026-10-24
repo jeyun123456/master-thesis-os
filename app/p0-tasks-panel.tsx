@@ -203,11 +203,11 @@ export function P0TasksPanel() {
   async function signOut() {
     setAuthBusy(true);
     try {
-      await logoutFromP0();
+      const result = await logoutFromP0();
       setAuthenticated(false);
       setTasks([]);
       googleInitialized.current = false;
-      setError('');
+      setError(result.serverRevoked ? '' : '브라우저 쿠키는 지웠지만 P0 서버에서 세션 해지를 확인하지 못했어. P0 서버가 복구되면 다시 로그인한 뒤 로그아웃을 확인해줘.');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'P0 로그아웃에 실패했어.');
     } finally {
