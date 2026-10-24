@@ -19,8 +19,9 @@ import {
   readBridgeToken,
   savePersistedInbox,
 } from '../lib/inbox-persistence-client';
-import { addPlannerTask, syncInboxPlannerTasks, updatePlannerTaskProject } from '../lib/planner-tasks-client';
+import { loadPlannerTaskStore } from '../lib/planner-tasks-client';
 import { plannerTaskFromInboxEntry } from '../lib/planner-tasks';
+import { createP0Task, p0InboxTaskId, updateP0Task } from '../lib/p0-tasks-client';
 import { calendarInputForInboxEntry } from '../lib/inbox-calendar';
 import { addCalendarEvent } from '../lib/calendar-client';
 import { BridgeApiVersionMismatchError, bridgeApiVersionMismatchMessage, checkLocalBridgeApiVersion } from '../lib/bridge-status';
@@ -32,6 +33,25 @@ type UseInboxWorkflowOptions = {
   onNotice: (message: string) => void;
   onOpenInbox: () => void;
 };
+
+async function createP0InboxTask(entry: InboxEntry) {
+  const plannerTask = plannerTaskFromInboxEntry({ ...entry, p0TaskId: null });
+  if (!plannerTask) return null;
+  const id = entry.p0TaskId || p0InboxTaskId(entry.id);
+  const result = await createP0Task({
+    id,
+    op_id: `mtos-inbox-${id}`,
+    fields: {
+      title: plannerTask.title.slice(0, 500),
+      status: 'open',
+      due_date: plannerTask.dueDate,
+      is_today: false,
+      category: 'personal',
+      memo: plannerTask.description,
+    },
+  });
+  return { id, task: result.task };
+}
 
 export function useInboxWorkflow({ projects, onNotice, onOpenInbox }: UseInboxWorkflowOptions) {
   const [inboxEntries, setInboxEntries] = useState<InboxEntry[]>([]);
@@ -106,21 +126,22 @@ export function useInboxWorkflow({ projects, onNotice, onOpenInbox }: UseInboxWo
     return operation;
   }
 
-  async function persistInboxToVault(entries: InboxEntry[]) {
+  async function persistInboxToVault(entries: InboxEntry[]): Promise<boolean> {
     const revision = ++inboxSaveRevision.current;
     setInboxStorageStatus('saving');
     setInboxStorageError('');
     try {
       const persisted = await queueInboxWrite(() => savePersistedInbox(entries));
-      if (revision !== inboxSaveRevision.current) return;
+      if (revision !== inboxSaveRevision.current) return false;
       setInboxEntries(persisted);
       const cacheSaved = saveInboxEntries(persisted);
       setInboxStorageStatus(cacheSaved ? 'saved' : 'failed');
       setInboxStorageError(cacheSaved ? '' : 'Vault에는 저장됐지만 브라우저 캐시를 갱신하지 못했어요.');
       setBridgeTokenWarning('');
       setBridgeApiWarning('');
+      return true;
     } catch (error) {
-      if (revision !== inboxSaveRevision.current) return;
+      if (revision !== inboxSaveRevision.current) return false;
       if (error instanceof InboxPersistenceError && error.code === 'bridge_auth') {
         setBridgeTokenWarning(readBridgeToken().trim()
           ? '저장된 Local Bridge token이 거부됐습니다. Settings > 로컬 브리지에서 token을 확인해 주세요.'
@@ -131,6 +152,7 @@ export function useInboxWorkflow({ projects, onNotice, onOpenInbox }: UseInboxWo
       }
       setInboxStorageStatus('failed');
       setInboxStorageError(error instanceof Error ? error.message : 'Vault 저장에 실패했어요. 브라우저 캐시는 유지됩니다.');
+      return false;
     }
   }
 
@@ -195,8 +217,11 @@ export function useInboxWorkflow({ projects, onNotice, onOpenInbox }: UseInboxWo
     await persistInboxToVault(next);
 
     const routeErrors: string[] = [];
-    let plannerCount = 0;
+    let p0Count = 0;
+    let legacyPlannerCount = 0;
     let calendarCount = 0;
+    let legacyPlannerStore: Awaited<ReturnType<typeof loadPlannerTaskStore>> | null | undefined;
+    const routedToP0 = new Map<string, string>();
     for (const suggestion of suggestions) {
       const entry = next.find((value) => value.id === suggestion.entryId);
       if (!entry?.ai) continue;
@@ -204,10 +229,18 @@ export function useInboxWorkflow({ projects, onNotice, onOpenInbox }: UseInboxWo
         const plannerTask = plannerTaskFromInboxEntry(entry);
         if (!plannerTask) continue;
         try {
-          await addPlannerTask(plannerTask);
-          plannerCount += 1;
+          if (legacyPlannerStore === undefined) legacyPlannerStore = await loadPlannerTaskStore();
+          if (!legacyPlannerStore) throw new Error('기존 Planner와 중복인지 확인하지 못해 P0 저장을 보류했어.');
+          if (legacyPlannerStore.tasks.some((task) => task.id === plannerTask.id)) {
+            legacyPlannerCount += 1;
+            continue;
+          }
+          const created = await createP0InboxTask(entry);
+          if (!created) continue;
+          routedToP0.set(entry.id, created.id);
+          p0Count += 1;
         } catch (error) {
-          routeErrors.push(`${entry.ai.title || '할 일'} → Planner: ${error instanceof Error ? error.message : '저장 실패'}`);
+          routeErrors.push(`${entry.ai.title || '할 일'} → P0 SQLite: ${error instanceof Error ? error.message : '저장 실패'}`);
         }
       } else if (entry.ai.category === 'schedule') {
         const calendarInput = calendarInputForInboxEntry(entry);
@@ -220,10 +253,19 @@ export function useInboxWorkflow({ projects, onNotice, onOpenInbox }: UseInboxWo
         }
       }
     }
+    if (routedToP0.size) {
+      const routedEntries = next.map((entry) => routedToP0.has(entry.id) ? { ...entry, p0TaskId: routedToP0.get(entry.id)! } : entry);
+      if (!saveInboxEntries(routedEntries)) {
+        routeErrors.push('P0 할 일은 저장됐지만 Inbox의 중복 방지 표식을 브라우저에 저장하지 못했어.');
+      } else {
+        setInboxEntries(routedEntries);
+        if (!await persistInboxToVault(routedEntries)) routeErrors.push('P0 할 일은 저장됐지만 Inbox의 중복 방지 표식을 Vault에 저장하지 못했어.');
+      }
+    }
     setInboxRouteMessage(routeErrors.length
       ? `분류는 저장했어. 자동 전달 실패 ${routeErrors.length}건: ${routeErrors.join(' · ')}`
-      : `분류 저장 완료 · Planner ${plannerCount}건 · Calendar ${calendarCount}건. 원문에 명시된 날짜를 등록하고, 시간이 없으면 종일 일정으로 저장해.`);
-    onNotice('GPT 정리와 가능한 자동 전달을 마쳤어. 원문은 보존했어.');
+      : `분류 저장 완료 · P0 SQLite ${p0Count}건 · 기존 Planner 보존 ${legacyPlannerCount}건 · Calendar ${calendarCount}건. 원문은 그대로 보존했어.`);
+    onNotice(routeErrors.length ? '분류는 끝났어. 자동 전달 경고를 확인해줘.' : 'GPT 정리와 P0·Calendar 전달을 마쳤어. 원문은 보존했어.');
   }
 
   function discardInboxPreview() {
@@ -269,10 +311,26 @@ export function useInboxWorkflow({ projects, onNotice, onOpenInbox }: UseInboxWo
     try {
       const project = projects.find((value) => value.id === projectId);
       if (!project) throw new Error('선택한 프로젝트를 찾지 못했어.');
-      const taskId = `inbox:${entryId}`;
-      await syncInboxPlannerTasks();
-      await updatePlannerTaskProject(taskId, projectId);
-      onNotice(`Planner와 ${project.title} 다음 작업에 연결했어.`);
+      if (!entry.p0TaskId) {
+        const legacy = await loadPlannerTaskStore();
+        if (legacy.tasks.some((task) => task.id === `inbox:${entryId}`)) {
+          throw new Error('기존 Vault Planner 항목이 있어. 자동 복제는 막았고 원본은 그대로 뒀어.');
+        }
+      }
+      const created = await createP0InboxTask(entry);
+      if (!created) throw new Error('P0 할 일로 바꿀 내용을 찾지 못했어.');
+      if (!entry.p0TaskId) {
+        const routedEntries = inboxEntries.map((value) => value.id === entryId ? { ...value, p0TaskId: created.id } : value);
+        if (!saveInboxEntries(routedEntries)) throw new Error('P0에는 저장됐지만 Inbox 중복 방지 표식을 브라우저에 저장하지 못했어.');
+        setInboxEntries(routedEntries);
+        if (!await persistInboxToVault(routedEntries)) throw new Error('P0에는 저장됐지만 Inbox 중복 방지 표식을 Vault에 저장하지 못했어.');
+      }
+      await updateP0Task(created.id, {
+        base_version: created.task.version,
+        changes: { project_id: projectId },
+        op_id: `mtos-inbox-project-${created.id}-${projectId}`,
+      });
+      onNotice(`P0 할 일을 ${project.title} 프로젝트에 연결했어.`);
     } catch (error) {
       onNotice(error instanceof Error ? error.message : '프로젝트에 추가하지 못했어. Inbox 원문은 유지돼.');
     } finally {

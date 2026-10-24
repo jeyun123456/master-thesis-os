@@ -49,4 +49,10 @@ describe('Inbox to Planner task mapping', () => {
     expect(result.tasks).toHaveLength(2);
     expect(result.tasks.find((task) => task.id === 'inbox:capture-7')).toMatchObject({ projectId: 'thesis', status: 'done' });
   });
+
+  it('does not create a legacy Planner shadow for an Inbox item routed to P0', () => {
+    const routed = { ...inboxTodo('capture-9'), p0TaskId: 'inbox-capture-9' };
+    expect(plannerTaskFromInboxEntry(routed)).toBeNull();
+    expect(ensureInboxPlannerTasks([routed], []).added).toEqual([]);
+  });
 });

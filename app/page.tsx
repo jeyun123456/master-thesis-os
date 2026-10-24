@@ -8,6 +8,7 @@ import { GmailMailPanel } from '@/app/gmail-mail-panel';
 import { MailActionCandidates } from '@/app/mail-action-candidates';
 import { MailPanel } from '@/app/mail-panel';
 import { PlannerPanel } from '@/app/planner-panel';
+import { P0HomeTasks } from '@/app/p0-home-tasks';
 import { PortalNoticesPanel } from '@/app/portal-notices-panel';
 import { MicrosoftMailPanel } from '@/app/microsoft-mail-panel';
 import { ResearchPanel } from '@/app/research-panel';
@@ -348,6 +349,7 @@ export default function Page() {
             <HomeStatusCard id="today-schedule-card" label="오늘 일정" value={schedule.today.length ? `${schedule.today.length}건` : '없음'} detail={schedule.today[0]?.title || calendarStateText(calendar)} tone="blue" />
             <HomeStatusCard label="다음 마감" value={schedule.nextDeadline ? deadlineLabel(schedule.nextDeadline) : '없음'} detail={schedule.nextDeadline?.title || '등록된 마감이 없어.'} tone="orange" />
           </div>
+          <div className="section-gap"><P0HomeTasks onOpenPlanner={() => setPage('planner')} /></div>
           <div className="home-lower-grid section-gap">
             <CurrentResearchCard project={activeProject} researchStatus={researchStatus} onOpen={openResearchProject} />
             <Card title="최근 분석 결과" right={dashboard.necessaryLabour?.source.yearRange || '결과 데이터'} className="home-results-card"><ResearchMiniTrend series={dashboard.necessaryLabour?.series || []} /></Card>

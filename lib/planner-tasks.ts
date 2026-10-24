@@ -66,7 +66,7 @@ export function parsePlannerTasks(value: unknown): PlannerTask[] {
 }
 
 export function plannerTaskFromInboxEntry(entry: InboxEntry): PlannerTask | null {
-  if (entry.ai?.category !== 'todo') return null;
+  if (entry.p0TaskId || entry.ai?.category !== 'todo') return null;
   const title = (entry.ai.nextAction || entry.ai.title || entry.rawText).trim().slice(0, 1200);
   if (!title) return null;
   const createdAt = Number.isNaN(Date.parse(entry.createdAt)) ? new Date(0).toISOString() : entry.createdAt;
