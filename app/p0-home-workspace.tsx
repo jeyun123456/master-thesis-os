@@ -385,7 +385,7 @@ export function P0HomeWorkspace({
 
   return <section className={`card section ${styles.root}`} aria-labelledby="p0-home-title">
     <div className={styles.header}>
-      <div><h3 id="p0-home-title">오늘 할 일</h3><p>P0 SQLite 원본 · {today} · 미완료 {view.openCount}개</p></div>
+      <div><h3 id="p0-home-title">오늘 할 일</h3><p>{today} · {state === 'ready' ? `미완료 ${view.openCount}개` : '할 일 확인 중'}</p></div>
       <div className={styles.headerActions}>
         {newCount > 0 && <button className="mini" type="button" onClick={() => void markAllSeen()}>새 항목 {newCount}개 모두 읽음</button>}
         <button className="mini" type="button" onClick={() => void load()} disabled={state === 'loading'}>새로고침</button>
@@ -408,18 +408,6 @@ export function P0HomeWorkspace({
       <button className="mini primary" type="submit" disabled={createBusy || (!pendingCreate && !title.trim())}>{createBusy ? '저장 중…' : pendingCreate ? '같은 요청 재시도' : '추가'}</button>
       <label className={styles.detailCheck}><input type="checkbox" checked={focusNew} onChange={(event) => setFocusNew(event.target.checked)} disabled={createBusy || Boolean(pendingCreate)} /> 오늘 집중</label>
     </form>
-    <div className={styles.syncBar} role="status" aria-live="polite">
-      <span>{syncStatus ? syncStatus.authRequired ? '다시 로그인이 필요해' : !syncStatus.online ? `오프라인 · ${syncStatus.pending}건 대기` : syncStatus.rejected ? `서버 거부 · ${syncStatus.rejected}건 확인 필요` : syncStatus.conflicts ? `충돌 · ${syncStatus.conflicts}건 확인 필요` : syncStatus.pending ? `동기화 대기 · ${syncStatus.pending}건` : 'SQLite와 동기화됨' : bridgeLoaded ? '동기화 상태 확인 중…' : '오프라인 동기화 엔진 준비 중…'}</span>
-      <span>충돌 {syncStatus?.conflicts ?? 0} · 거부 {syncStatus?.rejected ?? 0}</span>
-      <button className="mini" type="button" onClick={() => void load()} disabled={state === 'loading'}>지금 동기화</button>
-      <button className="mini" type="button" aria-expanded={syncDetailsOpen} onClick={() => setSyncDetailsOpen((open) => !open)} disabled={!bridgeLoaded}>
-        {syncDetailsOpen ? '동기화 상세 닫기' : '충돌·거부 내역 열기'}
-      </button>
-    </div>
-    {bridgeError && <p className={styles.message} role="status">{bridgeError}</p>}
-    {bridgeEnabled && <div className={syncDetailsOpen ? styles.syncDetails : styles.hiddenSyncFrame}>
-      <iframe ref={nativeFrame} title="P0 오프라인 동기화 및 복구" src="/api/p0/native/" onLoad={handleNativeLoad} aria-hidden={!syncDetailsOpen} tabIndex={syncDetailsOpen ? 0 : -1} />
-    </div>}
     {pendingCreate && <p className={styles.message} role="status">이전 생성 요청을 확인할 수 없어. 같은 ID로 재시도하면 중복 생성되지 않아.</p>}
     {error && <p className={styles.error} role="alert">{error}</p>}
     {state === 'loading' && <div className={styles.empty}>P0 할 일을 불러오는 중…</div>}
@@ -488,5 +476,20 @@ export function P0HomeWorkspace({
         </aside>
       </div>
     </>}
+    <details className={styles.operations}>
+      <summary>동기화 · 연결 상세{syncStatus && (syncStatus.authRequired || syncStatus.conflicts || syncStatus.rejected) ? ' · 확인 필요' : ''}</summary>
+    <div className={styles.syncBar} role="status" aria-live="polite">
+      <span>{syncStatus ? syncStatus.authRequired ? '다시 로그인이 필요해' : !syncStatus.online ? `오프라인 · ${syncStatus.pending}건 대기` : syncStatus.rejected ? `서버 거부 · ${syncStatus.rejected}건 확인 필요` : syncStatus.conflicts ? `충돌 · ${syncStatus.conflicts}건 확인 필요` : syncStatus.pending ? `동기화 대기 · ${syncStatus.pending}건` : 'SQLite와 동기화됨' : bridgeLoaded ? '동기화 상태 확인 중…' : '오프라인 동기화 엔진 준비 중…'}</span>
+      <span>충돌 {syncStatus?.conflicts ?? 0} · 거부 {syncStatus?.rejected ?? 0}</span>
+      <button className="mini" type="button" onClick={() => void load()} disabled={state === 'loading'}>지금 동기화</button>
+      <button className="mini" type="button" aria-expanded={syncDetailsOpen} onClick={() => setSyncDetailsOpen((open) => !open)} disabled={!bridgeLoaded}>
+        {syncDetailsOpen ? '동기화 상세 닫기' : '충돌·거부 내역 열기'}
+      </button>
+    </div>
+    {bridgeError && <p className={styles.message} role="status">{bridgeError}</p>}
+    {bridgeEnabled && <div className={syncDetailsOpen ? styles.syncDetails : styles.hiddenSyncFrame}>
+      <iframe ref={nativeFrame} title="P0 오프라인 동기화 및 복구" src="/api/p0/native/" onLoad={handleNativeLoad} aria-hidden={!syncDetailsOpen} tabIndex={syncDetailsOpen ? 0 : -1} />
+    </div>}
+    </details>
   </section>;
 }

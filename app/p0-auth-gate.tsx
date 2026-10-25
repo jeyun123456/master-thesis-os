@@ -129,12 +129,15 @@ export function P0AuthGate({ children }: { children: ReactNode }) {
         <h1 id="p0-auth-title">{status === 'loading' ? '로그인 확인 중' : '연구 작업실 로그인'}</h1>
         {status === 'loading' && <p className="note">P0 서버에서 로그인 상태를 확인하고 있어.</p>}
         {status === 'unconfigured' && <>
-          <p className="error" role="alert">P0 Google 로그인이 설정되지 않았어. Windows P0 서버의 Google OAuth 설정을 확인해줘.</p>
+          <p className="error" role="alert">로그인 설정이 아직 끝나지 않았어. 서버 관리자 설정이 필요해서 지금은 로그인할 수 없어.</p>
+          <p className="note">설정을 마친 뒤 아래 버튼으로 다시 확인할 수 있어. 보호된 화면은 로그인 없이 열리지 않아.</p>
+          <details className="p0-auth-diagnostics"><summary>진단 정보</summary>P0 Google OAuth 설정(Windows P0 서버)이 비어 있어.</details>
           <button className="btn" type="button" onClick={() => void refresh()}>다시 확인</button>
         </>}
         {status === 'error' && <>
-          <p className="error" role="alert">P0 서버에 연결할 수 없어. Windows 서버와 Cloudflare Access 연결을 확인해줘. 로그인 없이 보호된 화면을 열지는 않을게.</p>
-          {error && <p className="note">{error}</p>}
+          <p className="error" role="alert">로그인 서버에 연결하지 못했어. 네트워크를 확인하고 잠시 뒤 다시 시도해줘. 계속되면 서버 상태 확인이 필요해.</p>
+          <p className="note">보호된 화면은 로그인 없이 열지 않아. 데이터가 사라진 게 아니라 연결을 확인하지 못한 상태야.</p>
+          <details className="p0-auth-diagnostics"><summary>진단 정보</summary>P0 서버 또는 Cloudflare Access 연결 실패{error ? `: ${error}` : '.'}</details>
           <button className="btn" type="button" onClick={() => void refresh()}>다시 연결</button>
         </>}
         {status === 'unauthenticated' && <>

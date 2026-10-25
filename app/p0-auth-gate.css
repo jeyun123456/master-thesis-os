@@ -65,3 +65,6 @@
     flex-direction: column;
   }
 }
+
+.p0-auth-diagnostics { margin: 10px 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.p0-auth-diagnostics summary { cursor: pointer; min-height: 32px; }
