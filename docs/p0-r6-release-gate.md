@@ -1,4 +1,29 @@
-# P0 integration release gate snapshot — 2026-10-25
+# PR #15 — 정적 구성 대조 결과 (2026-10-25)
+
+**판정: 연구·자료 빈 화면은 PR 회귀로 입증되지 않음. 코드 변경 필요 없음.**
+**릴리스 상태: 조건부 병합 준비.** 실사용·기기·운영 호출 검증은 사용자 요청으로 생략한다. 실제 `main` 병합과 자동 Production 배포는 별도 최종 승인 전까지 수행하지 않는다.
+
+## 근거와 조치
+
+- `main` 및 `feat/integrate-p0-tasks`의 `lib/github.ts`, `lib/vault-repository.ts`, `lib/google-drive.ts`, `lib/projects.ts`는 Git blob SHA까지 동일하다. 연구 프로젝트/Drive API의 핵심 데이터 조회 동작은 미변경이고 P0 세션 인증만 앞에 추가됐다.
+- Windows 스테이징의 `ops/staging/.env.example`은 Next/P0 관련 설정만 안내하며, Vault용 `GITHUB_OWNER`/`GITHUB_REPO`/`GITHUB_BRANCH`/`GITHUB_TOKEN` 및 자료실용 `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REFRESH_TOKEN`의 운영 값을 제공하지 않는다. 따라서 **그 스테이징에서의 'Vault 설정 필요' 및 'Drive OAuth 필요'는 데이터 삭제나 PR 회귀의 증거가 아니다.**
+- Vercel의 Production/Preview에는 GitHub·Drive 관련 환경변수 *등록 항목*이 존재한다. 다만 민감 변수의 값은 접근 권한상 가려져 있어 유효성·실제 조회 성공을 증명하지 못했다. Production `MTOS_PUBLIC_ORIGIN`은 `https://master-thesis-os.vercel.app`, `P0_API_URL`은 `https://p0-api.chocomintudon.com`으로 등록돼 있다.
+- API 보호 로직의 **P0 세션 의존성은 실제 동작 변경**이다. P0가 중단되거나 미인증이면 기존 연구·자료 API도 데이터를 내주지 않는다. 이를 단순한 환경 미구성과 혼동하지 않는다.
+- 최신 확인 당시 PR HEAD `052a505`의 GitHub Actions CI는 성공, Vercel Preview는 READY였다. 코드·운영 환경·사용자 데이터를 수정하지 않고 정적 비교만 수행했다.
+
+## 최소 후속 처리
+
+1. **병합 전:** Production/Preview의 Vault·Drive 민감 환경변수 값이 유효한지 확인할 수 있는 권한 있는 운영자가 설정을 확인한다. 이 단계에서 값이나 토큰을 문서·채팅·로그에 기록하지 않는다. 실사용 테스트를 생략한다는 결정은 별도로 유지한다.
+2. **병합 판단:** 연구·자료 화면은 **'스테이징 구성 미확인 / 회귀 증거 없음'**으로 분류한다. 테스트용 할 일 정리와 로그아웃 401 수동 재확인은 별도 선택 항목이며 PR 회귀 판정의 근거가 아니다.
+3. **병합 후:** 기존 Vercel 자동 배포 유지. 이전 Production 배포를 복구 기준으로 확보한다. 사용자가 실전 테스트를 보류한 이상 실제 운영 기능은 **미검증 상태**로 명시한다. 장애 신고 또는 배포 실패 시 기존 배포로 롤백한다.
+4. Google Drive **백업 자동화**는 계속 보류한다. 이는 초코민트랩 **자료실 읽기 OAuth**와 별개의 기능이다.
+5. P0 소스 별도 브랜치 게시, 실기기 동기화, Windows 재부팅 검증은 후속 운영 작업으로 남긴다.
+
+**참고:** 아래 원문 G1–G7 목록은 당시의 엄격한 검증 기준을 기록한 이력이다. 위 사용자 승인 범위의 정적 판단을 덮어쓰지 않는다.
+
+---
+
+# 이전 릴리스 게이트 기록 — 2026-10-25 (보존)
 
 **Decision: NO-GO for merge and Production promotion.** The app feature branch has been pushed to PR #15 and its latest Preview is READY, but the release gates below remain open. PR #15 is still unmerged; Production remains unchanged.
 
