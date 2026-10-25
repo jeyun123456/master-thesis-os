@@ -163,6 +163,7 @@ export function createAgentApp({ db, verifySession, now = () => Date.now(), code
     if (method === 'GET' && path === '/approvals') return [200, { approvals: store.approvals.list({ states: url.searchParams.get('state')?.split(',').filter(Boolean) }) }];
     if (method === 'GET' && path === '/approvals/urgent') return [200, { approvals: store.approvals.urgent(date(url.searchParams.get('date') || tokyoDate(now()), 'date')) }];
     if (method === 'POST' && path === '/approvals') return [201, { approval: store.approvals.create(body) }];
+    if ((m = path.match(/^\/approvals\/([\w-]+)$/)) && method === 'GET') return [200, { approval: store.approvals.get(m[1]) }];
     if ((m = path.match(/^\/approvals\/([\w-]+)\/decide$/)) && method === 'POST') return [200, { approval: store.approvals.decide(m[1], body) }];
     if ((m = path.match(/^\/approvals\/([\w-]+)\/finish$/)) && method === 'POST') {
       return [200, { approval: store.approvals.finish(m[1], oneOf(body.outcome, 'outcome', ['applied', 'failed', 'stale']), typeof body.detail === 'string' ? body.detail : '') }];

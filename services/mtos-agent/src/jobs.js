@@ -9,7 +9,7 @@ const nullableString = (maxLength) => ({ type: ['string', 'null'], maxLength });
 export const SCHEMAS = {
   classify_inbox: {
     type: 'object', additionalProperties: false,
-    required: ['class', 'confidence', 'title', 'summary', 'due_date', 'due_is_explicit', 'project_id', 'project_confidence', 'duplicate_of_task_id', 'reason'],
+    required: ['class', 'confidence', 'title', 'summary', 'due_date', 'due_is_explicit', 'official', 'project_id', 'project_confidence', 'duplicate_of_task_id', 'reason'],
     properties: {
       class: { type: 'string', enum: ['task', 'note', 'reference', 'schedule', 'unclassified'] },
       confidence: { type: 'number', minimum: 0, maximum: 1 },
@@ -17,6 +17,7 @@ export const SCHEMAS = {
       summary: { type: 'string', maxLength: 500 },
       due_date: nullableString(10),
       due_is_explicit: { type: 'boolean' },
+      official: { type: 'boolean' },
       project_id: nullableString(128),
       project_confidence: { type: 'number', minimum: 0, maximum: 1 },
       duplicate_of_task_id: nullableString(200),
@@ -91,6 +92,7 @@ export function createJobHandlers({ store, queue, ai, collectMail, now = () => D
         `오늘 날짜(Asia/Tokyo): ${tokyoDate(now())}`,
         'class: task=실행 가능한 할 일, note=연구 메모·아이디어, reference=프로젝트 참고자료·링크, schedule=개인·학교 일정 후보, unclassified=판단 불가.',
         'due_date는 원문에 날짜가 명시된 경우에만 YYYY-MM-DD로 쓰고 due_is_explicit=true. 추정이면 due_date에 추정값을 쓰되 due_is_explicit=false. 날짜가 없으면 null.',
+        'official은 학교·대학원·지도교수가 공식적으로 정한 마감·일정이 원문에 명시된 경우에만 true.',
         'project_id는 아래 프로젝트 목록의 id 중 하나만 쓸 수 있고 불확실하면 null. duplicate_of_task_id는 아래 열린 할 일 id 중 같은 일을 가리킬 때만.',
         `프로젝트: ${JSON.stringify(context.projects.map(({ id, title }) => ({ id, title })))}`,
         `열린 할 일: ${JSON.stringify(openTasks.slice(0, 200).map(({ id, title, project_id }) => ({ id, title, project_id })))}`,
@@ -120,6 +122,16 @@ export function createJobHandlers({ store, queue, ai, collectMail, now = () => D
         }
         if (classification.duplicate_of_task_id) {
           const existing = openTasks.find((t) => t.id === classification.duplicate_of_task_id);
+          // Same task, new explicit date: a deadline change, which always needs approval.
+          if (classification.due_is_explicit && existing.due_date !== classification.due_date) {
+            store.approvals.create({
+              kind: 'deadline_change', title: `마감 변경 제안: ${existing.title}`, target_ref: `task:${existing.id}`, source_ref: item.dedupe_key,
+              official_deadline: classification.official ? [existing.due_date, classification.due_date].filter(Boolean).sort()[0] : null,
+              payload: { task_id: existing.id, title: existing.title, from: existing.due_date ?? null, to: classification.due_date, official: classification.official, source_url: item.source_url, inbox_item_id: item.id },
+            });
+            store.inbox.setState(item.id, 'classified', { classification });
+            return { state: 'classified', approval: 'deadline_change' };
+          }
           store.approvals.create({
             kind: 'duplicate_merge', title: `중복 확인: ${classification.title}`, target_ref: `inbox:${item.id}`, source_ref: item.dedupe_key,
             payload: { inbox_item_id: item.id, existing_task_id: existing.id, existing_title: existing.title, candidate_title: classification.title },
@@ -133,6 +145,15 @@ export function createJobHandlers({ store, queue, ai, collectMail, now = () => D
           store.inbox.setState(item.id, 'auto_pending', { classification });
           return { state: 'auto_pending' };
         }
+      }
+      if (classification.class === 'schedule' && classification.due_is_explicit && classification.project_id) {
+        // An official deadline needs evidence; without a source link it is proposed as an internal goal.
+        const official = classification.official && Boolean(item.source_url);
+        store.approvals.create({
+          kind: 'milestone_add', title: `마일스톤 등록 제안: ${classification.title}`, target_ref: `inbox:${item.id}`, source_ref: item.dedupe_key,
+          official_deadline: official ? classification.due_date : null,
+          payload: { project_id: classification.project_id, title: classification.title, date: classification.due_date, kind: official ? 'official' : 'internal', source: `AI 인박스 (${item.source_kind})`, evidence_url: item.source_url, inbox_item_id: item.id },
+        });
       }
       store.inbox.setState(item.id, 'classified', { classification });
       return { state: 'classified', class: classification.class };

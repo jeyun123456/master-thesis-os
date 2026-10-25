@@ -102,17 +102,21 @@ export async function readJsonLimited(request: Request, maxBytes: number) {
 }
 
 function p0BaseUrl() {
-  const raw = process.env.P0_API_URL?.trim() || DEFAULT_P0_URL;
+  return serviceBaseUrl(process.env.P0_API_URL?.trim() || DEFAULT_P0_URL, 'P0 API');
+}
+
+/** Upstream base URL rule shared by P0 and the agent: HTTPS, or plain HTTP only on loopback. */
+export function serviceBaseUrl(raw: string, label: string) {
   let url: URL;
   try {
     url = new URL(raw);
   } catch {
-    throw new P0ApiError(503, 'P0 API URL is invalid');
+    throw new P0ApiError(503, `${label} URL is invalid`);
   }
   const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
   const loopback = isLoopbackHost(host);
   if ((url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) || url.username || url.password || url.search || url.hash || (url.pathname !== '/' && url.pathname !== '')) {
-    throw new P0ApiError(503, 'P0 API must use HTTPS or a loopback HTTP URL');
+    throw new P0ApiError(503, `${label} must use HTTPS or a loopback HTTP URL`);
   }
   return url;
 }
@@ -129,7 +133,14 @@ export function p0UpstreamUrl(path: string) {
 }
 
 export async function p0Fetch(path: string, options: P0FetchOptions = {}) {
-  const url = p0UpstreamUrl(path);
+  return serviceFetch(p0UpstreamUrl(path), options, 'P0 서버에 연결할 수 없어. P0 서버 상태와 접근 인증 설정을 확인해줘.');
+}
+
+/**
+ * Fetches a P0-side upstream. Non-loopback upstreams must be HTTPS and get the
+ * server-only Cloudflare Access service token; redirects are refused.
+ */
+export async function serviceFetch(url: URL, options: P0FetchOptions, unreachableMessage: string) {
   const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
   const loopback = isLoopbackHost(hostname);
   const accessClientId = process.env.P0_ACCESS_CLIENT_ID?.trim() || '';
@@ -155,7 +166,7 @@ export async function p0Fetch(path: string, options: P0FetchOptions = {}) {
       redirect: 'error',
     });
   } catch {
-    throw new P0ApiError(503, 'P0 서버에 연결할 수 없어. P0 서버 상태와 접근 인증 설정을 확인해줘.');
+    throw new P0ApiError(503, unreachableMessage);
   }
 }
 

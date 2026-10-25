@@ -7,7 +7,7 @@ import { createWorker } from '../src/worker.js';
 import { clock, fakeAi, freshDb } from './helpers.js';
 
 const classification = (overrides = {}) => ({
-  class: 'task', confidence: 0.9, title: '지도교수에게 초고 보내기', summary: '', due_date: null, due_is_explicit: false,
+  class: 'task', confidence: 0.9, title: '지도교수에게 초고 보내기', summary: '', due_date: null, due_is_explicit: false, official: false,
   project_id: null, project_confidence: 0, duplicate_of_task_id: null, reason: '실행 가능', ...overrides,
 });
 
@@ -16,7 +16,7 @@ function setup(ai, now = clock()) {
   const worker = createWorker({ db, ai, now, collectMail: async () => ({ fetched: 0, newItemIds: [] }) });
   worker.store.settings.setContext({
     projects: [{ id: 'thesis', title: '석사논문' }],
-    tasks: [{ id: 'task-1', title: '문헌 정리', status: 'open' }, { id: 'task-2', title: '데이터 전처리', status: 'open' }],
+    tasks: [{ id: 'task-1', title: '문헌 정리', status: 'open' }, { id: 'task-2', title: '데이터 전처리', status: 'open', due_date: '2026-11-10' }],
   });
   return { db, worker, store: worker.store, now };
 }
@@ -81,6 +81,23 @@ test('an ambiguous duplicate waits for approval', async () => {
   const [approval] = ctx.store.approvals.list({ states: ['pending'] });
   assert.equal(approval.kind, 'duplicate_merge');
   assert.equal(approval.payload.existing_task_id, 'task-2');
+});
+
+test('a mail that moves an existing task deadline becomes a deadline approval', async () => {
+  const ctx = setup(fakeAi(classification({ title: '전처리 제출', duplicate_of_task_id: 'task-2', due_date: '2026-11-03', due_is_explicit: true, official: true })));
+  await captureAndRun(ctx, '전처리 결과 제출 기한이 11/3로 앞당겨짐');
+  const [approval] = ctx.store.approvals.list({ states: ['pending'] });
+  assert.equal(approval.kind, 'deadline_change');
+  assert.deepEqual([approval.payload.from, approval.payload.to], ['2026-11-10', '2026-11-03']);
+  assert.equal(approval.official_deadline, '2026-11-03');
+});
+
+test('a dated schedule notice for a project proposes a milestone; no link means internal', async () => {
+  const ctx = setup(fakeAi(classification({ class: 'schedule', title: '중간발표', due_date: '2026-12-10', due_is_explicit: true, official: true, project_id: 'thesis' })));
+  await captureAndRun(ctx, '중간발표 12/10');
+  const [approval] = ctx.store.approvals.list({ states: ['pending'] });
+  assert.equal(approval.kind, 'milestone_add');
+  assert.equal(approval.payload.kind, 'internal');
 });
 
 test('invalid AI output fails the job but keeps the captured text', async () => {
