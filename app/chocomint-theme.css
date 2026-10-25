@@ -1093,7 +1093,7 @@ html .shell .section {
   background: var(--panel-subtle);
   color: var(--muted);
   text-align: center;
-  font-size: 9px;
+  font-size:12px;
 }
 
 .planner-day {
@@ -1130,7 +1130,7 @@ html .shell .section {
 
 .planner-day small {
   color: var(--blue-strong);
-  font-size: 8px;
+  font-size:12px;
 }
 
 .planner-selected-day {
@@ -1145,7 +1145,7 @@ html .shell .section {
 
 .planner-selected-day h4 {
   margin: 0;
-  font-size: 11px;
+  font-size:13px;
 }
 
 .planner-calendar-event {
@@ -1155,13 +1155,13 @@ html .shell .section {
   align-items: center;
   padding: 7px 3px;
   border-bottom: 1px solid var(--line);
-  font-size: 10px;
+  font-size:12px;
 }
 
 .planner-calendar-event time,
 .planner-calendar-event small {
   color: var(--muted);
-  font-size: 9px;
+  font-size:12px;
 }
 
 .planner-timetable {
@@ -1195,7 +1195,7 @@ html .shell .section {
   background: var(--panel-subtle);
   color: var(--muted);
   text-align: center;
-  font-size: 8px;
+  font-size:12px;
 }
 
 .planner-timetable-header button {
@@ -1207,7 +1207,7 @@ html .shell .section {
 .planner-timetable-header b {
   display: block;
   color: var(--text);
-  font-size: 10px;
+  font-size:12px;
 }
 
 .planner-timetable-header .today b {
@@ -1222,7 +1222,7 @@ html .shell .section {
 .planner-all-day-row > b {
   color: var(--muted);
   text-align: center;
-  font-size: 8px;
+  font-size:12px;
 }
 
 .planner-hour-row > div,
@@ -1239,7 +1239,7 @@ html .shell .section {
   border-radius: 5px;
   background: var(--blue-soft);
   color: var(--blue-strong);
-  font-size: 8px;
+  font-size:12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1288,7 +1288,7 @@ html .shell .section {
   justify-content: space-between;
   margin: 4px 0 8px;
   color: var(--muted);
-  font-size: 9px;
+  font-size:12px;
 }
 
 .planner-persistence-status .saved {
@@ -1330,7 +1330,7 @@ html .shell .section {
 
 .planner-user-task b,
 .planner-mail-task > span {
-  font-size: 10px;
+  font-size:12px;
 }
 
 .planner-user-task small,
@@ -1339,7 +1339,7 @@ html .shell .section {
 .planner-user-task > span {
   margin-top: 3px;
   color: var(--muted);
-  font-size: 8px;
+  font-size:12px;
 }
 
 .planner-user-task.done b {
@@ -1377,7 +1377,7 @@ html .shell .section {
   border-radius: 999px;
   background: var(--panel);
   color: var(--muted);
-  font-size: 8px;
+  font-size:12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1601,7 +1601,7 @@ html .shell .section {
   align-items: center;
   gap: 9px;
   margin-top: 8px;
-  font-size: 9px;
+  font-size:12px;
 }
 
 .portal-notice-ai-progress {
@@ -1619,12 +1619,12 @@ html .shell .section {
   flex-direction: column;
   gap: 2px;
   min-width: 150px;
-  font-size: 9px;
+  font-size:12px;
 }
 
 .portal-notice-ai-progress-copy small {
   color: var(--muted);
-  font-size: 8px;
+  font-size:12px;
 }
 
 .portal-notice-ai-progress-track {
@@ -1658,7 +1658,7 @@ html .shell .section {
   background: var(--panel-elevated);
   color: var(--text-soft);
   font: inherit;
-  font-size: 9px;
+  font-size:12px;
   font-weight: 700;
 }
 
@@ -1698,7 +1698,7 @@ html .shell .section {
   background: var(--panel-elevated);
   color: var(--text-soft);
   font: inherit;
-  font-size: 8px;
+  font-size:12px;
 }
 
 .portal-notice-ai-summary {
@@ -1715,7 +1715,7 @@ html .shell .section {
   padding: 3px 6px;
   background: var(--blue-soft);
   color: var(--blue-strong);
-  font-size: 8px;
+  font-size:12px;
   font-style: normal;
 }
 
@@ -1789,7 +1789,7 @@ html .shell .section {
   background: var(--panel);
   color: var(--text-soft);
   cursor: pointer;
-  font-size: 8px;
+  font-size:12px;
   white-space: nowrap;
 }
 
@@ -1803,7 +1803,7 @@ html .shell .section {
   gap: 6px;
   margin: 4px 0 0 30px;
   color: var(--muted);
-  font-size: 9px;
+  font-size:12px;
   line-height: 1.5;
 }
 
@@ -2090,7 +2090,7 @@ html .shell .section {
   align-items: center;
   gap: 5px;
   color: var(--muted);
-  font-size: 8px;
+  font-size:12px;
 }
 
 .portal-notice-page-size select {
@@ -2101,7 +2101,7 @@ html .shell .section {
   background: var(--panel-elevated);
   color: var(--text-soft);
   font: inherit;
-  font-size: 8px;
+  font-size:12px;
 }
 
 .portal-notice-pagination {
@@ -2113,7 +2113,7 @@ html .shell .section {
   padding-top: 9px;
   border-top: 1px solid var(--line);
   color: var(--text-soft);
-  font-size: 9px;
+  font-size:12px;
   font-weight: 700;
 }
 
@@ -2160,7 +2160,7 @@ html .shell .section {
   border-radius: 8px;
   background: #fffefa;
   font: inherit;
-  font-size: 8px;
+  font-size:12px;
   font-weight: 700;
 }
 
@@ -2616,13 +2616,17 @@ html .shell .section {
   border-left: 0;
 }
 
+/* Unread is a visible dot plus a bolder subject, never weight alone. */
 .mail-panel .microsoft-mail-dot {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
+  flex: 0 0 auto;
+  width: 12px;
+  margin-top: 3px;
+  color: var(--line-strong);
+  text-align: center;
+}
+
+.mail-panel .microsoft-mail-dot.unread {
+  color: var(--blue-strong);
 }
 
 .mail-panel .microsoft-mail-unread-label {
@@ -2630,16 +2634,15 @@ html .shell .section {
 }
 
 .mail-panel .microsoft-mail-main b {
-  display: block;
-  color: #4d463e;
-  font-size: 10px;
-  font-weight: 650;
-  line-height: 1.35;
+  color: var(--text-soft);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .mail-panel .microsoft-mail-row.unread .microsoft-mail-main b {
-  color: #241f1a;
-  font-weight: 850;
+  color: var(--text);
+  font-weight: 800;
 }
 
 .mail-panel .microsoft-mail-row.unread .microsoft-mail-main > small:first-of-type {
@@ -2660,7 +2663,7 @@ html .shell .section {
   padding: 0 6px;
   border: 1px solid transparent;
   border-radius: 999px;
-  font-size: 8px;
+  font-size:12px;
   font-weight: 800;
   line-height: 1;
   vertical-align: 1px;
@@ -2699,7 +2702,7 @@ html .shell .section {
   border-radius: 8px;
   background: var(--panel-elevated);
   color: var(--text-soft);
-  font-size: 9px;
+  font-size:12px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -2734,7 +2737,7 @@ html .shell .section {
   border: 0;
   background: transparent;
   color: #655f57;
-  font-size: 9px;
+  font-size:12px;
   line-height: 1.5;
 }
 
@@ -2743,7 +2746,7 @@ html .shell .section {
   border-radius: 999px;
   background: #e8f1e9;
   color: #3f715e;
-  font-size: 8px;
+  font-size:12px;
   line-height: 1.2;
 }
 

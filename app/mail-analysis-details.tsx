@@ -121,15 +121,15 @@ export function CalendarCandidateCard({
       <div className="mail-analysis-candidate-actions"><button className="btn" disabled={saving} onClick={() => void handleAdd()} type="button">{saving ? '추가 중…' : '캘린더 추가'}</button><button className="mini" disabled={saving} onClick={() => void handleIgnore()} type="button">무시</button></div>
       {error && <div className="mail-analysis-inline-error">{error}</div>}
     </div>}
-    {candidate.status === 'added' && <small className="mail-analysis-added">Google Calendar에 추가했어{candidate.calendarEventId ? ` · ${candidate.calendarEventId.slice(0, 10)}…` : ''}</small>}
+    {candidate.status === 'added' && <small className="mail-analysis-added" title={candidate.calendarEventId ?? undefined}>Google Calendar에 추가했어.</small>}
     {candidate.status === 'ignored' && <small className="mail-analysis-ignored">이 후보를 무시했어.</small>}
   </article>;
 }
 
 function candidateStatusLabel(status: MailCalendarCandidateStatus): string {
-  if (status === 'added') return '추가됨';
-  if (status === 'ignored') return '무시됨';
-  return '확인 필요';
+  if (status === 'added') return '캘린더에 등록됨';
+  if (status === 'ignored') return '무시함';
+  return '후보 · 아직 캘린더에 없음';
 }
 
 function toInputValue(value: string, allDay: boolean): string {

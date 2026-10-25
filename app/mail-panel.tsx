@@ -378,8 +378,8 @@ export function MailPanel() {
     </div>
     {syncing && <div className="note" aria-live="polite">{currentSyncLabel}</div>}
     {!syncing && mailAIActive && <div className="note mail-ai-background-note" aria-live="polite">AI 분석 중… {syncStatus?.counts.completed ?? 0} / {aiTotalCount}</div>}
-    {!syncing && syncStatus?.aiError && <div className="error microsoft-mail-error">{syncStatus.aiError}</div>}
-    {!syncing && syncStatus?.status === 'failed' && <div className="error microsoft-mail-error">{syncStatus.folders.find((folder) => folder.error)?.error || '마지막 메일 동기화에 실패했어.'}</div>}
+    {!syncing && syncStatus?.aiError && <div className="error microsoft-mail-error">AI 분석에 문제가 있었어요. 메일 목록은 그대로 볼 수 있어요.<details className="mail-error-details"><summary>진단 정보</summary>{syncStatus.aiError}</details></div>}
+    {!syncing && syncStatus?.status === 'failed' && <div className="error microsoft-mail-error">마지막 메일 동기화에 실패했어요. 저장된 메일은 그대로 볼 수 있어요.<details className="mail-error-details"><summary>진단 정보</summary>{syncStatus.folders.find((folder) => folder.error)?.error || '자세한 오류가 기록되지 않았어요.'}</details></div>}
     <div className="muted"><small>{selectedFolder === 'inbox' ? `${selectedLabel} · Thunderbird 원본 · 읽음 상태 읽기 전용` : `${selectedLabel} · SQLite · 저장된 분석 결과`}</small></div>
     <div className="mail-folder-tabs" role="tablist" aria-label="메일 분석 폴더">
       {[{ id: 'inbox' as const, label: THUNDERBIRD_FOLDER_LABELS.inbox }, ...defaultMailFolders()].map((folder) => <button
