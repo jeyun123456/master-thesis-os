@@ -6,7 +6,7 @@ This repository ships one versioned deliverable, the Master Thesis OS web app. T
 
 | Deliverable | Current version | Canonical source | Release surface |
 | --- | --- | --- | --- |
-| Master Thesis OS web app | `1.3.0` | `package.json` → `version` | Vercel deployment and repository release tag `vX.Y.Z` |
+| Master Thesis OS web app | `1.4.0` | `package.json` → `version` | Vercel deployment and repository release tag `vX.Y.Z` |
 
 The web app reads its displayed version from `package.json`; it must not contain separate hard-coded UI versions.
 

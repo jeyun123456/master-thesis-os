@@ -109,6 +109,29 @@ test('invalid AI output fails the job but keeps the captured text', async () => 
   assert.equal(ctx.store.inbox.get(item.id).raw_text, '원문 보존');
 });
 
+test('a classify job that gives up marks its item failed but keeps the text', async () => {
+  const ctx = setup(fakeAi({ class: 'x' }, { class: 'x' }, { class: 'x' }));
+  const item = await captureAndRun(ctx, '끝까지 실패');
+  for (let i = 0; i < 2; i += 1) {
+    ctx.now.advance(60 * 60_000);
+    await ctx.worker.tick();
+  }
+  const after = ctx.store.inbox.get(item.id);
+  assert.equal(after.state, 'failed');
+  assert.equal(after.raw_text, '끝까지 실패');
+  assert.equal(ctx.store.inbox.setState(item.id, 'classified').state, 'classified', 'a later manual retry can still classify it');
+});
+
+test('jobs left running by a dead worker are recovered and audited', async () => {
+  const ctx = setup(fakeAi(classification()));
+  const { job } = ctx.worker.queue.enqueue({ type: 'decompose_task', source: 'user', input: { task: { id: 't', title: 'x' } } });
+  ctx.worker.queue.claim({ owner: 'dead-worker', leaseMs: 1000 });
+  ctx.now.advance(2000);
+  await ctx.worker.tick();
+  assert.notEqual(ctx.worker.queue.get(job.id).state, 'running');
+  assert.ok(ctx.db.prepare("SELECT 1 FROM audit_log WHERE event = 'jobs_recovered'").get());
+});
+
 test('auth failure pauses the queue and resumes when login works again', async () => {
   const ai = fakeAi(new AiAuthError('Not logged in'), classification());
   ai.loginOkValue = false;

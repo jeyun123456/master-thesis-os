@@ -54,7 +54,11 @@ export function createWorker({ db, ai, collectMail, owner = `${hostname()}:${pro
         log('paused: codex auth');
       } else {
         const retryable = !(error instanceof PermanentJobError || error instanceof MailConfigError);
-        queue.fail(job.id, owner, { error: error.message, retryable, runner: 'codex-cli', model });
+        const after = queue.fail(job.id, owner, { error: error.message, retryable, runner: 'codex-cli', model });
+        // A classify job that gave up must not leave its item looking "queued" forever.
+        if (after.state === 'failed' && job.type === 'classify_inbox') {
+          try { store.inbox.setState(job.input.item_id, 'failed', { error: error.message }); } catch { /* item already final */ }
+        }
         log(`job ${job.type} ${job.id} failed: ${error.message}${error instanceof AiRateLimitError ? ' (rate limited)' : ''}`);
       }
     } finally {
@@ -63,7 +67,11 @@ export function createWorker({ db, ai, collectMail, owner = `${hostname()}:${pro
   }
 
   async function tick() {
-    queue.recoverExpired();
+    const recovered = queue.recoverExpired();
+    if (recovered) {
+      store.audit('jobs_recovered', String(recovered));
+      log(`recovered ${recovered} job(s) left running by a stopped worker`);
+    }
     scheduleCollect();
     await maybeResume();
     db.prepare("INSERT INTO meta (key, value) VALUES ('worker_heartbeat', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")

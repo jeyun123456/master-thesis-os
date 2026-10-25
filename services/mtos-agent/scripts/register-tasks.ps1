@@ -23,4 +23,13 @@ foreach ($role in 'api', 'worker') {
         Write-Host "registered $name"
     }
 }
+# Daily encrypted local backup of the agent DB (needs MTOS_BACKUP_KEY/DIR in agent.env).
+# Runs after the existing 03:30 P0 backup; no Drive upload.
+$backupAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$runner`" -Role backup"
+$backupTrigger = New-ScheduledTaskTrigger -Daily -At '03:40'
+$backupSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 15) -MultipleInstances IgnoreNew
+if ($PSCmdlet.ShouldProcess('MTOS_Agent_Backup', 'Register scheduled task')) {
+    Register-ScheduledTask -TaskName 'MTOS_Agent_Backup' -Action $backupAction -Trigger $backupTrigger -Principal (New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited) -Settings $backupSettings -Force | Out-Null
+    Write-Host 'registered MTOS_Agent_Backup'
+}
 Write-Host 'Start now with: Start-ScheduledTask MTOS_Agent_API; Start-ScheduledTask MTOS_Agent_Worker'

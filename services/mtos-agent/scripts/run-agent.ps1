@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][ValidateSet('api', 'worker')][string]$Role,
+    [Parameter(Mandatory = $true)][ValidateSet('api', 'worker', 'backup')][string]$Role,
     [string]$EnvFile = (Join-Path $env:LOCALAPPDATA 'MasterThesisOS\agent\agent.env')
 )
 
@@ -24,11 +24,12 @@ if (-not $env:MTOS_AGENT_DB_PATH) {
 }
 
 $node = (Get-Command node.exe -ErrorAction Stop).Source
-$script = if ($Role -eq 'api') { 'src\server.js' } else { 'src\worker.js' }
+$script = switch ($Role) { 'api' { 'src\server.js' } 'worker' { 'src\worker.js' } 'backup' { 'scripts\backup-cli.js' } }
 $logDir = Join-Path $env:LOCALAPPDATA 'MasterThesisOS\agent\logs'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir "$Role.log"
 
 # Exit code propagates so Task Scheduler's restart-on-failure applies.
-& $node (Join-Path $root $script) *>> $log
+$extra = if ($Role -eq 'backup') { @('backup') } else { @() }
+& $node (Join-Path $root $script) @extra *>> $log
 exit $LASTEXITCODE

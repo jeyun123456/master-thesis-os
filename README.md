@@ -4,7 +4,7 @@
 
 ## 제품 버전
 
-- Master Thesis OS 웹 앱: `1.3.0` — canonical source는 root `package.json`
+- Master Thesis OS 웹 앱: `1.4.0` — canonical source는 root `package.json`
 - Wallpaper Companion은 1.4.0에서 제거됐다. 과거 `v0.6.1` 태그와 Release는 기록으로 보존한다.
 - 버전 규칙과 release 절차: [`VERSIONING.md`](./VERSIONING.md)
 
@@ -135,6 +135,12 @@ shared/shortcuts.md
 ```
 
 자료실 검색창은 한국어·일본어 IME 조합 중 Enter/Escape와 전역 단축키 처리를 중지하고 composition이 끝난 뒤에만 처리한다. 따라서 조합 중인 입력이 검색어를 지우거나 제출하는 문제를 피한다.
+
+## P1·P2: 연구 칸반, AI 인박스, AI Worker
+
+연구 탭은 6단계 칸반(기획·자료 수집·분석·해석·집필·완료, 단계가 없으면 "단계 미확인")으로 시작하고, 카드를 누르면 전체 화면 프로젝트 상세로 들어간다. 카드의 다음 실행 작업·남은 할 일·가까운 마감은 P0 할 일 중 `project_id`가 그 프로젝트인 것만 집계한다.
+
+메모·마일스톤·AI 인박스·승인·작업 확장 정보는 별도 서비스 [`services/mtos-agent`](./services/mtos-agent/README.md)가 서버 PC에서 소유한다. P0는 여전히 할 일과 세션의 유일한 원본이고, AI는 P0·Vault·Calendar에 직접 쓰지 않는다. 브라우저는 `/api/mtos/*`(P0 세션을 bearer로 전달)와 `/api/obsidian/*`를 통해서만 접근한다. 운영 배포 순서와 요구사항별 상태는 [`docs/p1-p2-final.md`](./docs/p1-p2-final.md)를 따른다.
 
 ## 프로젝트 작업공간
 

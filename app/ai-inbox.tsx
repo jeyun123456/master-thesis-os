@@ -227,7 +227,8 @@ export function AiInboxPanel({ projects, onTasksChanged }: { projects: ResearchP
     {(inFlight.length > 0 || failedJobs.length > 0) && <section className="card section section-gap">
       <div className="head"><h3>처리 중 · 실패</h3><span>{inFlight.length + failedJobs.length}건</span></div>
       <ul className={styles.list}>
-        {inFlight.map((i) => <li key={i.id} className={styles.item}><div><b>{i.raw_text.slice(0, 100)}</b><small>{i.state === 'new' ? '분류 대기' : i.state === 'classifying' ? '분류 중' : '실패'}{i.error ? ` · ${i.error}` : ''} · 원문은 안전하게 저장돼 있어</small></div></li>)}
+        {inFlight.map((i) => <li key={i.id} className={styles.item}><div><b>{i.raw_text.slice(0, 100)}</b><small>{i.state === 'new' ? '분류 대기' : i.state === 'classifying' ? '분류 중' : '실패'}{i.error ? ` · ${i.error}` : ''} · 원문은 안전하게 저장돼 있어</small></div>
+          {i.state === 'failed' && <div className={styles.actions}><button className="mini" type="button" disabled={busyId === i.id} onClick={() => void act(i.id, () => mtosApi.reclassify(i.id), '다시 분류를 요청했어.')}>다시 분류</button></div>}</li>)}
         {failedJobs.map((j) => <li key={j.id} className={styles.item}><div><b>{j.type}</b><small>{j.error} · 시도 {j.attempts}/{j.max_attempts}{j.model ? ` · ${j.model}` : ''}</small></div>
           <div className={styles.actions}><button className="mini" type="button" onClick={() => void act(j.id, () => mtosApi.retryJob(j.id), '다시 시도할게.')}>다시 시도</button></div></li>)}
       </ul>
