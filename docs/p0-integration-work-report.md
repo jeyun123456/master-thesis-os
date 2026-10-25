@@ -9,7 +9,7 @@
 - R1: 전용 Cloudflare tunnel/Access와 사용자 로그인 시 실행되는 제한 권한 task를 구성했다. P0/Next loopback 응답과 외부 Access 차단을 확인했고, 제어된 tunnel 재시작도 통과했다. 실제 재부팅 후 시작은 미검증이다. 빌드 후 stale 상태였던 staging Next 프로세스를 해당 task만 재시작했고, 현재 root와 모든 9개 script asset이 HTTP 200이다.
 - R2: 보호된 P0 staging store preflight 통과. `https://hermes-laptop.tail315532.ts.net:10000`의 `/api/p0/session`이 HTTP 200, `configured=true`, `authenticated=false`를 반환하며 로그인 버튼을 렌더링한다(390px emulation, overflow 없음). 실제 Google 로그인과 logout 후 401은 아직 미검증이며 계정을 선택하지 않았다. Preview는 Vercel SSO가 막고 있고, 거부된 실제 계정 로그인은 P0 audit log에 `sub`가 기록되므로 수행하지 않았다.
 - R3–R4: 홈 task, CRUD, offline queue/sync 코드는 구현·테스트돼 있다. 인증 브라우저 task 흐름, 실제 PC↔모바일 및 offline/reconnect/conflict 검증은 남았다.
-- R5: 로컬 암호화 백업 복호화·SQLite 무결성 및 격리 staging 복구가 통과했다. Drive 자동화는 사용자의 local-only 결정에 따라 중단돼 있고 Drive task는 없다. 반복 실행되는 로컬 예약 작업도 현재 등록되지 않았다.
+- R5: 로컬 암호화 백업 복호화·SQLite 무결성 및 격리 staging 복구가 통과했다. 기존 `MTOS_Staging_Backup` 작업은 로컬 staging 전용으로 매일 03:30 KST에 실행되며, 2026-10-25 실행 결과가 0이다. 수동 `Run-Stage.ps1 -Mode Backup` create/verify도 통과했다. Drive 자동화는 결정대로 중단돼 있고 Drive task는 없다. 자동 보존 만료/삭제는 설정하지 않았다.
 - 검증: Standalone `pnpm lint`, `pnpm build`, Vitest 5 files/19 tests; P0 `node --test` 40 tests; JS/PowerShell 검증이 통과했다. 상세한 G1–G7 잔여 항목은 `docs/p0-r6-release-gate.md`에 기록한다.
 - Production/SQLite와 기존 Cloudflare/Tailscale ingress는 변경하지 않았다. PR 병합과 Production 승격은 남은 R6 관문 확인 전까지 보류한다.
 

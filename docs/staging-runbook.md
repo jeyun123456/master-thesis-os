@@ -101,6 +101,8 @@ powershell.exe -NoProfile -File "$env:LOCALAPPDATA\master-thesis-os-staging\p0\o
 
 A successful run prints only `BACKUP_VERIFIED (path and secrets omitted)`. Re-run after a `.next` rebuild only if needed; restart the Next task separately to refresh served static assets.
 
+The existing `MTOS_Staging_Backup` Task Scheduler job is enabled and runs this local staging backup at **03:30 Asia/Seoul daily**. It last returned 0 on 2026-10-25 and does not upload to Drive. This is separate from the deferred Drive automation; local backup artifacts have no automatic deletion.
+
 For real operations, keep encrypted backups and the 32-byte key in separate protected locations, restrict backup-directory ACLs, and rehearse restore against a disposable copy first. Full restore requires the P0 server to be stopped and overwrites its target DB after preserving a pre-restore snapshot; never use `restore-full` against production without a separately approved recovery plan.
 
 ## Real-device checklist (manual; not replaced by desktop automation)
