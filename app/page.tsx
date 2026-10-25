@@ -25,7 +25,8 @@ import { SchoolMailPanel } from '@/app/school-mail-panel';
 import { ShortcutList, ShortcutsPanel } from '@/app/shortcuts-panel';
 import { dashboardApi, type CalendarApiResponse, type RepositorySource, type ShortcutSource } from '@/lib/client-api';
 import type { CalendarEvent } from '@/lib/calendar';
-import { daysUntil, eventDateKey, groupCalendarEvents } from '@/lib/calendar-view';
+import { CalendarAgenda } from '@/app/calendar-agenda';
+import { daysUntil, groupCalendarEvents } from '@/lib/calendar-view';
 import type { GitHubCommitSummary } from '@/lib/github';
 import { projectStatusLabel, stageLabel, type ResearchProject } from '@/lib/projects';
 import type { RepositoryItem } from '@/lib/repository';
@@ -489,7 +490,7 @@ function AuthenticatedPage() {
           onOpenFolder={openLocalFolder}
         /></section>}
         {page === 'library' && <section className="page active"><GoogleDrivePanel /><div className="section-gap"><LibraryPanel tree={tree} researchStatus={researchStatus} onOpen={openLocal} /></div></section>}
-        {page === 'calendar' && <section className="page active"><Card title="캘린더" right={`${calendar.items.length}건 · 읽기 전용`} className="calendar-card"><CalendarAgenda calendar={calendar} /></Card></section>}
+        {page === 'calendar' && <section className="page active"><Card title="캘린더" right={calendar.state === 'error' || calendar.state === 'unconfigured' ? '확인 실패' : `${calendar.items.length}건 · 읽기 전용`} className="calendar-card"><CalendarAgenda calendar={calendar} stateText={calendarStateText(calendar)} /></Card></section>}
         {page === 'slot' && <section className="page active"><RewardSlotPanel tasks={activeProject?.nextTasks || researchStatus?.nextActions || []} projectTitle={activeProject ? activeProject.title : 'Wiki live'} onNotice={pop} /></section>}
         {page === 'shortcuts' && <section className="page active"><ShortcutsPanel
           shortcuts={shortcutItems}
@@ -591,31 +592,6 @@ function HomeStatusCard({ id, label, value, detail }: { id?: string; label: stri
 }
 
 function Card({ title, right, children, className = '' }: { title: string; right?: string; children: React.ReactNode; className?: string }) { return <div className={`card section${className ? ` ${className}` : ''}`}><div className="head"><h3>{title}</h3><span>{right}</span></div>{children}</div>; }
-function CalendarAgenda({ calendar }: { calendar: CalendarApiResponse }) {
-  const grouped = new Map<string, CalendarEvent[]>();
-  for (const event of calendar.items) {
-    const date = eventDateKey(event);
-    grouped.set(date, [...(grouped.get(date) ?? []), event]);
-  }
-  if (!calendar.items.length) return <div className="calendar-agenda-empty">{calendarStateText(calendar)}</div>;
-  return <div className="calendar-agenda">
-    {[...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([date, events]) => <section className="calendar-agenda-day" key={date}>
-      <h4>{formatCalendarDay(date)}</h4>
-      <div className="calendar-events">{events.map((event) => <article className="event calendar-agenda-event" key={event.id}>
-        <span className="calendar-agenda-time">{event.allDay ? '종일' : formatCalendarTime(event.start, event.end)}</span>
-        <div className="calendar-agenda-copy"><b>{event.title}</b><small>{event.category}{event.location ? ` · ${event.location}` : ''}</small></div>
-      </article>)}</div>
-    </section>)}
-  </div>;
-}
-function formatCalendarDay(value: string) {
-  const date = new Date(`${value}T12:00:00+09:00`);
-  return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(date);
-}
-function formatCalendarTime(start: string, end: string) {
-  const formatter = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-  return `${formatter.format(new Date(start))}–${formatter.format(new Date(end))}`;
-}
 function calendarStateText(calendar: CalendarApiResponse) { if (calendar.state === 'unconfigured') return 'Google Calendar 설정이 필요해.'; if (calendar.state === 'empty') return '오늘부터 14일 안에 일정이 없어.'; if (calendar.errorCode === 'auth_error' || calendar.errorCode === 'insufficient_permissions') return 'Calendar 서비스 계정의 읽기/쓰기 권한을 확인해야 해.'; if (calendar.errorCode === 'provider_bad_request') return 'Calendar 요청 형식 또는 날짜·시간을 확인해줘.'; if (calendar.errorCode === 'invalid_calendar') return 'Calendar ID 또는 공유 권한을 확인해줘.'; if (calendar.errorCode === 'quota_error') return 'Google Calendar API quota를 확인해줘.'; if (calendar.errorCode === 'malformed_response') return 'Calendar 응답 형식을 확인할 수 없어.'; if (calendar.state === 'error') return 'Calendar 네트워크 연결을 확인해줘.'; return '해당 일정이 없어.'; }
 function CommitList({ commits }: { commits: GitHubCommitSummary[] }) { if (!commits.length) return <div className="empty compact-empty">최근 GitHub 변경을 불러오는 중이거나 연결 정보가 없어.</div>; return <div>{commits.map((commit) => <div className="commit" key={commit.sha}><div><b>{commit.message}</b><small>{commit.author} · {relativeDate(commit.date)}</small></div><code>{commit.sha.slice(0, 7)}</code></div>)}</div>; }
 

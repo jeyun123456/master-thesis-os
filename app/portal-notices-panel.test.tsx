@@ -3,10 +3,13 @@ import {
   filterPortalNotices,
   formatPortalNoticeDate,
   formatPortalSyncDate,
+  portalDueLabel,
   portalNoticeDeadlineState,
+  portalNoticeDue,
   portalNoticeErrorMessage,
   portalNoticeStatusLabel,
   sortPortalNotices,
+  upcomingPortalDeadlines,
 } from './portal-notices-panel';
 import { PortalNoticesClientError, type PortalNoticeSummary } from '../lib/portal-notices-client';
 
@@ -98,5 +101,26 @@ describe('학교 공지 panel helpers', () => {
     expect(sortPortalNotices(items, 'deadline_asc').map((item) => item.noticeId)).toEqual(['soon', 'later', 'none']);
     expect(sortPortalNotices(items, 'title_asc').map((item) => item.noticeId)).toEqual(['soon', 'none', 'later']);
     expect(items.map((item) => item.noticeId)).toEqual(['later', 'soon', 'none']);
+  });
+});
+
+describe('portal deadline emphasis comes only from real dates', () => {
+  const now = Date.parse('2026-10-25T03:00:00Z');
+  it('counts days from the stored deadline, falling back to the public-until date', () => {
+    expect(portalNoticeDue(notice({ deadline: '2026-10-28' }), now)).toMatchObject({ kind: 'deadline', daysLeft: 3 });
+    expect(portalNoticeDue(notice({ expiresAt: '2026-10-26' }), now)).toMatchObject({ kind: 'expires', daysLeft: 1 });
+    expect(portalNoticeDue(notice({}), now)).toBeNull();
+    expect(portalDueLabel({ daysLeft: 0 })).toBe('오늘 마감');
+    expect(portalDueLabel({ daysLeft: -1 })).toBe('기한 종료');
+  });
+  it('lists only unarchived upcoming notices, nearest first', () => {
+    const items = [
+      notice({ noticeId: 'far', deadline: '2026-11-20' }),
+      notice({ noticeId: 'near', deadline: '2026-10-27' }),
+      notice({ noticeId: 'past', deadline: '2026-10-01' }),
+      notice({ noticeId: 'archived', deadline: '2026-10-26', isArchived: true }),
+      notice({ noticeId: 'none' }),
+    ];
+    expect(upcomingPortalDeadlines(items, now).map((item) => item.noticeId)).toEqual(['near', 'far']);
   });
 });
