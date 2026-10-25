@@ -5,7 +5,7 @@
 ## 제품 버전
 
 - Master Thesis OS 웹 앱: `1.3.0` — canonical source는 root `package.json`
-- Wallpaper Companion: `0.6.1` — canonical source는 `experiments/wallpaper-host-poc/WallpaperHostPoc.csproj`
+- Wallpaper Companion은 1.4.0에서 제거됐다. 과거 `v0.6.1` 태그와 Release는 기록으로 보존한다.
 - 버전 규칙과 release 절차: [`VERSIONING.md`](./VERSIONING.md)
 
 ## 구성
@@ -229,7 +229,7 @@ OAuth live 검증이 끝나기 전까지 Service Account 변수를 남겨도 된
 - PDF처럼 Drive 인덱스에서만 검색된 자료는 `indexedOnly`로 전달되어 내용 근거로 추정하지 않는다.
 - 연구 Q&A 응답에는 사용 모델, 근거 source ID, 근거 부족 여부를 함께 반환한다.
 
-이 기능은 Local Bridge API v8의 `POST /research/answer`를 사용한다. 따라서 Companion/Bridge를 v8 코드로 업데이트하고 재시작해야 한다. Codex CLI에서 해당 모델에 대한 계정 접근 권한이 없으면 그 모드만 실패하며 다른 모델로 자동 강등하지 않는다.
+이 기능은 Local Bridge API v8의 `POST /research/answer`를 사용한다. 따라서 Local Bridge를 v8 코드로 업데이트하고 재시작해야 한다. Codex CLI에서 해당 모델에 대한 계정 접근 권한이 없으면 그 모드만 실패하며 다른 모델로 자동 강등하지 않는다.
 
 ## Microsoft 365 학교 메일 Graph 연결(선택)
 
@@ -276,16 +276,16 @@ Copy-Item config.example.json config.json
 python bridge.py
 ```
 
-Wallpaper Companion과 Bridge tray는 다음 공용 설정을 우선 사용한다.
-`%LOCALAPPDATA%\MasterThesisOSWallpaper\bridge\config.json`이 없으면 기존 `local-bridge\config.json`을 fallback으로 사용한다. 공용 config가 존재하면 유효성 오류가 있어도 다른 config로 조용히 fallback하지 않는다. 다른 위치를 사용해야 하면 `MTO_BRIDGE_CONFIG` 환경변수로 config 경로를 지정할 수 있으며, override가 설정되면 해당 경로만 사용한다. Companion 설치 시 기존 local config가 공용 위치에 없을 때만 한 번 복사하며, 기존 공용 config는 덮어쓰지 않는다.
+Bridge launcher와 tray는 다음 공용 설정을 우선 사용한다. 폴더 이름의 `Wallpaper`는 기존 사용자 데이터 위치를 유지하기 위한 호환 경로이며 Companion 의존성이 아니다.
+`%LOCALAPPDATA%\MasterThesisOSWallpaper\bridge\config.json`이 없으면 기존 `local-bridge\config.json`을 fallback으로 사용한다. 공용 config가 존재하면 유효성 오류가 있어도 다른 config로 조용히 fallback하지 않는다. 다른 위치를 사용해야 하면 `MTO_BRIDGE_CONFIG` 환경변수로 config 경로를 지정할 수 있으며, override가 설정되면 해당 경로만 사용한다.
 
-`token`은 32자 이상의 임의 문자열이어야 한다. Companion과 Bridge는 선택된 동일 config를 사용하며, token은 공백을 임의로 제거하지 않는다. 설정 파일을 변경한 뒤에는 실행 중인 Bridge와 tray를 다시 시작한다.
+`token`은 32자 이상의 임의 문자열이어야 한다. Bridge launcher와 tray는 선택된 동일 config를 사용하며, token은 공백을 임의로 제거하지 않는다. 설정 파일을 변경한 뒤에는 실행 중인 Bridge와 tray를 다시 시작한다.
 
 ```powershell
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. 새 메일 분석 UI는 `GET /mail/sync-status`, `GET /mail/analysis`, `GET /mail/analysis/<mail-id>`, `GET /mail/planning`, `POST /mail/sync`, `POST /mail/analysis/<mail-id>/reanalyze`, `POST /mail/analysis/candidate`, `POST /mail/task`를 사용한다. `/mail/sync`는 background job으로 `mail_cli.py`를 실행하고, 상태는 `mail-analysis.db`에서 polling한다. 기존 `POST /mail/recent`, `/mail/message`, `/mail/open`은 Thunderbird 열기·호환용으로 남아 있지만 새 동기화 UI의 수집 경로가 아니다. 메일 endpoint는 경로·본문·제목·발신자·token을 로그에 남기지 않는다. Settings의 token은 `보기/숨기기`와 `복사`로 관리할 수 있고, Local Bridge tray와 Wallpaper Companion tray의 **Bridge token 보기/복사**에서도 로컬 config 값을 확인·복사할 수 있다. token을 HTTP endpoint나 원격 페이지에 자동 노출하지는 않는다. 실제 `config.json`은 git에서 제외된다.
+브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. 새 메일 분석 UI는 `GET /mail/sync-status`, `GET /mail/analysis`, `GET /mail/analysis/<mail-id>`, `GET /mail/planning`, `POST /mail/sync`, `POST /mail/analysis/<mail-id>/reanalyze`, `POST /mail/analysis/candidate`, `POST /mail/task`를 사용한다. `/mail/sync`는 background job으로 `mail_cli.py`를 실행하고, 상태는 `mail-analysis.db`에서 polling한다. 기존 `POST /mail/recent`, `/mail/message`, `/mail/open`은 Thunderbird 열기·호환용으로 남아 있지만 새 동기화 UI의 수집 경로가 아니다. 메일 endpoint는 경로·본문·제목·발신자·token을 로그에 남기지 않는다. Settings의 token은 `보기/숨기기`와 `복사`로 관리할 수 있고, Local Bridge tray의 **Bridge token 보기/복사**에서도 로컬 config 값을 확인·복사할 수 있다. token을 HTTP endpoint나 원격 페이지에 자동 노출하지는 않는다. 실제 `config.json`은 git에서 제외된다.
 
 ## RITSUMEIKAN 학교 공지
 
@@ -363,9 +363,9 @@ Calendar 후보는 사용자가 제목·날짜·시간을 확인·수정한 뒤 
 
 ### 브리지 상시 실행
 
-Windows에서 `local-bridge/start_bridge.bat`을 실행하면 설정을 확인한 뒤 브리지를 계속 실행한다. 브리지가 일시적인 오류로 종료되면 3초 후 자동으로 재시작하지만, `config.json` 영구 설정 오류는 exit code 78로 식별해 재시작하지 않는다. 콘솔 없이 실행하려면 `start_bridge_hidden.vbs`를 사용한다. 시스템 트레이 아이콘과 상태 확인·종료 메뉴를 쓰려면 `start_bridge_tray.vbs`를 사용한다. Local Bridge tray 또는 Wallpaper Companion tray의 **Bridge token 복사**를 누른 뒤 Production Settings의 **붙여넣기**와 **저장**을 누르면 토큰을 설정할 수 있다. 브라우저 보안상 트레이가 웹페이지에 token을 자동 주입하지는 않는다. 트레이에서 상태 확인을 누르면 공용 또는 override config의 `port`를 사용하며, 생략 시 `38471`을 사용한다. 잘못된 port는 트레이에 설정 오류로 표시된다. 설정 오류 balloon이 표시되면 `config.json`을 수정한 뒤 트레이 실행기를 다시 시작한다. Windows 로그인 때마다 트레이 실행기를 자동 시작하려면 해당 VBS 파일의 바로가기를 `Win+R` → `shell:startup` 폴더에 넣는다. 일반 브라우저 개발 시에는 `start_bridge.bat`을 사용하고, 중지는 콘솔 창에서 `Ctrl+C` 또는 창 닫기로 수행한다.
+Windows에서 `local-bridge/start_bridge.bat`을 실행하면 설정을 확인한 뒤 브리지를 계속 실행한다. 브리지가 일시적인 오류로 종료되면 3초 후 자동으로 재시작하지만, `config.json` 영구 설정 오류는 exit code 78로 식별해 재시작하지 않는다. 콘솔 없이 실행하려면 `start_bridge_hidden.vbs`를 사용한다. 시스템 트레이 아이콘과 상태 확인·종료 메뉴를 쓰려면 `start_bridge_tray.vbs`를 사용한다. Local Bridge tray의 **Bridge token 복사**를 누른 뒤 Production Settings의 **붙여넣기**와 **저장**을 누르면 토큰을 설정할 수 있다. 브라우저 보안상 트레이가 웹페이지에 token을 자동 주입하지는 않는다. 트레이에서 상태 확인을 누르면 공용 또는 override config의 `port`를 사용하며, 생략 시 `38471`을 사용한다. 잘못된 port는 트레이에 설정 오류로 표시된다. 설정 오류 balloon이 표시되면 `config.json`을 수정한 뒤 트레이 실행기를 다시 시작한다. Windows 로그인 때마다 트레이 실행기를 자동 시작하려면 해당 VBS 파일의 바로가기를 `Win+R` → `shell:startup` 폴더에 넣는다. 일반 브라우저 개발 시에는 `start_bridge.bat`을 사용하고, 중지는 콘솔 창에서 `Ctrl+C` 또는 창 닫기로 수행한다.
 
-Wallpaper Companion의 설치된 `app\bridge-runtime`은 release 시점의 브리지 사본이다. 브리지 모듈을 추가·변경한 뒤에는 `experiments/wallpaper-host-poc/scripts/Install-WallpaperHost.ps1`로 Companion을 다시 설치하거나, 기존 브리지 프로세스를 종료하고 `local-bridge/start_bridge.bat`을 다시 실행해야 한다. `/health`가 응답하더라도 구버전 사본이면 새 메일·학교 공지 endpoint가 404가 될 수 있다.
+Windows에서 상시 실행할 때는 `local-bridge/Install-StandaloneBridge.ps1`로 브리지를 `%LOCALAPPDATA%\MasterThesisOS\bridge-runtime`에 복사하고 Startup 바로가기를 그 위치로 연결한다. 설치본은 복사 시점의 사본이므로 브리지 모듈을 바꾼 뒤에는 스크립트를 다시 실행하고 tray를 재시작해야 한다. 런타임 `data\`의 기존 DB는 덮어쓰지 않는다. `/health`가 응답하더라도 구버전 사본이면 새 endpoint가 404가 될 수 있다.
 
 ## Sucrose 설정
 

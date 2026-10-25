@@ -12,7 +12,7 @@ import {
   type ShortcutType,
 } from '@/lib/shortcuts';
 import type { ShortcutSource } from '@/lib/client-api';
-import { getNativeShortcutIcon, getSteamShortcutIcon, launchExternalShortcut, pickShortcutTarget } from '@/lib/native-shortcut';
+import { getSteamShortcutIcon, launchExternalShortcut } from '@/lib/native-shortcut';
 
 type OpenLocal = (path: string) => void;
 type EditSource = Shortcut | 'new' | null;
@@ -292,23 +292,6 @@ function ShortcutEditDialog({ source, nextOrder, onSave, onClose, onNotice }: {
     if (!titleDirty) setTitle(shortcutTitleFromTarget(value, nextType));
   }
 
-  async function browse() {
-    if (type !== 'app' && type !== 'file' && type !== 'folder') return;
-    const result = await pickShortcutTarget(type);
-    if (!result.available) {
-      onNotice('찾아보기는 Windows Wallpaper Host에서 사용할 수 있어.');
-      return;
-    }
-    if (result.error) {
-      onNotice(result.error);
-      return;
-    }
-    if (!result.path) return;
-    if (mode === 'auto') setMode(type);
-    if (result.icon) setIcon(result.icon);
-    updateTarget(result.path, type);
-  }
-
   function submit(event: React.FormEvent) {
     event.preventDefault();
     const cleanTarget = target.trim();
@@ -334,7 +317,6 @@ function ShortcutEditDialog({ source, nextOrder, onSave, onClose, onNotice }: {
     });
   }
 
-  const canBrowse = type === 'app' || type === 'file' || type === 'folder';
   const showLaunchOptions = type === 'app' || type === 'command';
 
   return <div className="shortcut-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
@@ -347,7 +329,6 @@ function ShortcutEditDialog({ source, nextOrder, onSave, onClose, onNotice }: {
       </div>
       <div className="shortcut-form-row shortcut-target-row">
         <label>대상<input value={target} onChange={(event) => updateTarget(event.target.value)} placeholder={targetPlaceholder(type)} autoFocus /></label>
-        {canBrowse && <button className="btn shortcut-browse" type="button" onClick={() => void browse()}>찾아보기</button>}
       </div>
       <div className="shortcut-form-row"><label>이름<input value={title} onChange={(event) => { setTitleDirty(true); setTitle(event.target.value); }} placeholder="표시 이름" /></label></div>
 
@@ -372,20 +353,13 @@ function ShortcutEditDialog({ source, nextOrder, onSave, onClose, onNotice }: {
 function ShortcutIcon({ shortcut, compact = false }: { shortcut: Shortcut; compact?: boolean }) {
   const custom = shortcut.icon?.trim();
   const image = Boolean(custom && /^(?:https?:|data:image\/)/i.test(custom));
-  const [nativeIcon, setNativeIcon] = useState<string | null>(null);
   const [resolvedIcon, setResolvedIcon] = useState<string | null>(null);
   useEffect(() => {
-    setNativeIcon(null);
     setResolvedIcon(null);
     if (custom) {
       return;
     }
     let cancelled = false;
-    if (['app', 'file', 'folder'].includes(shortcut.type)) {
-      void getNativeShortcutIcon(shortcut).then((icon) => {
-        if (!cancelled) setNativeIcon(icon);
-      });
-    }
     if (shortcut.type === 'uri') {
       void getSteamShortcutIcon(shortcut.target).then((icon) => {
         if (!cancelled) setResolvedIcon(icon);
@@ -395,7 +369,7 @@ function ShortcutIcon({ shortcut, compact = false }: { shortcut: Shortcut; compa
   }, [custom, shortcut.type, shortcut.target]);
 
   const automatic = !custom ? automaticShortcutIcon(shortcut) : null;
-  const source = image ? custom : nativeIcon || resolvedIcon || automatic;
+  const source = image ? custom : resolvedIcon || automatic;
   return <span className={compact ? 'shortcut-icon' : 'shortcut-tile-icon'} aria-hidden="true">
     {image ? typeIcon(shortcut.type) : custom || typeIcon(shortcut.type)}
     {source && <img src={source} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} />}

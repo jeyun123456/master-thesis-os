@@ -1,8 +1,17 @@
 # Changelog
 
-Product versions are tracked independently. See [`VERSIONING.md`](./VERSIONING.md) for the release policy.
+See [`VERSIONING.md`](./VERSIONING.md) for the release policy.
 
 ## [Unreleased]
+
+### Removed
+
+- Removed the Windows Wallpaper Companion (`experiments/wallpaper-host-poc`), the `/wallpaper` and `/companion-diagnostics` pages, the Companion WebView shortcut host (file picker and native icons), Companion packaging checks, and the Companion version check. The historical `v0.6.1` tag and Release are kept.
+- The Local Bridge now installs on its own with `local-bridge/Install-StandaloneBridge.ps1`. Its config stays in the legacy `%LOCALAPPDATA%\MasterThesisOSWallpaper\bridge` folder so existing installs keep working.
+
+### Fixed
+
+- Bridge tests: expect API v8 and copy every runtime module in the config-error test.
 
 ### Changed
 
