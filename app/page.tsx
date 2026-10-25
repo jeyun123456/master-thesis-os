@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { GoogleDrivePanel } from '@/app/google-drive-panel';
 import { LibraryPanel } from '@/app/library-panel';
 import { PortalAttention } from '@/app/home-attention';
@@ -14,6 +14,8 @@ import { P0SessionsPanel } from '@/app/p0-sessions-panel';
 import { PortalNoticesPanel } from '@/app/portal-notices-panel';
 import { MicrosoftMailPanel } from '@/app/microsoft-mail-panel';
 import { ResearchPanel } from '@/app/research-panel';
+import { researchText } from '@/lib/research-text';
+import homeStyles from './home-layout.module.css';
 import { ResearchMiniTrend } from '@/app/research-mini-trend';
 import { ResultsPanel as ResultsDashboardPanel } from '@/app/results-panel';
 import { DailyChecklist } from '@/app/daily-checklist';
@@ -174,6 +176,7 @@ function AuthenticatedPage() {
   const { authBusy, logout } = useP0Auth();
   const [page, setPage] = useState<Page>('home');
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const urlSynced = useRef(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [focusCreateRequest, setFocusCreateRequest] = useState(0);
   const [tree, setTree] = useState<RepositoryItem[]>([]);
@@ -369,6 +372,27 @@ function AuthenticatedPage() {
     else setPage('inbox');
   }
 
+  // The visible screen lives in ?p= so reload and the back button restore it.
+  useEffect(() => {
+    const restore = () => {
+      const requested = new URLSearchParams(window.location.search).get('p') ?? 'home';
+      if (requested in pageMeta) setPage(requested as Page);
+    };
+    restore();
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, []);
+
+  useEffect(() => {
+    // The first run still holds the default page; writing it would erase the URL being restored.
+    if (!urlSynced.current) { urlSynced.current = true; return; }
+    const url = new URL(window.location.href);
+    if ((url.searchParams.get('p') ?? 'home') === page) return;
+    if (page === 'home') url.searchParams.delete('p');
+    else url.searchParams.set('p', page);
+    window.history.pushState(null, '', url);
+  }, [page]);
+
   function showPage(next: Page) {
     // Returning to the research menu shows the board; tasks may have changed elsewhere.
     if (next === 'research') { setResearchView('board'); void workspace.reload(); }
@@ -398,39 +422,43 @@ function AuthenticatedPage() {
       <main className="main">
         <header className={`top${page === 'home' ? ' top-home' : ''}`}>
           <div>{page === 'home' ? <><h2>Chocomint Lab</h2><p>{todayLabel || '오늘'} · 떠오른 생각을 기록하고 다음 행동을 시작하세요</p></> : <><h2>{pageMeta[page][0]}</h2><p>{pageMeta[page][1]}</p></>}</div>
-          <div className="badges"><GlobalSearch tasks={workspace.tasks} projects={projects} onNavigate={navigateToSearchResult} /><div className="badge">Vault {repositorySource === 'local' ? '● 로컬' : repositorySource === 'github' ? '● GitHub' : '○ 설정 필요'}</div><div className="badge">Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '● 연결됨' : '○ 확인 필요'}</div><div className="badge">v{APP_VERSION}</div><button className="mini" type="button" disabled={authBusy} onClick={() => void signOut()}>로그아웃</button></div>
+          <div className="badges"><GlobalSearch tasks={workspace.tasks} projects={projects} onNavigate={navigateToSearchResult} /><details className={homeStyles.connections}><summary>연결 상태</summary><div><span>Vault {repositorySource === 'local' ? '로컬' : repositorySource === 'github' ? 'GitHub' : '설정 필요'}</span><span>Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '연결됨' : '확인 필요'}</span><span>v{APP_VERSION}</span></div></details><button className="mini" type="button" disabled={authBusy} onClick={() => void signOut()}>로그아웃</button></div>
         </header>
 
         {errors.length > 0 && <div className="error page-error">{errors[0]}</div>}
 
         {page === 'home' && <section className="page active home-page">
           <UrgentApprovals today={p0TodayInTokyo()} onOpenInbox={() => showPage('inbox')} />
+          <section className={homeStyles.agenda} aria-label="다가오는 일정과 마감">
+            <HomeStatusCard id="today-schedule-card" label="오늘 일정" value={schedule.today.length ? `${schedule.today.length}건` : calendar.state === 'ready' || calendar.state === 'empty' ? '없음' : '확인 필요'} detail={schedule.today[0]?.title || calendarStateText(calendar)} />
+            <HomeStatusCard label="다음 마감" value={schedule.nextDeadline ? deadlineLabel(schedule.nextDeadline) : calendar.state === 'ready' || calendar.state === 'empty' ? '없음' : '확인 필요'} detail={schedule.nextDeadline?.title || calendarStateText(calendar)} />
+          </section>
           <div className="section-gap"><P0HomeWorkspace projects={projects} onOpenPlanner={() => setPage('planner')} focusCreateRequest={focusCreateRequest}
             meta={workspace.meta} onMetaChanged={() => void workspace.reloadAgent()} calendarEvents={calendar.items} selectTaskRequest={selectTaskRequest} reloadSignal={workspace.taskReloadSignal} /></div>
-          <div className="home-workspace-grid">
+          <div className={homeStyles.workspace}>
             <Card title="빠른 입력" right="AI 인박스" className="home-capture-card"><CaptureBox compact onSaved={() => void workspace.reloadAgent()} /><button className="mini" type="button" onClick={() => showPage('inbox')}>AI 인박스 열기</button></Card>
-            <DailyChecklist todayEventCount={schedule.today.length} onShowToday={focusTodaySchedule} />
-          </div>
-          <div className="home-status-grid">
-            <HomeStatusCard id="today-schedule-card" label="오늘 일정" value={schedule.today.length ? `${schedule.today.length}건` : '없음'} detail={schedule.today[0]?.title || calendarStateText(calendar)} tone="blue" />
-            <HomeStatusCard label="다음 마감" value={schedule.nextDeadline ? deadlineLabel(schedule.nextDeadline) : '없음'} detail={schedule.nextDeadline?.title || '등록된 마감이 없어.'} tone="orange" />
-          </div>
-          <div className="home-lower-grid section-gap">
             <CurrentResearchCard project={activeProject} researchStatus={researchStatus} onOpen={openResearchProject} />
-            <Card title="최근 분석 결과" right={dashboard.necessaryLabour?.source.yearRange || '결과 데이터'} className="home-results-card"><ResearchMiniTrend series={dashboard.necessaryLabour?.series || []} /></Card>
           </div>
-          <div className="home-attention-grid section-gap">
-            <MailActionCandidates compact />
-            <PortalAttention onOpen={() => setPage('portal')} />
-            <Card title="최근 변경" right="연구 저장소 GitHub" className="home-recent-changes"><CommitList commits={commits.slice(0, 4)} /></Card>
+          <div className="section-gap">
+            <Card title="최근 분석 결과" right={dashboard.necessaryLabour?.source.yearRange || '결과 데이터'} className="home-results-card"><ResearchMiniTrend series={dashboard.necessaryLabour?.series || []} /></Card>
           </div>
           <div className="section-gap">
             <Card title="빠른 접근" right={homeShortcuts.length ? `${homeShortcuts.length}개` : '설정 필요'} className="home-quick-access"><ShortcutList shortcuts={homeShortcuts} onOpenFile={openLocal} onOpenFolder={openLocalFolder} /></Card>
           </div>
+          <details className={homeStyles.operations}>
+            <summary>일상 점검 · 메일·공지 연결 · 최근 변경</summary>
+            <DailyChecklist todayEventCount={schedule.today.length} onShowToday={focusTodaySchedule} />
+            <div className="home-attention-grid section-gap">
+              <MailActionCandidates compact />
+              <PortalAttention onOpen={() => setPage('portal')} />
+              <Card title="최근 변경" right="연구 저장소 GitHub" className="home-recent-changes"><CommitList commits={commits.slice(0, 4)} /></Card>
+            </div>
+          </details>
         </section>}
 
         {page === 'research' && <section className="page active"><ResearchPanel
           workspaceData={workspace}
+          researchStatus={researchStatus}
           view={researchView}
           onViewChange={setResearchView}
           kanbanState={kanbanState}
@@ -537,26 +565,26 @@ function AuthenticatedPage() {
 }
 
 function CurrentResearchCard({ project, researchStatus, onOpen }: { project: ResearchProject | null; researchStatus: ResearchStatus | null; onOpen: (projectId: string) => void }) {
-  const focus = project?.currentFocus || researchStatus?.currentInterpretation || '현재 문제의식이 등록되지 않았어.';
-  const stage = project ? stageLabel(project.stage) : researchStatus?.currentStage || '연구 단계 확인 필요';
+  const current = researchStatus?.sourcePath === project?.sourcePath ? researchStatus : null;
+  const question = project?.questions[0] || current?.researchQuestion || '등록된 연구 질문이 없습니다.';
+  const focus = current?.currentInterpretation || project?.currentFocus || '현재 집중 내용이 등록되지 않았습니다.';
+  const stage = project ? stageLabel(project.stage) : '연구 단계 확인 필요';
   const status = project ? projectStatusLabel(project.status) : '연결 필요';
-  const summary = project?.summary || researchStatus?.currentInterpretation || 'projects/와 wiki/current_status.md에서 현재 연구 상태를 읽어와.';
 
-  return <Card title="현재 연구" right={status} className="home-current-research-card">
-    <div className="home-current-research">
-      <span className="home-eyebrow">ACTIVE PROJECT</span>
-      <h4>{project?.title || '현재 연구 프로젝트'}</h4>
-      <div className="home-current-focus"><b>핵심 문제의식 / 해석</b><p>{focus}</p></div>
-      <p className="home-current-summary">{summary}</p>
-      <div className="home-current-meta"><span>현재 단계</span><strong>{stage}</strong><span>진행 상태</span><strong>{status}</strong></div>
-      {project && <button className="mini" type="button" onClick={() => onOpen(project.id)}>연구 열기 <span aria-hidden="true">↗</span></button>}
+  return <Card title="현재 연구" className="home-current-research-card">
+    <div className={homeStyles.research}>
+      <h4>{researchText(project?.title || '현재 연구 프로젝트')}</h4>
+      <b>연구 질문</b><p>{researchText(question)}</p>
+      <b>{current?.currentInterpretation ? '현재 판단' : '현재 집중'}</b><p>{researchText(focus)}</p>
+      <div className={homeStyles.meta}><span>{stage}</span><span>{status}</span></div>
+      {project && <button className="mini" type="button" onClick={() => onOpen(project.id)}>연구 질문·근거·다음 행동 보기</button>}
     </div>
   </Card>;
 }
 
-function HomeStatusCard({ id, label, value, detail, tone }: { id?: string; label: string; value: string; detail: string; tone: 'blue' | 'orange' | 'green' | 'slate' }) {
-  return <div id={id} tabIndex={-1} className={`card home-status-card ${tone}`}>
-    <span className="home-status-label">{label}</span>
+function HomeStatusCard({ id, label, value, detail }: { id?: string; label: string; value: string; detail: string }) {
+  return <div id={id} tabIndex={-1} className={homeStyles.status}>
+    <span>{label}</span>
     <strong>{value}</strong>
     <small title={detail}>{detail}</small>
   </div>;
