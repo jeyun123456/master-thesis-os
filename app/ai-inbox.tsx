@@ -15,6 +15,13 @@ const CLASS_LABEL: Record<string, string> = { task: '할 일', note: '연구 메
 const APPROVAL_LABEL: Record<string, string> = { deadline_change: '마감일 변경', stage_change: '연구 단계 변경', milestone_add: '마일스톤 등록', obsidian_write: 'Obsidian 반영', duplicate_merge: '중복 통합', sync_conflict: '동기화 충돌' };
 const STATE_LABEL: Record<string, string> = { applied: '반영됨', rejected: '거부됨', stale: '무효(원본 변경)', failed: '실패', approved: '승인됨(반영 전)', pending: '승인 대기' };
 
+/** Friendly headline for the user; the raw message stays in a diagnostics disclosure. */
+function connectionProblem(code: string) {
+  if (code === 'agent_unconfigured') return { title: 'AI 작업기 연결 설정이 필요해요.', hint: '연결을 설정하기 전에는 인박스 항목을 불러올 수 없어요. 입력한 내용은 이 기기에 보관돼요.' };
+  if (code === 'agent_unreachable') return { title: 'AI 작업기에 연결하지 못했어요.', hint: '항목이 없는 게 아니라 아직 확인하지 못한 상태예요. 잠시 뒤 다시 시도해 주세요.' };
+  return { title: '인박스를 불러오지 못했어요.', hint: '항목이 없는 게 아니라 조회에 실패한 상태예요.' };
+}
+
 function readOutbox(): OutboxEntry[] {
   try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]') as OutboxEntry[]; } catch { return []; }
 }
@@ -157,7 +164,11 @@ export function AiInboxPanel({ projects, onTasksChanged }: { projects: ResearchP
       <CaptureBox onSaved={() => void load()} />
       <WorkerStatus status={status} busy={busyId === 'collect'} onCollect={() => void act('collect', () => mtosApi.requestJob('collect_mail', {}, `collect_mail:now:${new Date().toISOString().slice(0, 16)}`), '메일 확인을 요청했어. 지정한 발신자의 새 메일만 가져와.')}
         onResume={() => void act('resume', () => mtosApi.resumeWorker(), 'AI 작업을 다시 시작했어.')} />
-      {loadError && <p className={loadCode === 'agent_unconfigured' ? styles.config : 'error'} role="alert">{loadError}</p>}
+      {loadError && <div className={loadCode === 'agent_unconfigured' ? styles.config : styles.problem} role="alert">
+        <b>{connectionProblem(loadCode).title}</b>
+        <span>{connectionProblem(loadCode).hint}</span>
+        <details className={styles.diagnostics}><summary>진단 정보</summary><code>{loadError}</code></details>
+      </div>}
       {message && <p className={styles.note} role="status">{message}</p>}
     </section>
 
@@ -175,28 +186,31 @@ export function AiInboxPanel({ projects, onTasksChanged }: { projects: ResearchP
       </li>)}</ul>
     </section>}
 
-    <section className="card section section-gap">
+    {loaded && !loadError && !pending.length && !aiCreated.length && !classified.length && !inFlight.length && !failedJobs.length && !conflicts.length &&
+      <section className="card section section-gap" aria-label="인박스 상태"><div className="head"><h3>처리할 항목이 없어요</h3><span>승인 대기 0 · 분류 확인 0 · 처리 중 0</span></div>
+        <p className={styles.note}>새 입력이나 메일이 분류되면 여기에 나타나요. 승인 전에는 아무것도 바뀌지 않아요.</p></section>}
+
+    {pending.length > 0 && <section className="card section section-gap">
       <div className="head"><h3>승인 대기</h3><span>{pending.length}건 · 승인 전에는 아무것도 바뀌지 않아</span></div>
-      {pending.length ? <ul className={styles.list}>{pending.map((a) => <ApprovalCard key={a.id} approval={a} busy={busyId === a.id}
+      <ul className={styles.list}>{pending.map((a) => <ApprovalCard key={a.id} approval={a} busy={busyId === a.id}
         onDecide={(decision, payload) => void act(a.id, async () => {
           const { approval } = a.state === 'pending' ? await mtosApi.decideApproval(a.id, decision, payload) : { approval: a };
           if (decision === 'approved') { await applyApproval(approval, tasks); onTasksChanged(); }
         }, decision === 'approved' ? '승인하고 반영했어.' : '거부했어. 기록은 이력에 남아.')} />)}</ul>
-        : <div className="empty compact-empty">{loadError ? '서버 연결 후 표시돼.' : '승인할 항목이 없어.'}</div>}
-    </section>
+    </section>}
 
-    <section className="card section section-gap">
+    {aiCreated.length > 0 && <section className="card section section-gap">
       <div className="head"><h3>AI가 새로 추가한 할 일</h3><span>{aiCreated.length}개</span></div>
-      {aiCreated.length ? <ul className={styles.list}>{aiCreated.map((i) => <li key={i.id} className={styles.item}>
+      <ul className={styles.list}>{aiCreated.map((i) => <li key={i.id} className={styles.item}>
         <div><span className={styles.aiBadge}>AI 생성</span>{tasks.find((t) => t.id === i.created_task_id)?.is_new && <span className={styles.newBadge}>새로 추가됨</span>}
           <b>{taskTitle(i.created_task_id)}</b><small>{sourceLine(i)}</small></div>
         <div className={styles.actions}><button className="mini" type="button" disabled={busyId === i.id} onClick={() => window.confirm('이 할 일을 되돌릴까? P0에서 삭제 처리되고 원문은 인박스에 남아.') && void act(i.id, async () => { await undoAiTask(i); onTasksChanged(); }, '되돌렸어.')}>실행 취소</button></div>
-      </li>)}</ul> : <div className="empty compact-empty">아직 없어.</div>}
-    </section>
+      </li>)}</ul>
+    </section>}
 
-    <section className="card section section-gap">
+    {classified.length > 0 && <section className="card section section-gap">
       <div className="head"><h3>분류됨 · 확인 필요</h3><span>{classified.length}개</span></div>
-      {classified.length ? <ul className={styles.list}>{classified.map((i) => {
+      <ul className={styles.list}>{classified.map((i) => {
         const c = i.classification;
         return <li key={i.id} className={styles.item}>
           <div>
@@ -221,8 +235,8 @@ export function AiInboxPanel({ projects, onTasksChanged }: { projects: ResearchP
             <button className="mini" type="button" disabled={busyId === i.id} onClick={() => void act(i.id, () => mtosApi.setInboxState(i.id, { state: 'dismissed' }))}>보관</button>
           </div>
         </li>;
-      })}</ul> : <div className="empty compact-empty">확인할 항목이 없어.</div>}
-    </section>
+      })}</ul>
+    </section>}
 
     {(inFlight.length > 0 || failedJobs.length > 0) && <section className="card section section-gap">
       <div className="head"><h3>처리 중 · 실패</h3><span>{inFlight.length + failedJobs.length}건</span></div>
@@ -256,9 +270,13 @@ function WorkerStatus({ status, busy, onCollect, onResume }: { status: AgentStat
   if (!status) return null;
   const beat = status.worker.heartbeat ? Math.round((Date.now() - Date.parse(status.worker.heartbeat.at)) / 60_000) : null;
   return <div className={styles.status}>
-    <span>AI 작업기: {status.worker.paused ? <b className={styles.warn}>정지됨 ({status.worker.paused.message})</b> : beat === null ? '실행 기록 없음' : beat > 3 ? <b className={styles.warn}>{beat}분째 응답 없음</b> : '작동 중'}
+    <span>AI 작업기: {status.worker.paused ? <b className={styles.warn}>정지됨</b> : beat === null ? '실행 기록 없음' : beat > 3 ? <b className={styles.warn}>{beat}분째 응답 없음</b> : '작동 중'}
       {status.worker.heartbeat?.codex_model ? ` · ${status.worker.heartbeat.codex_model}` : ''} · 대기 {(status.queue.queued ?? 0) + (status.queue.retry_wait ?? 0)} · 실행 {status.queue.running ?? 0}</span>
-    <span>메일: {status.gmail.last_success_at ? `마지막 확인 ${new Date(status.gmail.last_success_at).toLocaleString('ko-KR')}` : '아직 확인 안 함'}{status.gmail.last_error ? <b className={styles.warn}> · 오류: {status.gmail.last_error}</b> : ''} · 발신자 {status.mail_senders}명 · 매일 06:00·18:00 (JST)</span>
+    <span>메일: {status.gmail.last_success_at ? `마지막 확인 ${new Date(status.gmail.last_success_at).toLocaleString('ko-KR')}` : '아직 확인 안 함'}{status.gmail.last_error ? <b className={styles.warn}> · 메일 확인에 문제가 있어요</b> : ''} · 발신자 {status.mail_senders}명 · 매일 06:00·18:00 (JST)</span>
+    {(status.worker.paused || status.gmail.last_error) && <details className={styles.diagnostics}><summary>진단 정보</summary>
+      {status.worker.paused && <code>작업기 정지: {status.worker.paused.message}</code>}
+      {status.gmail.last_error && <code>메일: {status.gmail.last_error}</code>}
+    </details>}
     <span className={styles.actions}>
       <button className="mini" type="button" disabled={busy} onClick={onCollect}>지금 확인</button>
       {status.worker.paused && <button className="mini" type="button" onClick={onResume}>다시 시작</button>}

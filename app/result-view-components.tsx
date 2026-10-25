@@ -59,7 +59,7 @@ export function ResultChart({ dataset, view, title }: { dataset: ResultDataset; 
   const yAt = (value: number) => top + ((yMax - value) / yRange) * plotHeight;
   const zeroY = yAt(Math.min(yMax, Math.max(yMin, 0)));
   const ticks = Array.from({ length: 5 }, (_, index) => yMin + (yRange * index) / 4).reverse();
-  const colors = ['#2f7cf6', '#22c983', '#f59e0b', '#e55353', '#8b5cf6', '#0ea5e9'];
+  const colors = ['#3f715e', '#9a7451', '#5b7fa6', '#b65c56', '#7a6a9a', '#b8963e'];
   const xLabelStep = Math.max(1, Math.ceil(chartRows.length / 8));
 
   return <div className="result-chart">
