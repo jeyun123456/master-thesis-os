@@ -706,7 +706,7 @@ def _compile_actual_workspace_handler():
     namespace = {
         'json': json,
         'WORKSPACE_STORE': None,
-        'BRIDGE_API_VERSION': 7,
+        'BRIDGE_API_VERSION': 8,
         'MAX_BODY_BYTES': 16 * 1024,
         'MAX_INBOX_BODY_BYTES': 4 * 1024 * 1024,
         'MAX_PLANNER_BODY_BYTES': 512 * 1024,

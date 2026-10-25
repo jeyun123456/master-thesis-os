@@ -16,3 +16,6 @@ local-bridge/config.json
 local-bridge/__pycache__/
 local-bridge/data/
 *.db
+
+# mtos-agent runtime data
+services/mtos-agent/data/

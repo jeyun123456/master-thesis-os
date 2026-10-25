@@ -5,6 +5,11 @@ import { createP0Task, deleteP0Task, listP0Tasks, markP0TasksSeen, setP0SyncBrid
 import { clearP0PendingCreate, readP0PendingCreate, saveP0PendingCreate, type P0PendingCreate } from '@/lib/p0-pending-create';
 import { buildP0HomeView, p0TodayInTokyo, type P0HomeCategory } from '@/lib/p0-home';
 import type { ResearchProject } from '@/lib/projects';
+import type { CalendarEvent } from '@/lib/calendar';
+import { addDays, homeHiddenIds, isMissedOccurrence, nextStep, type TaskMeta } from '@/lib/mtos-planning';
+import { completeTask, deferOccurrence, skipOccurrence } from '@/lib/mtos-task-actions';
+import { FocusRecommendations } from '@/app/focus-recommendations';
+import { TaskAssist } from '@/app/task-assist';
 import styles from './p0-home-tasks.module.css';
 
 const categoryLabels: Record<P0TaskCategory, string> = {
@@ -50,14 +55,26 @@ function toDetailDraft(task: P0Task): DetailDraft {
   };
 }
 
+const EMPTY_META = new Map<string, TaskMeta>();
+
 export function P0HomeWorkspace({
   projects,
   onOpenPlanner,
   focusCreateRequest,
+  meta = EMPTY_META,
+  onMetaChanged,
+  calendarEvents = [],
+  selectTaskRequest,
+  reloadSignal = 0,
 }: {
   projects: ResearchProject[];
   onOpenPlanner: () => void;
   focusCreateRequest?: number;
+  meta?: Map<string, TaskMeta>;
+  onMetaChanged?: () => void;
+  calendarEvents?: CalendarEvent[];
+  selectTaskRequest?: { id: string; n: number } | null;
+  reloadSignal?: number;
 }) {
   const [state, setState] = useState<HomeState>('loading');
   const [tasks, setTasks] = useState<P0Task[]>([]);
@@ -77,6 +94,7 @@ export function P0HomeWorkspace({
   const [bridgeError, setBridgeError] = useState('');
   const [syncStatus, setSyncStatus] = useState<P0SyncStatus | null>(null);
   const [syncDetailsOpen, setSyncDetailsOpen] = useState(false);
+  const [recommendedIds, setRecommendedIds] = useState<string[]>([]);
   const nativeFrame = useRef<HTMLIFrameElement>(null);
   const titleInput = useRef<HTMLInputElement>(null);
   const today = p0TodayInTokyo();
@@ -134,7 +152,25 @@ export function P0HomeWorkspace({
     if (focusCreateRequest) titleInput.current?.focus();
   }, [focusCreateRequest]);
 
-  const view = useMemo(() => buildP0HomeView(tasks, today, category), [tasks, today, category]);
+  useEffect(() => {
+    if (reloadSignal) void load();
+  }, [reloadSignal, load]);
+
+  useEffect(() => {
+    if (!selectTaskRequest) return;
+    const task = tasks.find((item) => item.id === selectTaskRequest.id);
+    if (task) {
+      setSelectedId(task.id);
+      setDraft(toDetailDraft(task));
+    }
+    // Only when a new request arrives or the task list first contains it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectTaskRequest?.n, tasks.length]);
+
+  // Recommended and snoozed tasks are not repeated in the lists below.
+  const hidden = useMemo(() => homeHiddenIds(tasks, meta, today, recommendedIds), [tasks, meta, today, recommendedIds]);
+  const view = useMemo(() => buildP0HomeView(tasks.filter((task) => task.is_today || !hidden.has(task.id)), today, category), [tasks, hidden, today, category]);
+  const snoozed = useMemo(() => tasks.filter((task) => task.status === 'open' && !task.is_today && (meta.get(task.id)?.snooze_until ?? '') > today), [tasks, meta, today]);
   const newCount = tasks.filter((task) => task.is_new).length;
   const selected = tasks.find((task) => task.id === selectedId) ?? null;
 
@@ -191,12 +227,15 @@ export function P0HomeWorkspace({
     setSavingId(task.id);
     setError('');
     try {
-      const result = await updateP0Task(task.id, {
-        base_version: task.version,
-        changes: { status: task.status === 'done' ? 'open' : 'done' },
-        op_id: `mtos-web-status-${crypto.randomUUID()}`,
-      });
+      const recurring = task.status === 'open' && Boolean(meta.get(task.id)?.recur);
+      const result = task.status === 'open'
+        ? await completeTask(task, meta.get(task.id), today)
+        : await updateP0Task(task.id, { base_version: task.version, changes: { status: 'open' }, op_id: `mtos-web-status-${crypto.randomUUID()}` });
       setTasks((current) => current.map((item) => item.id === task.id ? result.task : item));
+      if (recurring) {
+        onMetaChanged?.();
+        await load();
+      }
       if (result.conflicts.length) setError('다른 기기에서 동시에 수정한 항목이 있어. Planner의 동기화 상태를 확인해줘.');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '완료 상태를 저장하지 못했어.');
@@ -286,8 +325,35 @@ export function P0HomeWorkspace({
     }
   }
 
+  async function occurrenceAction(task: P0Task, action: 'skip' | 'defer') {
+    const taskMeta = meta.get(task.id);
+    if (!taskMeta) return;
+    const to = action === 'defer' ? window.prompt('언제로 미룰까? (YYYY-MM-DD)', addDays(today, 1)) : null;
+    if (action === 'defer' && !to) return;
+    setSavingId(task.id);
+    setError('');
+    try {
+      if (action === 'skip') await skipOccurrence(task, taskMeta, today);
+      else await deferOccurrence(task, taskMeta, to as string);
+      onMetaChanged?.();
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '반복 회차를 처리하지 못했어.');
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function pinToday(task: P0Task) {
+    const result = await updateP0Task(task.id, { base_version: task.version, changes: { is_today: true }, op_id: `mtos-focus-accept-${task.id}-${today}` });
+    setTasks((current) => current.map((item) => item.id === task.id ? result.task : item));
+  }
+
   function renderTask(task: P0Task, done = false) {
     const overdue = task.status === 'open' && task.due_date && task.due_date < today;
+    const taskMeta = meta.get(task.id);
+    const step = nextStep(task.id, tasks, meta);
+    const missed = isMissedOccurrence(task, taskMeta, today);
     return <li className={styles.taskRow} key={task.id}>
       <input
         type="checkbox"
@@ -302,7 +368,17 @@ export function P0HomeWorkspace({
           {categoryLabels[task.category]}{task.due_date ? ` · ${task.due_date}` : ''}
           {task.project_id ? ` · ${projects.find((project) => project.id === task.project_id)?.title ?? task.project_id}` : ''}
         </span>
+        {step.next && <span className={styles.taskMeta}>다음 단계: {step.next.title} ({step.done}/{step.total})</span>}
+        {step.allDone && task.status === 'open' && <span className={styles.taskMeta}>모든 단계 완료 · 상위 작업 완료 여부를 확인해줘</span>}
+        {taskMeta?.blocked_reason && <span className={`${styles.taskMeta} ${styles.overdue}`}>막힘: {taskMeta.blocked_reason}</span>}
       </button>
+      {missed && <span className={styles.rowActions}>
+        <button className="mini" type="button" disabled={savingId === task.id} onClick={() => void toggleStatus(task)}>완료</button>
+        <button className="mini" type="button" disabled={savingId === task.id} onClick={() => void occurrenceAction(task, 'skip')}>건너뛰기</button>
+        <button className="mini" type="button" disabled={savingId === task.id} onClick={() => void occurrenceAction(task, 'defer')}>미루기</button>
+      </span>}
+      {taskMeta?.recur && <span className={styles.badge}>반복</span>}
+      {taskMeta?.ai_generated && <span className={styles.badge}>AI 생성</span>}
       {task._pending ? <span className={`${styles.badge} ${styles.pending}`}>동기화 대기</span> : task.is_new && <span className={styles.badge}>새 항목</span>}
     </li>;
   }
@@ -362,12 +438,19 @@ export function P0HomeWorkspace({
           <section className={styles.focusSection} aria-labelledby="p0-focus-title">
             <h4 id="p0-focus-title">오늘 집중 <span className={styles.count}>{view.focus.length}</span></h4>
             {view.focus.length ? <ul className={styles.taskList}>{view.focus.map((task) => renderTask(task))}</ul> : <p className={styles.empty}>집중할 일을 표시하면 여기서 바로 볼 수 있어.</p>}
+            <FocusRecommendations tasks={tasks} meta={meta} today={today} calendarEvents={calendarEvents} onAccept={pinToday} onVisibleChange={setRecommendedIds} />
           </section>
           {view.groups.map((group) => <section className={styles.taskGroup} key={group.id} aria-labelledby={`p0-group-${group.id}`}>
             <h4 id={`p0-group-${group.id}`}>{group.label}<span className={styles.count}>{group.tasks.length}</span></h4>
             <ul className={styles.taskList}>{group.tasks.map((task) => renderTask(task))}</ul>
           </section>)}
           {!view.openCount && <div className={styles.empty}>미완료 할 일이 없어. 새 항목을 하나 등록해봐.</div>}
+          {snoozed.length > 0 && <details className={styles.done}>
+            <summary>미뤄둔 일 ({snoozed.length})</summary>
+            <ul className={styles.taskList}>{snoozed.map((task) => <li key={task.id} className={styles.taskRow}><span />
+              <button className={styles.taskSelect} type="button" onClick={() => void selectTask(task)}><span className={styles.taskTitle}>{task.title}</span><span className={styles.taskMeta}>{meta.get(task.id)?.snooze_until}에 다시 표시</span></button>
+            </li>)}</ul>
+          </details>}
           <details className={styles.done}>
             <summary>오늘 완료한 일 {view.doneToday.length ? `(${view.doneToday.length})` : ''}</summary>
             {view.doneToday.length ? <ul className={styles.taskList}>{view.doneToday.map((task) => renderTask(task, true))}</ul> : <p className={styles.empty}>오늘 완료한 일이 아직 없어.</p>}
@@ -400,6 +483,7 @@ export function P0HomeWorkspace({
                 </div>
               </div>
             </form>
+            <TaskAssist task={selected} tasks={tasks} meta={meta} today={today} onChanged={() => { onMetaChanged?.(); void load(); }} onCompleteParent={(task) => void toggleStatus(task)} />
           </> : <p className={styles.message}>목록에서 항목을 선택하면 기한·분류·프로젝트·링크·메모를 편집할 수 있어.</p>}
         </aside>
       </div>

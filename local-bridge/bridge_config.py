@@ -23,6 +23,8 @@ def resolve_config_path(script_directory: Path) -> Path:
 
     local_app_data = os.environ.get('LOCALAPPDATA', '').strip()
     if local_app_data:
+        # Legacy folder name kept so existing installs keep their config after the
+        # Wallpaper Companion removal; it is not a Companion dependency.
         shared_path = Path(local_app_data) / 'MasterThesisOSWallpaper' / 'bridge' / 'config.json'
         if shared_path.exists():
             return shared_path

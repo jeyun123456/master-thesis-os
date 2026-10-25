@@ -4,7 +4,6 @@ import './library-panel.css';
 import './research-panel.css';
 import './shortcuts-panel.css';
 import './research-os-theme.css';
-import './wallpaper/wallpaper.css';
 import './chocomint-theme.css';
 import { ResolutionSync } from './resolution-sync';
 

@@ -74,7 +74,8 @@ try {
   db = undefined;
 
   const backupOutput = runBackupCli('backup');
-  const backupFile = backupOutput.split(/\r?\n/).at(-1);
+  // The P0 CLI prints "encrypted backup created: <path>"; older builds printed only the path.
+  const backupFile = backupOutput.split(/\r?\n/).at(-1)?.replace(/^encrypted backup created:\s*/, '');
   assert.ok(backupFile && isWithin(backupDir, backupFile), 'backup must stay inside the isolated scratch directory');
   assert.ok(existsSync(backupFile), 'encrypted backup file must exist');
   assert.ok(!readFileSync(backupFile).includes(Buffer.from(originalTitle)), 'backup must not contain plaintext task data');

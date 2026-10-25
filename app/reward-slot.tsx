@@ -150,7 +150,7 @@ export function RewardSlotPanel({ tasks, projectTitle, onNotice }: RewardSlotPan
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
-      // Embedded wallpaper runtimes can deny storage. The slot still works
+      // Embedded runtimes can deny storage. The slot still works
       // for the current session even when persistence is unavailable.
     }
   }, [ready, state]);

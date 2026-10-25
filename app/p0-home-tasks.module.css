@@ -68,3 +68,19 @@
   .syncBar { align-items: flex-start; flex-direction: column; }
   .syncDetails iframe { min-height: 82dvh; }
 }
+
+/* P2: focus recommendations, task assist, recurrence actions */
+.recommend { margin-top: 10px; padding: 10px; border: 1px dashed var(--line, #cfd9e2); border-radius: 12px; display: flex; flex-direction: column; gap: 6px; }
+.recommendHead { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.recommendHead input { flex: 1 1 160px; border: 1px solid var(--line, #dce5ec); border-radius: 9px; padding: 6px 9px; font: inherit; font-size: 13px; }
+.recommendRow { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; }
+.recommendRow > div { display: flex; flex-direction: column; min-width: 0; }
+.assist { margin-top: 14px; display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--line, #e6ebf0); padding-top: 12px; }
+.assist section { display: flex; flex-direction: column; gap: 6px; }
+.assist h5 { margin: 0; font-size: 14px; display: flex; gap: 8px; align-items: baseline; }
+.assist h5 small { font-weight: 600; color: var(--muted, #65758a); }
+.assist input, .assist select { border: 1px solid var(--line, #dce5ec); border-radius: 9px; padding: 6px 8px; font: inherit; font-size: 13px; }
+.assist input[type='number'] { width: 64px; margin: 0 4px; }
+.checkList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.checkList small { color: var(--muted, #65758a); }
+@media (max-width: 760px) { .recommendRow { grid-template-columns: 1fr; } }

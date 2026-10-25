@@ -1804,37 +1804,6 @@ code,
   font-size: var(--font-body);
 }
 
-/* Wallpaper keeps its own dark palette; these classes only tune the shared chart. */
-.research-mini-trend--wallpaper .research-mini-trend-head,
-.research-mini-trend--wallpaper .research-mini-trend-reading span {
-  color: rgba(219, 231, 237, .68);
-}
-
-.research-mini-trend--wallpaper .research-mini-trend-line {
-  stroke: #a8c5d6;
-}
-
-.research-mini-trend--wallpaper .research-mini-trend-point {
-  fill: #314656;
-  stroke: #b8d5e4;
-}
-
-.research-mini-trend--wallpaper .research-mini-trend-year {
-  fill: rgba(219, 231, 237, .62);
-}
-
-.research-mini-trend--wallpaper .research-mini-trend-reading strong {
-  color: #edf5f8;
-}
-
-.research-mini-trend--wallpaper .research-mini-trend-guide {
-  stroke: rgba(219, 231, 237, .2);
-}
-
-.research-mini-trend--wallpaper.research-mini-trend-empty {
-  color: rgba(219, 231, 237, .68);
-}
-
 @media (max-width: 1100px) {
   .home-status-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

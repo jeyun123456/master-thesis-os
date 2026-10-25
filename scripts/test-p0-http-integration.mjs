@@ -73,6 +73,9 @@ try {
     '/api/calendar/events',
     '/api/research/projects',
     '/api/results',
+    '/api/mtos/memos',
+    '/api/mtos/inbox',
+    '/api/mtos/approvals',
   ];
   for (const path of protectedReadPaths) {
     const response = await fetch(`${baseUrl}${path}`);
@@ -82,6 +85,11 @@ try {
     { path: '/api/calendar/events', method: 'POST' },
     { path: '/api/research/projects/status', method: 'PATCH' },
     { path: '/api/shortcuts', method: 'PUT' },
+    { path: '/api/mtos/inbox', method: 'POST' },
+    { path: '/api/mtos/milestones', method: 'POST' },
+    { path: '/api/obsidian/propose', method: 'POST' },
+    { path: '/api/obsidian/apply', method: 'POST' },
+    { path: '/api/p0/conflicts/1/resolve', method: 'POST' },
   ];
   for (const { path, method } of protectedWriteRequests) {
     const response = await fetch(`${baseUrl}${path}`, {
@@ -95,7 +103,10 @@ try {
 
   const page = await fetch(baseUrl);
   assert.equal(page.status, 200);
-  assert.match(await page.text(), /오늘 집중할 일/);
+  // Signed out, the app serves only the login gate; task UI renders after the P0 session check.
+  const pageHtml = await page.text();
+  assert.match(pageHtml, /CHOCOMINT LAB/);
+  assert.doesNotMatch(pageHtml, /오늘 할 일|AI 인박스에 저장/);
 
   const nativeUi = await fetch(`${baseUrl}/api/p0/native/`);
   assert.equal(nativeUi.status, 200);
