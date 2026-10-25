@@ -18,10 +18,32 @@ import {
 import { getProjectWorkspace, ProjectWorkspaceError, updateProjectMetadata, type ProjectWorkspace, type ProjectWorkspaceItem, type RecentProjectFile } from '@/lib/project-workspace-client';
 import { loadCachedPlannerTasks, filterDeletedPlannerTasks, saveCachedPlannerTasks, type PlannerTask } from '@/lib/planner-tasks';
 import { syncInboxPlannerTasks } from '@/lib/planner-tasks-client';
+import type { Milestone, TaskMeta } from '@/lib/mtos-planning';
+import type { P0Task } from '@/lib/p0-tasks-client';
+import { ResearchKanban, type KanbanViewState } from '@/app/research-kanban';
+import { BlockersSection, MemosSection, MilestonesSection, ProjectTasksSection } from '@/app/project-sections';
+
+export type ResearchWorkspaceData = {
+  tasks: P0Task[];
+  tasksState: 'loading' | 'ready' | 'error';
+  tasksError: string;
+  meta: Map<string, TaskMeta>;
+  milestones: Milestone[];
+  agentState: 'loading' | 'ready' | 'error';
+  agentError: string;
+  reloadTasks: () => void;
+  reloadAgent: () => void;
+};
 
 type ResearchResultsChoice = { key: string; label: string; path: string; type: 'standard' | 'dashboard' };
 
-export function ResearchPanel({ projects: projectsInput, tree: treeInput, projectsLoading = false, projectsError = '', selectedProjectId, expandedFolders = new Set<string>(), onToggleProjectFolder, onProjectSelected, onProjectStatusChange, onOpen, onOpenFolder }: {
+export function ResearchPanel({ projects: projectsInput, tree: treeInput, projectsLoading = false, projectsError = '', selectedProjectId, expandedFolders = new Set<string>(), onToggleProjectFolder, onProjectSelected, onProjectStatusChange, onOpen, onOpenFolder, workspaceData, view = 'detail', onViewChange, kanbanState, onKanbanStateChange, onOpenTask }: {
+  workspaceData?: ResearchWorkspaceData;
+  view?: 'board' | 'detail';
+  onViewChange?: (view: 'board' | 'detail') => void;
+  kanbanState?: KanbanViewState;
+  onKanbanStateChange?: (state: KanbanViewState) => void;
+  onOpenTask?: (taskId: string) => void;
   projects: ResearchProject[] | null;
   tree: RepositoryItem[] | null;
   projectsLoading?: boolean;
@@ -178,17 +200,18 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
       setFavoriteSaving(null);
     }
   }
-  return <div className="project-workspace">
-    <aside className="card project-list" aria-label="연구 프로젝트">
-      <div className="project-list-head"><b>프로젝트</b><span>{projects.length}개</span></div>
-      {projects.map((project) => <button key={project.id} className={selected?.id === project.id ? 'active' : ''} onClick={() => selectProject(project.id)}>
-        <div><b>{project.title}</b><small>{projectStatusLabel(project.status)}</small></div>
-        <span className={`project-status ${project.status}`}>{projectStatusLabel(project.status)}</span>
-      </button>)}
-    </aside>
+  if (view === 'board' && workspaceData && kanbanState && onKanbanStateChange) {
+    return <ResearchKanban projects={projects} tasks={workspaceData.tasks} tasksState={workspaceData.tasksState} meta={workspaceData.meta} milestones={workspaceData.milestones}
+      view={kanbanState} onViewChange={onKanbanStateChange} onSelect={(id, state) => { onKanbanStateChange(state); selectProject(id); onViewChange?.('detail'); }} />;
+  }
 
-    {selected && <div className="project-detail">
-      <section className="card project-hero">
+  return <div className="project-detail project-detail-full">
+    {onViewChange && <button type="button" className="mini project-back" onClick={() => onViewChange('board')}>← 연구 프로젝트 보드</button>}
+    {selected && <>
+      {workspaceData && <ProjectTasksSection projectId={selected.id} tasks={workspaceData.tasks} tasksState={workspaceData.tasksState} tasksError={workspaceData.tasksError} meta={workspaceData.meta}
+        onChanged={workspaceData.reloadTasks} onOpenTask={(taskId) => onOpenTask?.(taskId)} />}
+
+      <section className="card project-hero section-gap">
         <div className="project-hero-top">
           <div><span className="project-eyebrow">{projectStatusLabel(selected.status)} · 우선순위 {priorityLabel(selected.priority)}</span><h3>{selected.title}</h3><p>{selected.summary}</p></div>
           <div className="project-hero-actions">
@@ -214,7 +237,22 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
         </div>
       </section>
 
-      <div className="research-recent-files">
+      {workspaceData && <div className="section-gap"><MilestonesSection projectId={selected.id} milestones={workspaceData.milestones} agentState={workspaceData.agentState} agentError={workspaceData.agentError} onChanged={workspaceData.reloadAgent} /></div>}
+      {workspaceData && <div className="section-gap"><BlockersSection projectId={selected.id} manifestBlocked={selected.blocked} tasks={workspaceData.tasks} meta={workspaceData.meta} /></div>}
+
+      <div className="grid2 section-gap">
+        <ProjectSection title="연구 질문" items={selected.questions} empty="등록된 연구 질문이 없어." numbered={false} />
+        <MemosSection projectId={selected.id} />
+      </div>
+      <section className="card section section-gap research-favorites">
+        <div className="head"><h3>주요 파일 · 원본</h3><span>즐겨찾기 {keyFiles.length}개</span></div>
+        {keyFiles.length ? <ul>{keyFiles.map((file) => <li key={file.path}>
+          <button type="button" className="research-favorite-open" title={file.path} onClick={() => onOpen(file.path)}>▧ {file.path.split('/').pop()}</button>
+          <button className="mini" type="button" disabled={!workspace?.manifestSha || favoriteSaving === file.path} aria-label={`${file.path} 주요 파일에서 제거`} onClick={() => void toggleFavorite(file.path)}>제거</button>
+        </li>)}</ul> : <div className="empty compact-empty">작업 폴더에서 ☆를 누르면 이 프로젝트의 주요 파일로 저장돼.</div>}
+      </section>
+
+      <div className="research-recent-files section-gap">
         <div className="research-section-heading"><h3>최근 작업 파일</h3><span>Local Bridge 실제 수정 시각</span></div>
         <div className="research-recent-list">{latestRecentFiles(recentFiles).map(({ id, label, file }) => <div className="research-recent-row" key={id}>
           <span className="research-file-type">{label}</span>
@@ -225,25 +263,6 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
           {file ? <button className="mini" type="button" onClick={() => onOpen(file.path)}>열기</button> : <span aria-hidden="true" />}
         </div>)}</div>
       </div>
-
-      <div className="grid2 section-gap">
-        <ProjectSection title="연구 질문" items={selected.questions} empty="등록된 연구 질문이 없어." numbered={false} />
-        <section className="card section"><div className="head"><h3>다음 작업</h3><span>{plannerTasks.length ? `${plannerTasks.length}개` : '없음'}</span></div>
-          {plannerTasksError && <div className="muted" role="status">Planner 연결을 확인할 수 없어. {plannerTasksError}</div>}
-          {plannerTasksLoading && !plannerTasks.length ? <div className="empty compact-empty">Planner 작업을 불러오는 중…</div>
-            : plannerTasks.length ? <div className="project-task-list">{[...plannerTasks].sort((a, b) => Number(a.status === 'done') - Number(b.status === 'done') || Date.parse(b.createdAt) - Date.parse(a.createdAt)).map((task) => <div className={`project-task-row${task.status === 'done' ? ' done' : ''}`} key={task.id}>
-              <span className="project-task-check" aria-label={task.status === 'done' ? '완료' : '미완료'}>{task.status === 'done' ? '✓' : '○'}</span>
-              <div><b>{task.status === 'done' ? <s>{task.title}</s> : task.title}</b>{task.description && <small>{task.description}</small>}</div>
-            </div>)}</div> : <div className="empty compact-empty">Inbox에서 이 프로젝트를 지정한 할 일이 없어.</div>}
-        </section>
-      </div>
-      <section className="card section section-gap research-favorites">
-        <div className="head"><h3>주요 파일</h3><span>즐겨찾기 {keyFiles.length}개</span></div>
-        {keyFiles.length ? <ul>{keyFiles.map((file) => <li key={file.path}>
-          <button type="button" className="research-favorite-open" title={file.path} onClick={() => onOpen(file.path)}>▧ {file.path.split('/').pop()}</button>
-          <button className="mini" type="button" disabled={!workspace?.manifestSha || favoriteSaving === file.path} aria-label={`${file.path} 주요 파일에서 제거`} onClick={() => void toggleFavorite(file.path)}>제거</button>
-        </li>)}</ul> : <div className="empty compact-empty">작업 폴더에서 ☆를 누르면 이 프로젝트의 주요 파일로 저장돼.</div>}
-      </section>
 
       <section className="card section section-gap">
         <div className="head"><h3>분석 결과</h3><span>{choices.length}개 선택 가능</span></div>
@@ -264,7 +283,17 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
         {workspaceMessage && workspaceState !== 'offline' && <small className="muted">{workspaceMessage}</small>}
         {workspaceState === 'loading' ? <div className="empty compact-empty">프로젝트 작업 폴더를 불러오는 중…</div> : <ProjectFolderTree root={`projects/${selected.id}`} files={files} folders={workingFolders} expandedFolders={expandedFolders} keyFilePaths={keyFilePaths} favoriteSaving={favoriteSaving} canSaveMetadata={Boolean(workspace?.manifestSha)} onToggleExpanded={onToggleProjectFolder} onToggleFavorite={toggleFavorite} onOpen={onOpen} onOpenFolder={onOpenFolder} />}
       </section>
-    </div>}
+
+      <details className="card section section-gap legacy-planner-tasks">
+        <summary>기존 Planner 할 일 (레거시 · 읽기 전용) {plannerTasks.length ? `${plannerTasks.length}개` : ''}</summary>
+        {plannerTasksError && <div className="muted" role="status">Planner 연결을 확인할 수 없어. {plannerTasksError}</div>}
+        {plannerTasksLoading && !plannerTasks.length ? <div className="empty compact-empty">Planner 작업을 불러오는 중…</div>
+          : plannerTasks.length ? <div className="project-task-list">{[...plannerTasks].sort((a, b) => Number(a.status === 'done') - Number(b.status === 'done') || Date.parse(b.createdAt) - Date.parse(a.createdAt)).map((task) => <div className={`project-task-row${task.status === 'done' ? ' done' : ''}`} key={task.id}>
+            <span className="project-task-check" aria-label={task.status === 'done' ? '완료' : '미완료'}>{task.status === 'done' ? '✓' : '○'}</span>
+            <div><b>{task.status === 'done' ? <s>{task.title}</s> : task.title}</b>{task.description && <small>{task.description}</small>}</div>
+          </div>)}</div> : <div className="empty compact-empty">이 프로젝트를 지정한 기존 Planner 할 일이 없어.</div>}
+      </details>
+    </>}
   </div>;
 }
 

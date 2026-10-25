@@ -32,6 +32,11 @@ import type { DashboardBundle } from '@/lib/results';
 import { BRIDGE_OFFLINE_MESSAGE, BRIDGE_TIMEOUT_MESSAGE, bridgeResponseMessage } from '@/lib/bridge-status';
 import { getEnabledShortcuts, getHomeShortcuts, loadShortcutState, shortcuts, type Shortcut } from '@/lib/shortcuts';
 import { useInboxWorkflow } from '@/app/use-inbox-workflow';
+import { useMtosWorkspace } from '@/app/use-mtos-workspace';
+import { AiInboxPanel, CaptureBox } from '@/app/ai-inbox';
+import { GlobalSearch, UrgentApprovals, type SearchTarget } from '@/app/global-search';
+import { initialKanbanState, type KanbanViewState } from '@/app/research-kanban';
+import { p0TodayInTokyo } from '@/lib/p0-home';
 import appPackage from '../package.json';
 
 type Page = 'home' | 'research' | 'results' | 'library' | 'calendar' | 'slot' | 'shortcuts' | 'inbox' | 'mail' | 'portal' | 'planner' | 'settings';
@@ -187,6 +192,9 @@ function AuthenticatedPage() {
   const [shortcutMissing, setShortcutMissing] = useState(false);
   const [shortcutWritable, setShortcutWritable] = useState(false);
   const [researchProjectId, setResearchProjectId] = useState<string | null>(null);
+  const [researchView, setResearchView] = useState<'board' | 'detail'>('board');
+  const [kanbanState, setKanbanState] = useState<KanbanViewState>(initialKanbanState);
+  const [selectTaskRequest, setSelectTaskRequest] = useState<{ id: string; n: number } | null>(null);
   const [expandedProjectFolders, setExpandedProjectFolders] = useState<Set<string>>(() => new Set());
   const [errors, setErrors] = useState<string[]>([]);
   const [toast, setToast] = useState('');
@@ -232,6 +240,7 @@ function AuthenticatedPage() {
     addInboxTaskToProject,
     bridgeTokenSaved,
   } = useInboxWorkflow({ projects, onNotice: pop, onOpenInbox: () => setPage('inbox') });
+  const workspace = useMtosWorkspace(projects, pop);
 
   useEffect(() => {
     let cancelled = false;
@@ -345,7 +354,26 @@ function AuthenticatedPage() {
 
   function openResearchProject(projectId: string) {
     setResearchProjectId(projectId);
+    setResearchView('detail');
     setPage('research');
+  }
+
+  function openTask(taskId: string) {
+    setPage('home');
+    setSelectTaskRequest((current) => ({ id: taskId, n: (current?.n ?? 0) + 1 }));
+  }
+
+  function navigateToSearchResult(target: SearchTarget) {
+    if (target.kind === 'task') openTask(target.id);
+    else if (target.kind === 'project') openResearchProject(target.id);
+    else setPage('inbox');
+  }
+
+  function showPage(next: Page) {
+    // Returning to the research menu shows the board; tasks may have changed elsewhere.
+    if (next === 'research') { setResearchView('board'); void workspace.reload(); }
+    if (next === 'inbox') void workspace.reloadAgent();
+    setPage(next);
   }
 
   const schedule = useMemo(() => groupCalendarEvents(calendar.items), [calendar.items]);
@@ -361,7 +389,7 @@ function AuthenticatedPage() {
         <button className="sidebar-toggle" type="button" aria-label={sidebarExpanded ? '메뉴 접기' : '메뉴 펼치기'} aria-expanded={sidebarExpanded} onClick={() => setSidebarExpanded((expanded) => !expanded)}><span>{sidebarExpanded ? '‹' : '›'}</span></button>
         <nav className="nav" aria-label="주 메뉴">{navigationGroups.map((group) => <div className="nav-group" key={group.label}>
           <span className="nav-group-label">{group.label}</span>
-          {group.items.filter((item) => item.id !== 'slot' && item.id !== 'planner').map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} aria-label={item.label} title={sidebarExpanded ? undefined : item.label} onClick={() => setPage(item.id)}><span>{item.icon}</span>{item.label}</button>)}
+          {group.items.filter((item) => item.id !== 'slot' && item.id !== 'planner').map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} aria-label={item.label} title={sidebarExpanded ? undefined : item.label} onClick={() => showPage(item.id)}><span>{item.icon}</span>{item.label}</button>)}
         </div>)}</nav>
         <div className="sidebar-settings"><span className="nav-group-label">SYSTEM</span><button className={page === 'settings' ? 'active' : ''} aria-label="설정" title={sidebarExpanded ? undefined : '설정'} onClick={() => setPage('settings')}><span>⚙</span>설정</button></div>
         <div className="sidebar-source"><span>연구 기준</span><b>Obsidian Vault</b><small>projects/ + shared/ · {repositorySource === 'local' ? 'local live' : repositorySource === 'github' ? 'GitHub live' : '연결 필요'}</small></div>
@@ -370,15 +398,17 @@ function AuthenticatedPage() {
       <main className="main">
         <header className={`top${page === 'home' ? ' top-home' : ''}`}>
           <div>{page === 'home' ? <><h2>Chocomint Lab</h2><p>{todayLabel || '오늘'} · 떠오른 생각을 기록하고 다음 행동을 시작하세요</p></> : <><h2>{pageMeta[page][0]}</h2><p>{pageMeta[page][1]}</p></>}</div>
-          <div className="badges"><div className="badge">Vault {repositorySource === 'local' ? '● 로컬' : repositorySource === 'github' ? '● GitHub' : '○ 설정 필요'}</div><div className="badge">Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '● 연결됨' : '○ 확인 필요'}</div><div className="badge">v{APP_VERSION}</div><button className="mini" type="button" disabled={authBusy} onClick={() => void signOut()}>로그아웃</button></div>
+          <div className="badges"><GlobalSearch tasks={workspace.tasks} projects={projects} onNavigate={navigateToSearchResult} /><div className="badge">Vault {repositorySource === 'local' ? '● 로컬' : repositorySource === 'github' ? '● GitHub' : '○ 설정 필요'}</div><div className="badge">Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '● 연결됨' : '○ 확인 필요'}</div><div className="badge">v{APP_VERSION}</div><button className="mini" type="button" disabled={authBusy} onClick={() => void signOut()}>로그아웃</button></div>
         </header>
 
         {errors.length > 0 && <div className="error page-error">{errors[0]}</div>}
 
         {page === 'home' && <section className="page active home-page">
-          <div className="section-gap"><P0HomeWorkspace projects={projects} onOpenPlanner={() => setPage('planner')} focusCreateRequest={focusCreateRequest} /></div>
+          <UrgentApprovals today={p0TodayInTokyo()} onOpenInbox={() => showPage('inbox')} />
+          <div className="section-gap"><P0HomeWorkspace projects={projects} onOpenPlanner={() => setPage('planner')} focusCreateRequest={focusCreateRequest}
+            meta={workspace.meta} onMetaChanged={() => void workspace.reloadAgent()} calendarEvents={calendar.items} selectTaskRequest={selectTaskRequest} reloadSignal={workspace.taskReloadSignal} /></div>
           <div className="home-workspace-grid">
-            <QuickCapturePanel entries={inboxEntries} loaded={inboxLoaded} busy={inboxOrganizing} storageStatus={inboxStorageStatus} storageError={inboxStorageError} bridgeApiWarning={bridgeApiWarning} bridgeTokenWarning={bridgeTokenWarning} onAdd={addInboxEntry} onOrganize={() => void organizeInbox()} onOpenInbox={() => setPage('inbox')} onRetrySave={retryInboxSave} />
+            <Card title="빠른 입력" right="AI 인박스" className="home-capture-card"><CaptureBox compact onSaved={() => void workspace.reloadAgent()} /><button className="mini" type="button" onClick={() => showPage('inbox')}>AI 인박스 열기</button></Card>
             <DailyChecklist todayEventCount={schedule.today.length} onShowToday={focusTodaySchedule} />
           </div>
           <div className="home-status-grid">
@@ -400,6 +430,12 @@ function AuthenticatedPage() {
         </section>}
 
         {page === 'research' && <section className="page active"><ResearchPanel
+          workspaceData={workspace}
+          view={researchView}
+          onViewChange={setResearchView}
+          kanbanState={kanbanState}
+          onKanbanStateChange={setKanbanState}
+          onOpenTask={openTask}
           projects={projects}
           projectsLoading={projectsLoading}
           projectsError={projectsError}
@@ -440,7 +476,10 @@ function AuthenticatedPage() {
         {page === 'mail' && <section className="page active"><GmailMailPanel /><div className="section-gap"><MailPanel /></div></section>}
         {page === 'portal' && <section className="page active"><PortalNoticesPanel /></section>}
         {page === 'planner' && <section className="page active"><PlannerPanel projects={projects} /></section>}
-        {page === 'inbox' && <section className="page active"><InboxPanel
+        {page === 'inbox' && <section className="page active"><AiInboxPanel projects={projects} onTasksChanged={() => { void workspace.reloadTasks(); workspace.bumpTaskReload(); }} />
+          <details className="card section section-gap legacy-inbox"><summary>기존 로컬 인박스 (Local Bridge · 이 PC 전용)</summary>
+          <QuickCapturePanel entries={inboxEntries} loaded={inboxLoaded} busy={inboxOrganizing} storageStatus={inboxStorageStatus} storageError={inboxStorageError} bridgeApiWarning={bridgeApiWarning} bridgeTokenWarning={bridgeTokenWarning} onAdd={addInboxEntry} onOrganize={() => void organizeInbox()} onOpenInbox={() => setPage('inbox')} onRetrySave={retryInboxSave} />
+          <InboxPanel
           entries={inboxEntries}
           loaded={inboxLoaded}
           busy={inboxOrganizing}
@@ -461,7 +500,7 @@ function AuthenticatedPage() {
           deleteSavingId={inboxDeleteSavingId}
           onAddToProject={(entryId, projectId) => void addInboxTaskToProject(entryId, projectId)}
           onDelete={deleteInboxEntry}
-        /></section>}
+        /></details></section>}
 
         {page === 'settings' && <section className="page active">
           <div className="grid2">
@@ -480,7 +519,7 @@ function AuthenticatedPage() {
 
       {mobileMoreOpen && <div className="mobile-more-backdrop" onClick={() => setMobileMoreOpen(false)}>
         <nav className="mobile-more-menu" aria-label="더 보기 메뉴" onClick={(event) => event.stopPropagation()}>
-          {mobileMoreItems.map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => { setPage(item.id); setMobileMoreOpen(false); }}><span>{item.icon}</span>{item.label}</button>)}
+          {mobileMoreItems.map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => { showPage(item.id); setMobileMoreOpen(false); }}><span>{item.icon}</span>{item.label}</button>)}
         </nav>
       </div>}
       <nav className="mobile-nav" aria-label="모바일 메뉴">{mobileNavigation.map((item) => {
@@ -488,7 +527,7 @@ function AuthenticatedPage() {
         const active = isMore ? mobileMoreOpen || !mobilePrimaryPages.has(page) : page === item.id;
         return <button key={item.id} className={active ? 'active' : ''} aria-expanded={isMore ? mobileMoreOpen : undefined} aria-current={active && !isMore ? 'page' : undefined} onClick={() => {
           if (item.id === 'more') setMobileMoreOpen((open) => !open);
-          else { setPage(item.id); setMobileMoreOpen(false); }
+          else { showPage(item.id); setMobileMoreOpen(false); }
         }}><span>{item.icon}</span><small>{item.label}</small></button>;
       })}</nav>
       <button className="mobile-fab" type="button" aria-label="새 할 일 추가" onClick={() => { setMobileMoreOpen(false); setPage('home'); setFocusCreateRequest((request) => request + 1); }}>＋</button>
