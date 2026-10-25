@@ -1675,6 +1675,13 @@ code,
   margin-top: 13px;
 }
 
+.p0-home-list { display: grid; gap: 2px; }
+.p0-home-task { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.p0-home-task b { min-width: 0; overflow: hidden; color: var(--text); font-size: var(--font-body); text-overflow: ellipsis; white-space: nowrap; }
+.p0-home-task small { color: var(--muted); font-size: var(--font-caption); }
+.p0-home-focus { padding: 3px 6px; border-radius: 999px; background: var(--blue-soft); color: var(--blue-strong); font-size: var(--font-caption); font-weight: 700; text-align: center; }
+.p0-home-dot { color: var(--muted); text-align: center; }
+
 .mail-action-card-compact .mail-action-main b {
   font-size: 13px;
 }
@@ -1797,37 +1804,6 @@ code,
   font-size: var(--font-body);
 }
 
-/* Wallpaper keeps its own dark palette; these classes only tune the shared chart. */
-.research-mini-trend--wallpaper .research-mini-trend-head,
-.research-mini-trend--wallpaper .research-mini-trend-reading span {
-  color: rgba(219, 231, 237, .68);
-}
-
-.research-mini-trend--wallpaper .research-mini-trend-line {
-  stroke: #a8c5d6;
-}
-
-.research-mini-trend--wallpaper .research-mini-trend-point {
-  fill: #314656;
-  stroke: #b8d5e4;
-}
-
-.research-mini-trend--wallpaper .research-mini-trend-year {
-  fill: rgba(219, 231, 237, .62);
-}
-
-.research-mini-trend--wallpaper .research-mini-trend-reading strong {
-  color: #edf5f8;
-}
-
-.research-mini-trend--wallpaper .research-mini-trend-guide {
-  stroke: rgba(219, 231, 237, .2);
-}
-
-.research-mini-trend--wallpaper.research-mini-trend-empty {
-  color: rgba(219, 231, 237, .68);
-}
-
 @media (max-width: 1100px) {
   .home-status-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1876,6 +1852,9 @@ code,
   .home-attention-grid {
     grid-template-columns: 1fr;
   }
+
+  .p0-home-task { grid-template-columns: 38px minmax(0, 1fr); }
+  .p0-home-task small { grid-column: 2; }
 
   .home-recent-changes {
     grid-column: auto;

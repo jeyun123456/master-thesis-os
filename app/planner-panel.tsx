@@ -6,7 +6,6 @@ import { calendarWeekDates } from '@/lib/calendar-dates';
 import type { CalendarEvent } from '@/lib/calendar';
 import { addCalendarEvent } from '@/lib/calendar-client';
 import {
-  addPlannerTask,
   syncInboxPlannerTasks,
   deletePlannerTask,
   savePlannerTasks,
@@ -18,6 +17,7 @@ import type { MailAnalysisItem, StoredMailCalendarCandidate } from '@/lib/mail-a
 import type { MailPlanning, MailTask, MailTaskStatus } from '@/lib/mail-planning';
 import { openThunderbird, openThunderbirdMessage, ThunderbirdMailError, thunderbirdMailErrorMessage, type ThunderbirdMailErrorCode } from '@/lib/thunderbird-mail';
 import { CalendarCandidateCard, type CalendarCandidateEdit } from './mail-analysis-details';
+import { P0TasksPanel } from './p0-tasks-panel';
 
 type PlannerCandidate = { item: MailAnalysisItem; candidate: StoredMailCalendarCandidate };
 type CalendarResponse = CalendarApiResponse;
@@ -32,8 +32,7 @@ export function PlannerPanel({ projects = [] }: { projects?: ResearchProject[] }
   const [tasksLoading, setTasksLoading] = useState(true);
   const [taskError, setTaskError] = useState('');
   const [vaultSaved, setVaultSaved] = useState(false);
-  const [title, setTitle] = useState('');
-  const [dueDate, setDueDate] = useState('');
+
   const [planning, setPlanning] = useState<MailPlanning | null>(null);
   const [mailError, setMailError] = useState('');
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
@@ -110,28 +109,6 @@ export function PlannerPanel({ projects = [] }: { projects?: ResearchProject[] }
   const selectedEvents = eventsByDate.get(selectedDate) || [];
   const weekEvents = (calendar?.items || []).filter((event) => weekDays.some((day) => eventDate(event) === day));
 
-  async function createTask(event: React.FormEvent) {
-    event.preventDefault();
-    const cleanTitle = title.trim();
-    if (!cleanTitle) return;
-    const now = new Date().toISOString();
-    const id = `task:${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
-    const task: PlannerTask = { id, title: cleanTitle, description: '', dueDate: dueDate || null, source: 'manual', inboxItemId: null, projectId: null, status: 'pending', createdAt: now, updatedAt: now, completedAt: null };
-    setTasks((current) => mergePlannerTasks([task, ...current], []));
-    setTitle('');
-    setDueDate('');
-    setTaskError('');
-    saveCachedPlannerTasks([task, ...tasks]);
-    try {
-      const saved = await addPlannerTask(task);
-      setTasks(saved);
-      saveCachedPlannerTasks(saved);
-      setVaultSaved(true);
-    } catch (error) {
-      setVaultSaved(false);
-      setTaskError(error instanceof Error ? `${error.message} 이 할 일은 브라우저 캐시에 남아 있어.` : 'Vault 저장에 실패했어. 브라우저 캐시는 유지돼.');
-    }
-  }
 
   async function changeTaskStatus(task: PlannerTask, status: PlannerTaskStatus) {
     const now = new Date().toISOString();
@@ -207,6 +184,7 @@ export function PlannerPanel({ projects = [] }: { projects?: ResearchProject[] }
   }
 
   return <div className="planner-workspace">
+    <P0TasksPanel />
     <section className="card section planner-calendar-card">
       <div className="head"><div><h3>월간 Calendar</h3><small>Google Calendar · {calendar?.items.length || 0}개 일정</small></div><div className="planner-month-nav"><button className="mini" type="button" aria-label="이전 달" onClick={() => { const next = shiftMonth(month, -1); setMonth(next); setSelectedDate(`${next}-01`); }}>←</button><b>{monthLabel(month)}</b><button className="mini" type="button" aria-label="다음 달" onClick={() => { const next = shiftMonth(month, 1); setMonth(next); setSelectedDate(`${next}-01`); }}>→</button><button className="mini" type="button" onClick={() => { setMonth(currentMonth()); setSelectedDate(todayDate()); }}>오늘</button></div></div>
       {calendarError && <div className="error">{calendarError}</div>}
@@ -235,8 +213,7 @@ export function PlannerPanel({ projects = [] }: { projects?: ResearchProject[] }
     </section>
 
     <section className="card section planner-tasks-card">
-      <div className="head"><div><h3>해야 할 일</h3><small>Inbox에서 전달된 할 일과 직접 추가한 작업</small></div><span>{activeTasks.length}개 미완료</span></div>
-      <form className="planner-task-create" onSubmit={(event) => void createTask(event)}><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="새 할 일" aria-label="새 할 일" maxLength={1200} /><input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} aria-label="할 일 마감일" /><button className="btn primary" type="submit" disabled={!title.trim()}>추가</button></form>
+      <div className="head"><div><h3>기존 Vault Planner 기록</h3><small>기존 항목은 자동 이전·삭제하지 않았어. 새 실행 할 일은 위 P0 SQLite 영역에서 관리해.</small></div><span>{activeTasks.length}개 미완료</span></div>
       <div className="planner-persistence-status"><span className={vaultSaved ? 'saved' : 'local'}>{vaultSaved ? 'Vault · shared/planner/tasks.json' : '브라우저 캐시'}</span><button className="mini" type="button" disabled={tasksLoading} onClick={() => void loadTasks()}>새로고침</button></div>
       {taskError && <div className="error">{taskError}</div>}
       {orderedTasks.length ? <div className="planner-task-list">{orderedTasks.map((task) => {

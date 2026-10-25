@@ -1,6 +1,6 @@
 import '../app/inbox-workflow-test-safety';
 import { describe, expect, it } from 'vitest';
-import { applyInboxSuggestions, createInboxEntry, INBOX_STORAGE_KEY, loadInboxEntries, saveInboxEntries } from './inbox';
+import { applyInboxSuggestions, createInboxEntry, INBOX_STORAGE_KEY, loadInboxEntries, mergeInboxEntries, parseInboxEntries, saveInboxEntries } from './inbox';
 
 function memoryStorage() {
   const values = new Map<string, string>();
@@ -36,7 +36,7 @@ describe('inbox', () => {
     expect(updated).toMatchObject({
       processed: true,
       ai: {
-        category: 'Todo',
+        category: 'todo',
         title: '교수님께 결과 보내기',
         nextAction: '최신 결과 파일을 확인해 보낸다.',
         dueDate: null,
@@ -50,5 +50,15 @@ describe('inbox', () => {
     const storage = memoryStorage();
     storage.setItem(INBOX_STORAGE_KEY, '{not json');
     expect(loadInboxEntries(storage)).toEqual([]);
+  });
+
+  it('persists and merges the P0 route marker without changing the original Inbox text', () => {
+    const entry = { ...createInboxEntry('교수님께 초안 보내기', new Date('2026-10-01T08:00:00.000Z'), 'entry-p0'), processed: true, p0TaskId: 'inbox-entry-p0', ai: {
+      entryId: 'entry-p0', category: 'todo' as const, title: '초안 보내기', summary: '초안 확인', nextAction: '교수님께 초안 보내기', dueDate: null, relatedEntryIds: [], processedAt: '2026-10-01T09:00:00.000Z',
+    } };
+    const parsed = parseInboxEntries([entry])[0];
+    expect(parsed.p0TaskId).toBe('inbox-entry-p0');
+    expect(parsed.rawText).toBe('교수님께 초안 보내기');
+    expect(mergeInboxEntries([{ ...parsed, p0TaskId: null }], [parsed])[0].p0TaskId).toBe('inbox-entry-p0');
   });
 });

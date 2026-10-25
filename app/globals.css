@@ -800,3 +800,50 @@ html[data-density="ultra-dense"] .portal-notice-row,
 html[data-density="ultra-dense"] .planner-task-row {
   padding: 4px 0;
 }
+
+/* Desktop navigation is icon-only by default; the button expands it on demand. */
+@media (min-width: 761px) {
+  .shell { --sidebar-width: 72px; display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); transition: grid-template-columns .18s ease; }
+  .shell.sidebar-expanded { --sidebar-width: 248px; }
+  .sidebar { position: sticky; top: 0; min-width: 0; height: 100vh; overflow-x: hidden; }
+  .sidebar:not(.expanded) { padding: 20px 9px; }
+  .sidebar:not(.expanded) .brand { justify-content: center; padding: 0 0 18px; }
+  .sidebar:not(.expanded) .brand > div:not(.logo),
+  .sidebar:not(.expanded) .nav-group-label,
+  .sidebar:not(.expanded) .sidebar-source { display: none; }
+  .sidebar:not(.expanded) .nav button,
+  .sidebar:not(.expanded) .sidebar-settings button { justify-content: center; gap: 0; padding: 11px 6px; font-size: 0; }
+  .sidebar:not(.expanded) .nav button > span,
+  .sidebar:not(.expanded) .sidebar-settings button > span { flex: 0 0 auto; font-size: 18px; }
+  .sidebar-toggle { position: absolute; top: 17px; right: 8px; z-index: 2; width: 30px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--muted); cursor: pointer; }
+  .sidebar:not(.expanded) .sidebar-toggle { top: 62px; right: 21px; }
+  .sidebar-toggle span { font-size: 20px; line-height: 1; }
+  .sidebar.expanded .brand { padding-right: 38px; }
+  .mobile-nav, .mobile-more-backdrop, .mobile-fab { display: none; }
+}
+
+@media (max-width: 760px) {
+  .mobile-nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); position: fixed; inset: auto 0 0; z-index: 120; height: calc(62px + env(safe-area-inset-bottom)); padding: 5px 9px calc(5px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: rgba(255,255,255,.96); backdrop-filter: blur(14px); }
+  .mobile-nav button { display: grid; align-content: center; justify-items: center; gap: 2px; min-width: 0; border: 0; border-radius: 10px; background: transparent; color: var(--muted); cursor: pointer; }
+  .mobile-nav button.active { color: var(--blue); background: var(--blue2); }
+  .mobile-nav button > span { font-size: 20px; line-height: 1.05; }
+  .mobile-nav small { overflow: hidden; max-width: 100%; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+  .main { padding-bottom: calc(126px + env(safe-area-inset-bottom)); }
+  .mobile-fab { display: grid; place-items: center; position: fixed; right: 17px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 130; width: 54px; height: 54px; border: 0; border-radius: 50%; background: var(--blue); color: #fff; box-shadow: 0 8px 22px rgba(27,70,153,.27); font-size: 28px; cursor: pointer; }
+  .mobile-more-backdrop { display: block; position: fixed; inset: 0; z-index: 110; background: rgba(16,24,40,.42); }
+  .mobile-more-menu { position: absolute; left: 12px; right: 12px; bottom: calc(70px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; max-height: min(70vh, 520px); overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); box-shadow: 0 14px 38px rgba(16,24,40,.2); }
+  .mobile-more-menu button { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 48px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 11px; background: #fff; color: var(--text); text-align: left; cursor: pointer; }
+  .mobile-more-menu button > span { flex: 0 0 22px; color: var(--blue); font-size: 18px; text-align: center; }
+  .mobile-more-menu button.active { border-color: var(--blue); background: var(--blue2); color: var(--blue); }
+}
+
+.calendar-agenda { display: grid; gap: 18px; max-height: min(72vh, 920px); overflow-y: auto; padding-right: 4px; }
+.calendar-agenda-day { min-width: 0; }
+.calendar-agenda-day h4 { margin: 0 0 8px; padding: 0 0 8px; border-bottom: 1px solid var(--line); color: var(--text); font-size: 12px; }
+.calendar-agenda-event { display: grid !important; grid-template-columns: 76px minmax(0, 1fr); align-items: start; gap: 12px; }
+.calendar-agenda-time { color: var(--blue); font-size: 10px; font-weight: 800; white-space: nowrap; }
+.calendar-agenda-copy { display: grid; gap: 4px; min-width: 0; }
+.calendar-agenda-copy b { overflow-wrap: anywhere; font-size: 11px; }
+.calendar-agenda-copy small { color: var(--muted); font-size: 9px; }
+.calendar-agenda-empty { padding: 20px 0; color: var(--muted); font-size: 11px; }
+@media (max-width: 760px) { .calendar-agenda { max-height: none; } }

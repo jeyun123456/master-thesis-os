@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { normalizeProjectStatus, projectStatusValues, parseProjectManifest, updateProjectStatusMarkdown } from '@/lib/projects';
 import { VaultConflictError, readVaultText, resolveVaultProjectPath, vaultConfigured, vaultWritable, writeVaultText } from '@/lib/vault-repository';
+import { requireP0Session, sameOriginMutationError } from '@/lib/p0-server';
 
 export const runtime = 'nodejs';
 
 const allowedStatuses = new Set<string>(projectStatusValues);
 
 export async function PATCH(request: NextRequest) {
+  const originError = sameOriginMutationError(request);
+  if (originError) return originError;
+  const authError = await requireP0Session(request);
+  if (authError) return authError;
   if (!vaultConfigured()) return NextResponse.json({ configured: false, error: 'Vault repository is not configured' }, { status: 503 });
   if (!vaultWritable()) return NextResponse.json({ configured: true, error: 'Vault write access is not configured' }, { status: 503 });
 

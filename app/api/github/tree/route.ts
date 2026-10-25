@@ -1,6 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { vaultConfigured, vaultRepositoryTree, vaultSource } from '@/lib/vault-repository';
-export async function GET() {
+import { requireP0Session } from '@/lib/p0-server';
+export async function GET(request: NextRequest) {
+  const authError = await requireP0Session(request);
+  if (authError) return authError;
   if (!vaultConfigured()) return NextResponse.json({ configured:false, source:'none', items:[] });
   try {
     const source = vaultSource() || 'local';

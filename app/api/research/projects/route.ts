@@ -1,8 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { parseProjectManifest } from '@/lib/projects';
 import { readVaultText, vaultConfigured, vaultProjectManifestPaths } from '@/lib/vault-repository';
+import { requireP0Session } from '@/lib/p0-server';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authError = await requireP0Session(request);
+  if (authError) return authError;
   if (!vaultConfigured()) {
     return NextResponse.json({ configured: false, items: [] });
   }

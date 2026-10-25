@@ -1,11 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { GoogleDrivePanel } from '@/app/google-drive-panel';
 import { LibraryPanel } from '@/app/library-panel';
 import { PortalAttention } from '@/app/home-attention';
+import { GmailMailPanel } from '@/app/gmail-mail-panel';
 import { MailActionCandidates } from '@/app/mail-action-candidates';
 import { MailPanel } from '@/app/mail-panel';
 import { PlannerPanel } from '@/app/planner-panel';
+import { P0HomeWorkspace } from '@/app/p0-home-workspace';
+import { P0AuthGate, useP0Auth } from '@/app/p0-auth-gate';
+import { P0SessionsPanel } from '@/app/p0-sessions-panel';
 import { PortalNoticesPanel } from '@/app/portal-notices-panel';
 import { MicrosoftMailPanel } from '@/app/microsoft-mail-panel';
 import { ResearchPanel } from '@/app/research-panel';
@@ -18,7 +23,7 @@ import { SchoolMailPanel } from '@/app/school-mail-panel';
 import { ShortcutList, ShortcutsPanel } from '@/app/shortcuts-panel';
 import { dashboardApi, type CalendarApiResponse, type RepositorySource, type ShortcutSource } from '@/lib/client-api';
 import type { CalendarEvent } from '@/lib/calendar';
-import { daysUntil, groupCalendarEvents } from '@/lib/calendar-view';
+import { daysUntil, eventDateKey, groupCalendarEvents } from '@/lib/calendar-view';
 import type { GitHubCommitSummary } from '@/lib/github';
 import { projectStatusLabel, stageLabel, type ResearchProject } from '@/lib/projects';
 import type { RepositoryItem } from '@/lib/repository';
@@ -27,9 +32,14 @@ import type { DashboardBundle } from '@/lib/results';
 import { BRIDGE_OFFLINE_MESSAGE, BRIDGE_TIMEOUT_MESSAGE, bridgeResponseMessage } from '@/lib/bridge-status';
 import { getEnabledShortcuts, getHomeShortcuts, loadShortcutState, shortcuts, type Shortcut } from '@/lib/shortcuts';
 import { useInboxWorkflow } from '@/app/use-inbox-workflow';
+import { useMtosWorkspace } from '@/app/use-mtos-workspace';
+import { AiInboxPanel, CaptureBox } from '@/app/ai-inbox';
+import { GlobalSearch, UrgentApprovals, type SearchTarget } from '@/app/global-search';
+import { initialKanbanState, type KanbanViewState } from '@/app/research-kanban';
+import { p0TodayInTokyo } from '@/lib/p0-home';
 import appPackage from '../package.json';
 
-type Page = 'home' | 'research' | 'results' | 'library' | 'slot' | 'shortcuts' | 'inbox' | 'mail' | 'portal' | 'planner' | 'settings';
+type Page = 'home' | 'research' | 'results' | 'library' | 'calendar' | 'slot' | 'shortcuts' | 'inbox' | 'mail' | 'portal' | 'planner' | 'settings';
 
 const APP_VERSION = appPackage.version;
 
@@ -55,7 +65,8 @@ const pageMeta: Record<Page, [string, string]> = {
   inbox: ['AI 인박스', '떠오른 내용을 저장하고 검토 후 정리'],
   research: ['연구', '프로젝트별 질문 · 진행 단계 · 다음 작업 · 관련 자료'],
   results: ['분석 결과', '프로젝트별 계산 결과와 산출물'],
-  library: ['자료실', '주요 자료 · 대표 문헌 · 연구 Wiki'],
+  library: ['자료실', 'Google Drive · 주요 자료 · 대표 문헌 · 연구 Wiki'],
+  calendar: ['캘린더', '앞으로 14일 일정 · 읽기 전용'],
   slot: ['슬롯', '다음 연구 작업을 작은 보상 단위로 관리'],
   shortcuts: ['바로가기', '반복해서 여는 연구 파일 · 폴더 · 웹 주소'],
   mail: ['메일', '학교 업무 · 국제과를 폴더별로 확인'],
@@ -66,6 +77,7 @@ const pageMeta: Record<Page, [string, string]> = {
 
 type NavigationItem = { id: Page; label: string; icon: string };
 type NavigationGroup = { label: string; items: NavigationItem[] };
+type MobileNavigationItem = { id: Page | 'more'; label: string; icon: string };
 
 const navigationGroups: NavigationGroup[] = [
   {
@@ -75,6 +87,7 @@ const navigationGroups: NavigationGroup[] = [
       { id: 'research', label: '연구', icon: '⌕' },
       { id: 'results', label: '분석 결과', icon: '▥' },
       { id: 'library', label: '자료실', icon: '▤' },
+      { id: 'calendar', label: '캘린더', icon: '▦' },
     ],
   },
   {
@@ -98,6 +111,14 @@ const navigationGroups: NavigationGroup[] = [
 const navigation: NavigationItem[] = [
   ...navigationGroups.flatMap((group) => group.items),
   { id: 'settings', label: '설정', icon: '⚙' },
+];
+const mobilePrimaryPages = new Set<Page>(['home', 'research', 'inbox']);
+const mobileMoreItems = navigation.filter((item) => !mobilePrimaryPages.has(item.id));
+const mobileNavigation: MobileNavigationItem[] = [
+  { id: 'home', label: '홈', icon: '⌂' },
+  { id: 'research', label: '연구 프로젝트', icon: '⌕' },
+  { id: 'inbox', label: 'AI 인박스', icon: '✦' },
+  { id: 'more', label: '더보기', icon: '•••' },
 ];
 
 const BRIDGE_REQUEST_TIMEOUT_MS = 5000;
@@ -146,7 +167,15 @@ async function postBridge(endpoint: string, path: string, token: string) {
 }
 
 export default function Page() {
+  return <P0AuthGate><AuthenticatedPage /></P0AuthGate>;
+}
+
+function AuthenticatedPage() {
+  const { authBusy, logout } = useP0Auth();
   const [page, setPage] = useState<Page>('home');
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [focusCreateRequest, setFocusCreateRequest] = useState(0);
   const [tree, setTree] = useState<RepositoryItem[]>([]);
   const [calendar, setCalendar] = useState<CalendarApiResponse>(initialCalendar);
   const [dashboard, setDashboard] = useState<DashboardBundle>(initialDashboard);
@@ -163,12 +192,24 @@ export default function Page() {
   const [shortcutMissing, setShortcutMissing] = useState(false);
   const [shortcutWritable, setShortcutWritable] = useState(false);
   const [researchProjectId, setResearchProjectId] = useState<string | null>(null);
+  const [researchView, setResearchView] = useState<'board' | 'detail'>('board');
+  const [kanbanState, setKanbanState] = useState<KanbanViewState>(initialKanbanState);
+  const [selectTaskRequest, setSelectTaskRequest] = useState<{ id: string; n: number } | null>(null);
   const [expandedProjectFolders, setExpandedProjectFolders] = useState<Set<string>>(() => new Set());
   const [errors, setErrors] = useState<string[]>([]);
   const [toast, setToast] = useState('');
   const [todayLabel, setTodayLabel] = useState('');
   const enabledShortcuts = useMemo(() => getEnabledShortcuts(shortcutItems), [shortcutItems]);
   const homeShortcuts = useMemo(() => getHomeShortcuts(enabledShortcuts), [enabledShortcuts]);
+
+  useEffect(() => {
+    if (!mobileMoreOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileMoreOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [mobileMoreOpen]);
 
   useEffect(() => {
     const updateDate = () => setTodayLabel(formatTodayDate(new Date()));
@@ -199,6 +240,7 @@ export default function Page() {
     addInboxTaskToProject,
     bridgeTokenSaved,
   } = useInboxWorkflow({ projects, onNotice: pop, onOpenInbox: () => setPage('inbox') });
+  const workspace = useMtosWorkspace(projects, pop);
 
   useEffect(() => {
     let cancelled = false;
@@ -262,6 +304,10 @@ export default function Page() {
     window.setTimeout(() => setToast(''), 1700);
   }
 
+  async function signOut() {
+    if (!await logout()) pop('로그아웃 요청에 실패했어. 연결을 확인한 뒤 다시 시도해줘.');
+  }
+
   async function openLocal(path: string) {
     pop('로컬 파일을 여는 중…');
     try {
@@ -308,7 +354,26 @@ export default function Page() {
 
   function openResearchProject(projectId: string) {
     setResearchProjectId(projectId);
+    setResearchView('detail');
     setPage('research');
+  }
+
+  function openTask(taskId: string) {
+    setPage('home');
+    setSelectTaskRequest((current) => ({ id: taskId, n: (current?.n ?? 0) + 1 }));
+  }
+
+  function navigateToSearchResult(target: SearchTarget) {
+    if (target.kind === 'task') openTask(target.id);
+    else if (target.kind === 'project') openResearchProject(target.id);
+    else setPage('inbox');
+  }
+
+  function showPage(next: Page) {
+    // Returning to the research menu shows the board; tasks may have changed elsewhere.
+    if (next === 'research') { setResearchView('board'); void workspace.reload(); }
+    if (next === 'inbox') void workspace.reloadAgent();
+    setPage(next);
   }
 
   const schedule = useMemo(() => groupCalendarEvents(calendar.items), [calendar.items]);
@@ -318,28 +383,32 @@ export default function Page() {
     return projectTasks.length ? projectTasks : researchStatus?.nextActions || [];
   }, [activeProject, researchStatus]);
   return (
-    <div className="shell">
-      <aside className="sidebar">
+    <div className={`shell${sidebarExpanded ? ' sidebar-expanded' : ''}`}>
+      <aside className={`sidebar${sidebarExpanded ? ' expanded' : ''}`}>
         <div className="brand"><div className="logo">C</div><div><h1>Chocomint Lab</h1><p>Research Workspace · v{APP_VERSION}</p></div></div>
+        <button className="sidebar-toggle" type="button" aria-label={sidebarExpanded ? '메뉴 접기' : '메뉴 펼치기'} aria-expanded={sidebarExpanded} onClick={() => setSidebarExpanded((expanded) => !expanded)}><span>{sidebarExpanded ? '‹' : '›'}</span></button>
         <nav className="nav" aria-label="주 메뉴">{navigationGroups.map((group) => <div className="nav-group" key={group.label}>
           <span className="nav-group-label">{group.label}</span>
-          {group.items.map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}><span>{item.icon}</span>{item.label}</button>)}
+          {group.items.filter((item) => item.id !== 'slot' && item.id !== 'planner').map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} aria-label={item.label} title={sidebarExpanded ? undefined : item.label} onClick={() => showPage(item.id)}><span>{item.icon}</span>{item.label}</button>)}
         </div>)}</nav>
-        <div className="sidebar-settings"><span className="nav-group-label">SYSTEM</span><button className={page === 'settings' ? 'active' : ''} onClick={() => setPage('settings')}><span>⚙</span>설정</button></div>
+        <div className="sidebar-settings"><span className="nav-group-label">SYSTEM</span><button className={page === 'settings' ? 'active' : ''} aria-label="설정" title={sidebarExpanded ? undefined : '설정'} onClick={() => setPage('settings')}><span>⚙</span>설정</button></div>
         <div className="sidebar-source"><span>연구 기준</span><b>Obsidian Vault</b><small>01_Areas + 02_Projects + 03_Knowledge · {repositorySource === 'local' ? 'local live' : repositorySource === 'github' ? 'GitHub live' : '연결 필요'}</small></div>
       </aside>
 
       <main className="main">
         <header className={`top${page === 'home' ? ' top-home' : ''}`}>
           <div>{page === 'home' ? <><h2>Chocomint Lab</h2><p>{todayLabel || '오늘'} · 떠오른 생각을 기록하고 다음 행동을 시작하세요</p></> : <><h2>{pageMeta[page][0]}</h2><p>{pageMeta[page][1]}</p></>}</div>
-          <div className="badges"><div className="badge">Vault {repositorySource === 'local' ? '● 로컬' : repositorySource === 'github' ? '● GitHub' : '○ 설정 필요'}</div><div className="badge">Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '● 연결됨' : '○ 확인 필요'}</div><div className="badge">v{APP_VERSION}</div></div>
+          <div className="badges"><GlobalSearch tasks={workspace.tasks} projects={projects} onNavigate={navigateToSearchResult} /><div className="badge">Vault {repositorySource === 'local' ? '● 로컬' : repositorySource === 'github' ? '● GitHub' : '○ 설정 필요'}</div><div className="badge">Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '● 연결됨' : '○ 확인 필요'}</div><div className="badge">v{APP_VERSION}</div><button className="mini" type="button" disabled={authBusy} onClick={() => void signOut()}>로그아웃</button></div>
         </header>
 
         {errors.length > 0 && <div className="error page-error">{errors[0]}</div>}
 
         {page === 'home' && <section className="page active home-page">
+          <UrgentApprovals today={p0TodayInTokyo()} onOpenInbox={() => showPage('inbox')} />
+          <div className="section-gap"><P0HomeWorkspace projects={projects} onOpenPlanner={() => setPage('planner')} focusCreateRequest={focusCreateRequest}
+            meta={workspace.meta} onMetaChanged={() => void workspace.reloadAgent()} calendarEvents={calendar.items} selectTaskRequest={selectTaskRequest} reloadSignal={workspace.taskReloadSignal} /></div>
           <div className="home-workspace-grid">
-            <QuickCapturePanel entries={inboxEntries} loaded={inboxLoaded} busy={inboxOrganizing} storageStatus={inboxStorageStatus} storageError={inboxStorageError} bridgeApiWarning={bridgeApiWarning} bridgeTokenWarning={bridgeTokenWarning} onAdd={addInboxEntry} onOrganize={() => void organizeInbox()} onOpenInbox={() => setPage('inbox')} onRetrySave={retryInboxSave} />
+            <Card title="빠른 입력" right="AI 인박스" className="home-capture-card"><CaptureBox compact onSaved={() => void workspace.reloadAgent()} /><button className="mini" type="button" onClick={() => showPage('inbox')}>AI 인박스 열기</button></Card>
             <DailyChecklist todayEventCount={schedule.today.length} onShowToday={focusTodaySchedule} />
           </div>
           <div className="home-status-grid">
@@ -361,6 +430,12 @@ export default function Page() {
         </section>}
 
         {page === 'research' && <section className="page active"><ResearchPanel
+          workspaceData={workspace}
+          view={researchView}
+          onViewChange={setResearchView}
+          kanbanState={kanbanState}
+          onKanbanStateChange={setKanbanState}
+          onOpenTask={openTask}
           projects={projects}
           projectsLoading={projectsLoading}
           projectsError={projectsError}
@@ -385,7 +460,8 @@ export default function Page() {
           onOpen={openLocal}
           onOpenFolder={openLocalFolder}
         /></section>}
-        {page === 'library' && <section className="page active"><LibraryPanel tree={tree} researchStatus={researchStatus} onOpen={openLocal} /></section>}
+        {page === 'library' && <section className="page active"><GoogleDrivePanel /><div className="section-gap"><LibraryPanel tree={tree} researchStatus={researchStatus} onOpen={openLocal} /></div></section>}
+        {page === 'calendar' && <section className="page active"><Card title="캘린더" right={`${calendar.items.length}건 · 읽기 전용`} className="calendar-card"><CalendarAgenda calendar={calendar} /></Card></section>}
         {page === 'slot' && <section className="page active"><RewardSlotPanel tasks={activeProject?.nextTasks || researchStatus?.nextActions || []} projectTitle={activeProject ? activeProject.title : 'Wiki live'} onNotice={pop} /></section>}
         {page === 'shortcuts' && <section className="page active"><ShortcutsPanel
           shortcuts={shortcutItems}
@@ -397,10 +473,13 @@ export default function Page() {
           onOpenFile={openLocal}
           onOpenFolder={openLocalFolder}
         /></section>}
-        {page === 'mail' && <section className="page active"><MailPanel /></section>}
+        {page === 'mail' && <section className="page active"><GmailMailPanel /><div className="section-gap"><MailPanel /></div></section>}
         {page === 'portal' && <section className="page active"><PortalNoticesPanel /></section>}
         {page === 'planner' && <section className="page active"><PlannerPanel projects={projects} /></section>}
-        {page === 'inbox' && <section className="page active"><InboxPanel
+        {page === 'inbox' && <section className="page active"><AiInboxPanel projects={projects} onTasksChanged={() => { void workspace.reloadTasks(); workspace.bumpTaskReload(); }} />
+          <details className="card section section-gap legacy-inbox"><summary>기존 로컬 인박스 (Local Bridge · 이 PC 전용)</summary>
+          <QuickCapturePanel entries={inboxEntries} loaded={inboxLoaded} busy={inboxOrganizing} storageStatus={inboxStorageStatus} storageError={inboxStorageError} bridgeApiWarning={bridgeApiWarning} bridgeTokenWarning={bridgeTokenWarning} onAdd={addInboxEntry} onOrganize={() => void organizeInbox()} onOpenInbox={() => setPage('inbox')} onRetrySave={retryInboxSave} />
+          <InboxPanel
           entries={inboxEntries}
           loaded={inboxLoaded}
           busy={inboxOrganizing}
@@ -421,7 +500,7 @@ export default function Page() {
           deleteSavingId={inboxDeleteSavingId}
           onAddToProject={(entryId, projectId) => void addInboxTaskToProject(entryId, projectId)}
           onDelete={deleteInboxEntry}
-        /></section>}
+        /></details></section>}
 
         {page === 'settings' && <section className="page active">
           <div className="grid2">
@@ -433,11 +512,25 @@ export default function Page() {
             <SchoolMailPanel variant="settings" folder="school-work" />
           </div>
           <div className="section-gap"><MicrosoftMailPanel variant="settings" /></div>
+          <div className="section-gap"><P0SessionsPanel /></div>
           <div className="section-gap"><Card title="버전" right={`v${APP_VERSION}`}><div className="note">프로젝트 기반 연구탭 · repo project manifest · 한국어 UI · 큐레이션 자료실 · 모바일 내비게이션.</div></Card></div>
         </section>}
       </main>
 
-      <nav className="mobile-nav" aria-label="모바일 메뉴">{navigation.map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => setPage(item.id)}><span>{item.icon}</span><small>{item.label}</small></button>)}</nav>
+      {mobileMoreOpen && <div className="mobile-more-backdrop" onClick={() => setMobileMoreOpen(false)}>
+        <nav className="mobile-more-menu" aria-label="더 보기 메뉴" onClick={(event) => event.stopPropagation()}>
+          {mobileMoreItems.map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => { showPage(item.id); setMobileMoreOpen(false); }}><span>{item.icon}</span>{item.label}</button>)}
+        </nav>
+      </div>}
+      <nav className="mobile-nav" aria-label="모바일 메뉴">{mobileNavigation.map((item) => {
+        const isMore = item.id === 'more';
+        const active = isMore ? mobileMoreOpen || !mobilePrimaryPages.has(page) : page === item.id;
+        return <button key={item.id} className={active ? 'active' : ''} aria-expanded={isMore ? mobileMoreOpen : undefined} aria-current={active && !isMore ? 'page' : undefined} onClick={() => {
+          if (item.id === 'more') setMobileMoreOpen((open) => !open);
+          else { showPage(item.id); setMobileMoreOpen(false); }
+        }}><span>{item.icon}</span><small>{item.label}</small></button>;
+      })}</nav>
+      <button className="mobile-fab" type="button" aria-label="새 할 일 추가" onClick={() => { setMobileMoreOpen(false); setPage('home'); setFocusCreateRequest((request) => request + 1); }}>＋</button>
       <div className={`toast ${toast ? 'show' : ''}`}>{toast}</div>
     </div>
   );
@@ -470,6 +563,31 @@ function HomeStatusCard({ id, label, value, detail, tone }: { id?: string; label
 }
 
 function Card({ title, right, children, className = '' }: { title: string; right?: string; children: React.ReactNode; className?: string }) { return <div className={`card section${className ? ` ${className}` : ''}`}><div className="head"><h3>{title}</h3><span>{right}</span></div>{children}</div>; }
+function CalendarAgenda({ calendar }: { calendar: CalendarApiResponse }) {
+  const grouped = new Map<string, CalendarEvent[]>();
+  for (const event of calendar.items) {
+    const date = eventDateKey(event);
+    grouped.set(date, [...(grouped.get(date) ?? []), event]);
+  }
+  if (!calendar.items.length) return <div className="calendar-agenda-empty">{calendarStateText(calendar)}</div>;
+  return <div className="calendar-agenda">
+    {[...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([date, events]) => <section className="calendar-agenda-day" key={date}>
+      <h4>{formatCalendarDay(date)}</h4>
+      <div className="calendar-events">{events.map((event) => <article className="event calendar-agenda-event" key={event.id}>
+        <span className="calendar-agenda-time">{event.allDay ? '종일' : formatCalendarTime(event.start, event.end)}</span>
+        <div className="calendar-agenda-copy"><b>{event.title}</b><small>{event.category}{event.location ? ` · ${event.location}` : ''}</small></div>
+      </article>)}</div>
+    </section>)}
+  </div>;
+}
+function formatCalendarDay(value: string) {
+  const date = new Date(`${value}T12:00:00+09:00`);
+  return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(date);
+}
+function formatCalendarTime(start: string, end: string) {
+  const formatter = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  return `${formatter.format(new Date(start))}–${formatter.format(new Date(end))}`;
+}
 function calendarStateText(calendar: CalendarApiResponse) { if (calendar.state === 'unconfigured') return 'Google Calendar 설정이 필요해.'; if (calendar.state === 'empty') return '오늘부터 14일 안에 일정이 없어.'; if (calendar.errorCode === 'auth_error' || calendar.errorCode === 'insufficient_permissions') return 'Calendar 서비스 계정의 읽기/쓰기 권한을 확인해야 해.'; if (calendar.errorCode === 'provider_bad_request') return 'Calendar 요청 형식 또는 날짜·시간을 확인해줘.'; if (calendar.errorCode === 'invalid_calendar') return 'Calendar ID 또는 공유 권한을 확인해줘.'; if (calendar.errorCode === 'quota_error') return 'Google Calendar API quota를 확인해줘.'; if (calendar.errorCode === 'malformed_response') return 'Calendar 응답 형식을 확인할 수 없어.'; if (calendar.state === 'error') return 'Calendar 네트워크 연결을 확인해줘.'; return '해당 일정이 없어.'; }
 function CommitList({ commits }: { commits: GitHubCommitSummary[] }) { if (!commits.length) return <div className="empty compact-empty">최근 GitHub 변경을 불러오는 중이거나 연결 정보가 없어.</div>; return <div>{commits.map((commit) => <div className="commit" key={commit.sha}><div><b>{commit.message}</b><small>{commit.author} · {relativeDate(commit.date)}</small></div><code>{commit.sha.slice(0, 7)}</code></div>)}</div>; }
 

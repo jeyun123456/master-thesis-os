@@ -44,6 +44,7 @@ export type InboxEntry = {
   createdAt: string;
   processed: boolean;
   ai: InboxAIResult | null;
+  p0TaskId?: string | null;
 };
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
@@ -87,6 +88,7 @@ export function parseInboxEntries(value: unknown): InboxEntry[] {
       createdAt: raw.createdAt,
       processed: Boolean(raw.processed && ai),
       ai: raw.processed ? ai : null,
+      p0TaskId: typeof raw.p0TaskId === 'string' && raw.p0TaskId ? raw.p0TaskId.slice(0, 200) : null,
     }];
   }).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 }
@@ -110,6 +112,7 @@ export function mergeInboxEntries(persistent: InboxEntry[], cached: InboxEntry[]
     merged.set(cachedEntry.id, {
       ...persistedEntry,
       ...(cachedAIIsNewer ? { processed: true, ai: cachedEntry.ai } : {}),
+      p0TaskId: persistedEntry.p0TaskId || cachedEntry.p0TaskId || null,
     });
   }
 
@@ -150,7 +153,7 @@ export function saveInboxEntries(entries: InboxEntry[], storage?: StorageLike): 
 export function createInboxEntry(rawText: string, now = new Date(), id = createId()): InboxEntry {
   if (!rawText.trim()) throw new Error('인박스에 저장할 내용을 입력해줘.');
   if (rawText.length > INBOX_MAX_RAW_CHARS) throw new Error(`한 항목은 ${INBOX_MAX_RAW_CHARS}자까지 저장할 수 있어.`);
-  return { id, rawText, createdAt: now.toISOString(), processed: false, ai: null };
+  return { id, rawText, createdAt: now.toISOString(), processed: false, ai: null, p0TaskId: null };
 }
 
 export function applyInboxSuggestions(

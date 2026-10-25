@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { appendProjectTaskMarkdown, parseProjectManifest } from '@/lib/projects';
 import { VaultConflictError, readVaultText, resolveVaultProjectPath, vaultConfigured, vaultWritable, writeVaultText } from '@/lib/vault-repository';
+import { requireP0Session, sameOriginMutationError } from '@/lib/p0-server';
 
 export const runtime = 'nodejs';
 
 export async function PATCH(request: NextRequest) {
+  const originError = sameOriginMutationError(request);
+  if (originError) return originError;
+  const authError = await requireP0Session(request);
+  if (authError) return authError;
   if (!vaultConfigured() || !vaultWritable()) return NextResponse.json({ configured: false, error: 'Vault write access is not configured' }, { status: 503 });
   let body: unknown;
   try { body = await request.json(); } catch { return NextResponse.json({ error: 'Request body must be valid JSON' }, { status: 400 }); }

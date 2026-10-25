@@ -7,6 +7,8 @@ import threading
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+from bridge_security import allowed_bases, is_link
+
 MAX_INBOX_ENTRIES = 10_000
 MAX_INBOX_RAW_CHARS = 1_200
 MAX_INBOX_STORE_BYTES = 8 * 1024 * 1024
@@ -463,27 +465,28 @@ class WorkspaceStore:
         locations = (CANONICAL_PROJECTS_DIR,) if writable else (CANONICAL_PROJECTS_DIR, LEGACY_PROJECTS_DIR)
         for directory in locations:
             base = self._root / directory
-            if not base.is_dir() or base.is_symlink():
+            # The projects folder itself may be a link (02_Projects is a junction to Google
+            # Drive); project folders inside it must still be plain folders within its target.
+            if not base.is_dir():
                 continue
+            allowed = allowed_bases(vault_root, directory)
             found: Path | None = None
             for name in dict.fromkeys((project_id, bare_id)):
                 candidate = base / name
-                if candidate.is_dir() and not candidate.is_symlink() and (candidate / 'project.md').is_file():
+                if candidate.is_dir() and not is_link(candidate) and (candidate / 'project.md').is_file():
                     found = candidate
                     break
             if found is None:
                 for candidate in sorted(base.iterdir(), key=lambda item: item.name.casefold()):
                     manifest = candidate / 'project.md'
-                    if candidate.is_dir() and not candidate.is_symlink() and manifest.is_file() and not manifest.is_symlink() and self._manifest_frontmatter_id(manifest) == project_id:
+                    if candidate.is_dir() and not is_link(candidate) and manifest.is_file() and not manifest.is_symlink() and self._manifest_frontmatter_id(manifest) == project_id:
                         found = candidate
                         break
             if found is None:
                 continue
             resolved = found.resolve(strict=True)
-            try:
-                resolved.relative_to(vault_root)
-            except ValueError as exc:
-                raise ValueError('project folder is outside the Vault') from exc
+            if not any(resolved.is_relative_to(root) for root in allowed):
+                raise ValueError('project folder is outside the Vault')
             return (resolved, f'{directory}/{found.name}')
         if writable and (self._root / LEGACY_PROJECTS_DIR).is_dir():
             raise FileNotFoundError('project folder not found under 02_Projects (legacy projects/ is read-only)')
@@ -674,7 +677,8 @@ class WorkspaceStore:
                     metadata = file_path.stat()
                 except OSError:
                     continue
-                relative_path = file_path.relative_to(self._root).as_posix()
+                # Built from the project path, not the Vault root: the folder may live behind a junction.
+                relative_path = f'{project_root_path}/{file_path.relative_to(root).as_posix()}'
                 modified_at = datetime.fromtimestamp(metadata.st_mtime).astimezone().isoformat(timespec='seconds')
                 row = {'path': relative_path, 'type': 'blob', 'size': metadata.st_size, 'modifiedAt': modified_at}
                 files.append(row)

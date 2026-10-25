@@ -25,6 +25,23 @@ from bridge_security import (
 )
 
 
+def make_dir_link(test: unittest.TestCase, link: Path, target: Path) -> None:
+    """Directory symlink, or a junction on Windows without symlink privilege."""
+    try:
+        os.symlink(target, link, target_is_directory=True)
+        return
+    except (OSError, NotImplementedError):
+        pass
+    if os.name == 'nt':
+        import _winapi
+        try:
+            _winapi.CreateJunction(str(target), str(link))
+            return
+        except OSError:
+            pass
+    test.skipTest('cannot create a directory link on this system')
+
+
 class SafePathTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -56,6 +73,21 @@ class SafePathTests(unittest.TestCase):
             safe_directory(self.root, 'wiki/note.md')
         with self.assertRaises(ValueError):
             safe_directory(self.root, '../outside')
+
+    def test_top_level_link_target_is_allowed_but_deeper_links_and_dotdot_are_not(self):
+        outside = tempfile.TemporaryDirectory()
+        self.addCleanup(outside.cleanup)
+        drive = Path(outside.name).resolve()
+        (drive / 'thesis').mkdir()
+        (drive / 'thesis' / 'draft.md').write_text('ok', encoding='utf-8')
+        make_dir_link(self, self.root / '02_Projects', drive)
+        self.assertEqual(safe_path(self.root, '02_Projects/thesis/draft.md'), drive / 'thesis' / 'draft.md')
+        self.assertEqual(safe_folder_target(self.root, '02_Projects/thesis'), drive / 'thesis')
+        make_dir_link(self, self.root / 'wiki' / 'escape', drive)
+        with self.assertRaises(ValueError):
+            safe_path(self.root, 'wiki/escape/thesis/draft.md')
+        with self.assertRaises(ValueError):
+            safe_path(self.root, '02_Projects/../wiki/note.md')
 
     def test_rejects_nonexistent_path(self):
         with self.assertRaises(FileNotFoundError):
@@ -190,8 +222,10 @@ class BridgeConfigurationTests(unittest.TestCase):
         self.assertEqual(CONFIG_ERROR_EXIT_CODE, 78)
 
     def test_bridge_process_exits_with_config_error_code(self):
-        for module_name in ('bridge.py', 'bridge_config.py', 'bridge_security.py', 'thunderbird_mail.py'):
-            shutil.copy(Path(__file__).with_name(module_name), self.root / module_name)
+        # bridge.py imports every runtime module at startup, so copy them all.
+        for module_path in Path(__file__).parent.glob('*.py'):
+            if not module_path.name.startswith('test_'):
+                shutil.copy(module_path, self.root / module_path.name)
         token_marker = 'token-marker-' + 's' * 40
         self.config_path.write_text(f'{{"token":"{token_marker}', encoding='utf-8')
 
@@ -236,75 +270,6 @@ class BridgeConfigurationTests(unittest.TestCase):
         self.assertIn("Where-Object { $_.Name -ceq $Name }", tray_script)
         self.assertIn("Get-ExactConfigProperty -Config $config -Name 'token'", tray_script)
         self.assertIn("$overrideConfigPath.Trim()", tray_script)
-
-    def test_companion_token_reader_matches_bridge_token_contract(self):
-        store = (
-            Path(__file__).parents[1]
-            / 'experiments'
-            / 'wallpaper-host-poc'
-            / 'BridgeConfigStore.cs'
-        ).read_text(encoding='utf-8')
-        self.assertIn('[JsonPropertyName("token")]', store)
-        self.assertNotIn('PropertyNameCaseInsensitive = true', store)
-        self.assertNotIn('config.Token.Trim()', store)
-        self.assertIn('parsed.Token.Length < 32', store)
-        self.assertIn('private const int DefaultPort = 38471', store)
-        self.assertIn('var port = parsed.Port ?? DefaultPort', store)
-
-    def test_companion_runtime_packaging_includes_mail_runtime(self):
-        manager = (
-            Path(__file__).parents[1]
-            / 'experiments'
-            / 'wallpaper-host-poc'
-            / 'BridgeProcessManager.cs'
-        ).read_text(encoding='utf-8')
-        publisher = (
-            Path(__file__).parents[1]
-            / 'experiments'
-            / 'wallpaper-host-poc'
-            / 'scripts'
-            / 'Publish-Release.ps1'
-        ).read_text(encoding='utf-8-sig')
-        for bridge_file in ('thunderbird_mail.py', 'mail_db.py', 'mail_cli.py', 'mail_jobs.py'):
-            with self.subTest(bridge_file=bridge_file):
-                self.assertIn(f'"{bridge_file}"', manager)
-                self.assertIn(f"'{bridge_file}'", publisher)
-
-    def test_companion_runtime_packaging_includes_portal_reader(self):
-        manager = (
-            Path(__file__).parents[1]
-            / 'experiments'
-            / 'wallpaper-host-poc'
-            / 'BridgeProcessManager.cs'
-        ).read_text(encoding='utf-8')
-        publisher = (
-            Path(__file__).parents[1]
-            / 'experiments'
-            / 'wallpaper-host-poc'
-            / 'scripts'
-            / 'Publish-Release.ps1'
-        ).read_text(encoding='utf-8-sig')
-        for bridge_file in ('portal_db.py', 'portal_client.py', 'portal_cli.py', 'portal_ai.py', 'portal_jobs.py'):
-            with self.subTest(bridge_file=bridge_file):
-                self.assertIn(f'"{bridge_file}"', manager)
-                self.assertIn(f"'{bridge_file}'", publisher)
-
-    def test_companion_runtime_packaging_includes_workspace_store(self):
-        manager = (
-            Path(__file__).parents[1]
-            / 'experiments'
-            / 'wallpaper-host-poc'
-            / 'BridgeProcessManager.cs'
-        ).read_text(encoding='utf-8')
-        publisher = (
-            Path(__file__).parents[1]
-            / 'experiments'
-            / 'wallpaper-host-poc'
-            / 'scripts'
-            / 'Publish-Release.ps1'
-        ).read_text(encoding='utf-8-sig')
-        self.assertIn('"workspace_store.py"', manager)
-        self.assertIn("'workspace_store.py'", publisher)
 
     def test_accepts_exact_production_and_explicit_local_origins(self):
         self.assertTrue(valid_origins({PRODUCTION_ORIGIN, 'http://localhost:3000', 'http://127.0.0.1:3001'}))

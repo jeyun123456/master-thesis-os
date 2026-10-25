@@ -301,6 +301,23 @@ class WorkspaceSafetySentinelTests(WorkspaceTestSafetyMixin, unittest.TestCase):
         self.clear_expected_workspace_safety_attempts(expected)
 
 
+def link_directory(test: unittest.TestCase, link: Path, target: Path) -> None:
+    """Directory symlink, or a junction on Windows without symlink privilege."""
+    try:
+        os.symlink(target, link, target_is_directory=True)
+        return
+    except (OSError, NotImplementedError):
+        pass
+    if os.name == 'nt':
+        import _winapi
+        try:
+            _winapi.CreateJunction(str(target), str(link))
+            return
+        except OSError:
+            pass
+    test.skipTest('cannot create a directory link on this system')
+
+
 class WorkspaceStoreTests(WorkspaceTestSafetyMixin, unittest.TestCase):
     def setUp(self):
         super().setUp()
@@ -341,6 +358,28 @@ class WorkspaceStoreTests(WorkspaceTestSafetyMixin, unittest.TestCase):
             self.store.project_workspace('project-does-not-exist')
         with self.assertRaises(FileNotFoundError):
             self.update('does-not-exist', 'status', '완료', other)
+
+    def test_projects_folder_may_be_a_link_but_project_folders_inside_may_not(self):
+        # Mirrors the real Vault: 02_Projects is a junction to Google Drive.
+        drive = self.workspace_temp_root / 'drive'
+        (drive / 'thesis').mkdir(parents=True)
+        manifest = drive / 'thesis' / 'project.md'
+        manifest.write_text('---\nid: project-thesis\nstatus: 대기\n---\n\n# T\n', encoding='utf-8')
+        (drive / 'thesis' / 'notes.md').write_text('n', encoding='utf-8')
+        link_directory(self, self.root / '02_Projects', drive)
+
+        workspace = self.store.project_workspace('project-thesis')
+        self.assertEqual(workspace['rootPath'], '02_Projects/thesis')
+        self.assertIn('02_Projects/thesis/notes.md', [item['path'] for item in workspace['items']])
+        saved = self.update('thesis', 'status', '진행중', manifest)
+        self.assertIn('status: 진행중', saved['manifestText'])
+
+        elsewhere = self.workspace_temp_root / 'elsewhere'
+        elsewhere.mkdir()
+        (elsewhere / 'project.md').write_text('---\nid: project-sneaky\n---\n', encoding='utf-8')
+        link_directory(self, drive / 'sneaky', elsewhere)
+        with self.assertRaises((FileNotFoundError, ValueError)):
+            self.store.project_workspace('project-sneaky')
 
     def test_legacy_projects_folder_is_read_only(self):
         legacy = self.root / 'projects' / 'old'

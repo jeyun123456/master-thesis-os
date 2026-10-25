@@ -35,7 +35,14 @@ type GoogleEvent = {
 };
 type FetchLike = typeof fetch;
 type CalendarOptions = { fetchImpl?: FetchLike; now?: Date; bypassCache?: boolean; startDate?: string };
-type CalendarConfig = { serviceAccountEmail: string; privateKey: string; calendarIds: string[] };
+type CalendarConfig = {
+  serviceAccountEmail: string;
+  privateKey: string;
+  oauthClientId: string;
+  oauthClientSecret: string;
+  oauthRefreshToken: string;
+  calendarIds: string[];
+};
 type GoogleCalendarRequester = Awaited<ReturnType<typeof createGoogleCalendarSession>>;
 type CacheEntry = { expiresAt: number; items: CalendarEvent[] };
 
@@ -71,13 +78,22 @@ function config(): CalendarConfig {
   return {
     serviceAccountEmail: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim() || '',
     privateKey: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || '',
+    oauthClientId: process.env.GOOGLE_CLIENT_ID?.trim() || '',
+    oauthClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+    oauthRefreshToken: process.env.GOOGLE_REFRESH_TOKEN || '',
     calendarIds: parseCalendarIds(process.env.GOOGLE_CALENDAR_IDS, process.env.GOOGLE_CALENDAR_ID),
   };
 }
 
+function credentialsConfigured(value: CalendarConfig): boolean {
+  const oauth = Boolean(value.oauthClientId && value.oauthClientSecret && value.oauthRefreshToken);
+  const serviceAccount = Boolean(value.serviceAccountEmail && value.privateKey);
+  return oauth || serviceAccount;
+}
+
 export function calendarConfigured(): boolean {
   const value = config();
-  return Boolean(value.serviceAccountEmail && value.privateKey && value.calendarIds.length);
+  return Boolean(credentialsConfigured(value) && value.calendarIds.length);
 }
 
 /** Kept for the existing API response contract; multi-calendar callers use calendar IDs internally. */
@@ -300,8 +316,8 @@ export async function createCalendarEvent(
   options: { fetchImpl?: FetchLike; now?: Date } = {},
 ): Promise<CalendarCreateResult> {
   const value = config();
-  if (!value.serviceAccountEmail || !value.privateKey || !value.calendarIds.length) {
-    throw new CalendarIntegrationError('auth_error', 'Google Calendar service account is not configured.');
+  if (!credentialsConfigured(value) || !value.calendarIds.length) {
+    throw new CalendarIntegrationError('auth_error', 'Google Calendar credentials are not configured.');
   }
   const normalized = normalizeCreateInput(input);
   const fetchImpl = options.fetchImpl || fetch;
@@ -349,8 +365,8 @@ export async function getCalendarEvents(days = DEFAULT_DAYS, options: CalendarOp
   const now = options.now || new Date();
   const value = config();
   const range = calendarRange(days, now, options.startDate);
-  if (!value.calendarIds.length) {
-    throw new CalendarIntegrationError('auth_error', 'Google Calendar service account is not configured.');
+  if (!credentialsConfigured(value) || !value.calendarIds.length) {
+    throw new CalendarIntegrationError('auth_error', 'Google Calendar credentials are not configured.');
   }
   const cacheKey = `${value.calendarIds.join(',')}:${range.days}:${range.timeMin}`;
   const cached = cache.get(cacheKey);

@@ -10,6 +10,7 @@ import {
   getCalendarEvents,
   type CalendarCreateInput,
 } from '@/lib/calendar';
+import { requireP0Session, sameOriginMutationError } from '@/lib/p0-server';
 
 export const runtime = 'nodejs';
 
@@ -44,6 +45,8 @@ function calendarWriteErrorMessage(errorCode: string): string {
 }
 
 export async function GET(req: NextRequest) {
+  const authError = await requireP0Session(req);
+  if (authError) return authError;
   const requestedMonth = req.nextUrl.searchParams.get('month') || '';
   const requestedDays = Number(req.nextUrl.searchParams.get('days') || 14);
   const requestedStartDate = req.nextUrl.searchParams.get('startDate') || '';
@@ -69,6 +72,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const originError = sameOriginMutationError(req);
+  if (originError) return originError;
+  const authError = await requireP0Session(req);
+  if (authError) return authError;
   if (!calendarConfigured()) {
     return NextResponse.json({ ok: false, errorCode: 'auth_error', error: 'Google Calendar 설정이 필요해.' }, { status: 503 });
   }

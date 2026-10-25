@@ -4,8 +4,8 @@
 
 ## 제품 버전
 
-- Master Thesis OS 웹 앱: `1.3.0` — canonical source는 root `package.json`
-- Wallpaper Companion: `0.6.1` — canonical source는 `experiments/wallpaper-host-poc/WallpaperHostPoc.csproj`
+- Master Thesis OS 웹 앱: `1.4.0` — canonical source는 root `package.json`
+- Wallpaper Companion은 1.4.0에서 제거됐다. 과거 `v0.6.1` 태그와 Release는 기록으로 보존한다.
 - 버전 규칙과 release 절차: [`VERSIONING.md`](./VERSIONING.md)
 
 ## 구성
@@ -65,9 +65,12 @@ GitHub·Google·AI provider 비밀값은 `.env.local` 또는 배포 플랫폼의
 | `GITHUB_WRITE_ENABLED` | 아니오 | 기본 `false`. 보호된 개인 배포에서만 `true`로 설정해 프로젝트 상태·바로가기 변경을 GitHub에 저장 |
 | `GITHUB_RESULTS_PATH` | 아니오 | 프로젝트별 경로가 없을 때 사용하는 전역 dashboard fallback. 기본값 `02_Projects/thesis/코드/결과/주요결과/dashboard` |
 | `LOCAL_REPOSITORY_ROOT` | 로컬 Vault 모드·fallback/exporter 시 | 기존 `Obsidian-Vault` checkout의 절대 경로. Vercel에는 설정하지 않음 |
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Calendar 연결 시 | Google Service Account 이메일 |
-| `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | Calendar 연결 시 | Service Account RS256 private key. Vercel에서는 `\n` escape를 허용 |
-| `GOOGLE_CALENDAR_IDS` | Calendar 연결 시 | 쉼표로 구분한 하나 이상의 Calendar ID. 읽기와 메일 후보 등록에 사용 |
+| `GOOGLE_CLIENT_ID` | OAuth Calendar 연결 시 | Google OAuth client ID. 서버 전용 |
+| `GOOGLE_CLIENT_SECRET` | OAuth Calendar 연결 시 | Google OAuth client secret. 서버 전용 |
+| `GOOGLE_REFRESH_TOKEN` | OAuth Calendar 연결 시 | Calendar read/write consent가 포함된 user refresh token. 서버 전용 |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Service Account fallback 시 | Google Service Account 이메일 |
+| `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | Service Account fallback 시 | Service Account RS256 private key. Vercel에서는 `\n` escape를 허용 |
+| `GOOGLE_CALENDAR_IDS` | Calendar 연결 시 | 쉼표로 구분한 하나 이상의 Calendar ID. OAuth에서는 `primary` 사용 가능 |
 | `GOOGLE_CALENDAR_ID` | 임시 fallback | 기존 단일 Calendar ID. `GOOGLE_CALENDAR_IDS`가 우선 |
 | `MAIL_AI_PROVIDER` | AI 사용 시 | `codex-cli`이면 설치된 Codex CLI를 사용하고, 비워두면 OpenAI-compatible HTTP provider를 사용 |
 | `MAIL_AI_API_URL` | HTTP provider 사용 시 | 로컬 `local-bridge/mail_cli.py`가 호출하는 OpenAI-compatible chat JSON endpoint |
@@ -133,21 +136,46 @@ shared/shortcuts.md
 
 자료실 검색창은 한국어·일본어 IME 조합 중 Enter/Escape와 전역 단축키 처리를 중지하고 composition이 끝난 뒤에만 처리한다. 따라서 조합 중인 입력이 검색어를 지우거나 제출하는 문제를 피한다.
 
+## P1·P2: 연구 칸반, AI 인박스, AI Worker
+
+연구 탭은 6단계 칸반(기획·자료 수집·분석·해석·집필·완료, 단계가 없으면 "단계 미확인")으로 시작하고, 카드를 누르면 전체 화면 프로젝트 상세로 들어간다. 카드의 다음 실행 작업·남은 할 일·가까운 마감은 P0 할 일 중 `project_id`가 그 프로젝트인 것만 집계한다.
+
+메모·마일스톤·AI 인박스·승인·작업 확장 정보는 별도 서비스 [`services/mtos-agent`](./services/mtos-agent/README.md)가 서버 PC에서 소유한다. P0는 여전히 할 일과 세션의 유일한 원본이고, AI는 P0·Vault·Calendar에 직접 쓰지 않는다. 브라우저는 `/api/mtos/*`(P0 세션을 bearer로 전달)와 `/api/obsidian/*`를 통해서만 접근한다. 운영 배포 순서와 요구사항별 상태는 [`docs/p1-p2-final.md`](./docs/p1-p2-final.md)를 따른다.
+
 ## 프로젝트 작업공간
 
 연구 탭은 `projects/<project-id>/project.md`를 자동 발견한다. Home 상단에는 `writing` 또는 `active` 상태인 프로젝트를 표시하고, 연구 탭의 상태 선택기는 해당 manifest의 frontmatter `status`만 수정한다. 제목·질문·결과 경로 등 나머지 Markdown은 그대로 보존한다. 상태 저장에도 파일 SHA를 사용하므로 다른 편집이 먼저 반영된 경우 덮어쓰지 않는다. 프로젝트가 표준 결과를 가지면 분석 결과 탭에서 기존 dashboard fallback과 함께 선택할 수 있다.
 
 ## Google Calendar
 
-Calendar 연결은 Service Account JWT bearer 인증을 사용하는 서버 전용 읽기·쓰기 방식이다. 사용자 OAuth와 refresh token이 runtime 경로에 필요하지 않으므로 반복 재인증에 의존하지 않는다.
+Calendar 연결은 서버에서만 수행한다. **사용자 OAuth refresh token을 우선 사용**하고, OAuth 3종 값이 없을 때만 기존 Service Account JWT 경로를 fallback으로 사용한다. 두 방식 모두 Calendar API read/write scope(`https://www.googleapis.com/auth/calendar`)를 전제로 하며 access token은 서버 메모리에서만 캐시한다.
 
-### Service Account 설정
+### 사용자 OAuth 설정(권장)
 
-1. [Google Cloud Console](https://console.cloud.google.com/)에서 project를 만들거나 선택한다.
-2. API Library에서 **Google Calendar API**를 활성화한다.
-3. IAM 및 관리자 → **Service Accounts**에서 Service Account를 만들고 credentials를 생성한다. JSON key 파일은 로컬에서만 사용하며 Git에 추가하지 않는다.
-4. 사용할 각 Google Calendar의 **Settings and sharing → Share with specific people**에서 Service Account 이메일을 추가하고 **Make changes to events** 권한을 부여한다.
-5. `.env.example`을 `.env.local`로 복사하고 서버 환경변수에 다음 값을 설정한다.
+이미 Google OAuth 인증을 완료해 refresh token을 확보했다면 Vercel Production/Preview와 로컬 `.env.local`에 다음 값을 넣는다. 이 값들은 절대 `NEXT_PUBLIC_`로 노출하지 않는다.
+
+```dotenv
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REFRESH_TOKEN=...
+GOOGLE_CALENDAR_IDS=primary
+```
+
+- `GOOGLE_REFRESH_TOKEN`은 사용하는 Google 기능의 consent scope가 포함된 계정에서 발급된 값이어야 한다. 현재 통합은 Calendar read/write, Gmail read-only, Drive read-only를 사용한다.
+- 개인 기본 캘린더만 쓰면 `GOOGLE_CALENDAR_IDS=primary`가 가장 단순하다.
+- 여러 캘린더를 함께 보려면 `primary,research-id@group.calendar.google.com`처럼 쉼표로 추가한다.
+- OAuth와 Service Account 변수가 모두 있으면 **OAuth가 우선**한다. 따라서 전환 중에도 기존 Service Account 값을 잠시 남겨둘 수 있다.
+
+서버는 refresh token을 `https://oauth2.googleapis.com/token`에 `grant_type=refresh_token`으로 교환해 access token을 얻는다. 같은 OAuth credential을 Calendar, Gmail read-only, Drive read-only에서 재사용한다. client secret·refresh token·access token은 브라우저 응답이나 로그에 출력하지 않는다. access token은 만료 직전까지 best-effort 메모리 cache하며, Vercel 인스턴스가 재시작되면 refresh token으로 다시 발급한다.
+
+### Service Account fallback
+
+OAuth를 쓰지 않는 배포에서는 기존 방식도 그대로 동작한다.
+
+1. Google Cloud Console에서 Calendar API를 활성화한다.
+2. Service Account와 JSON key를 만든다.
+3. 대상 Calendar의 **Settings and sharing → Share with specific people**에서 Service Account 이메일을 추가하고 **Make changes to events** 권한을 준다.
+4. 다음 서버 환경변수를 설정한다.
 
 ```dotenv
 GOOGLE_SERVICE_ACCOUNT_EMAIL=service-account@example.iam.gserviceaccount.com
@@ -155,46 +183,59 @@ GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END P
 GOOGLE_CALENDAR_IDS=calendar-id@example.com,research-id@group.calendar.google.com
 ```
 
-`GOOGLE_CALENDAR_IDS`는 쉼표 구분 목록이며 공백·빈 항목은 무시하고 중복 ID는 한 번만 조회한다. 현재 하나의 Calendar만 사용한다면 ID 하나만 넣으면 된다. Service Account에는 사용자의 `primary` calendar라는 개념이 없으므로 실제 Calendar ID를 공유해야 한다. 기존 설정을 잠시 유지해야 하는 경우 `GOOGLE_CALENDAR_ID`를 단일 ID fallback으로 사용할 수 있지만, 새 배포에서는 `GOOGLE_CALENDAR_IDS`를 사용한다.
+Service Account에는 사용자 `primary` 개념이 없으므로 실제 Calendar ID를 공유해야 한다. 기존 단일 ID 설정은 `GOOGLE_CALENDAR_ID`가 임시 fallback으로 남아 있지만 새 설정은 `GOOGLE_CALENDAR_IDS`를 사용한다.
+
+### 동작과 검증
 
 개발 서버를 재시작한 뒤 `http://localhost:3000/api/calendar/events?days=14`를 연다. 정상 연결이면 `state`가 `ready` 또는 `empty`이고, Home에 Today, Upcoming, Next Deadline 카드가 표시된다. API의 `days`는 1~365 범위로 제한되며 기본값은 14다.
 
-서버는 Service Account private key로 RS256 JWT를 만들고 Google token endpoint에서 access token을 교환한다. private key와 access token은 서버 메모리에서만 사용하며 브라우저 응답·로그·client bundle에 포함하지 않는다. access token은 만료 직전까지 best-effort 메모리 cache되며, Vercel 인스턴스가 새로 시작해 cache가 없어도 정상적으로 다시 발급한다. 일정 결과는 서버 메모리에 5분간 cache된다.
+여러 Calendar를 설정하면 각 Calendar의 `events.list`를 `singleEvents=true`, `orderBy=startTime`으로 조회한 뒤 하나의 목록으로 합치고 Asia/Seoul 기준 시작 시간으로 정렬한다. 반환 이벤트에는 source `calendarId`가 유지되며 동일 Calendar·event ID·시작 시각만 중복 제거한다. 한 Calendar 조회가 실패해도 성공한 Calendar의 일정은 반환하고, 모든 Calendar가 실패하면 API는 오류 상태를 반환한다.
 
-여러 Calendar를 설정하면 각 Calendar의 `events.list`를 `singleEvents=true`, `orderBy=startTime`으로 조회한 뒤 하나의 목록으로 합치고 Asia/Seoul 기준 시작 시간으로 정렬한다. 반환 이벤트에는 source `calendarId`가 유지되며, 동일 Calendar·event ID·시작 시각만 중복 제거한다. 한 Calendar 조회가 실패해도 성공한 Calendar의 일정은 반환하고 서버에 비민감 진단만 남긴다. 모든 Calendar가 실패하면 API는 오류 상태를 반환한다.
+메일·학교 공지에서 검토한 일정 후보를 추가할 때는 첫 번째 `GOOGLE_CALENDAR_IDS` 대상에 `events.insert`를 호출한다. 메일 ID와 candidate ID로 결정적 event ID를 만들어 재시도 시 중복 등록을 피한다.
 
-표시는 `Asia/Seoul` 기준이다. 날짜만 있는 all-day event는 자정 변환 없이 해당 calendar 날짜를 유지한다. 제목·설명에 포함된 한글/영문 키워드로 Meeting, Deadline, Research, Presentation, Other를 분류하지만 Google Calendar 원본은 수정하지 않는다.
+표시는 `Asia/Seoul` 기준이다. 날짜만 있는 all-day event는 자정 변환 없이 해당 calendar 날짜를 유지한다. 제목·설명 키워드로 Meeting, Deadline, Research, Presentation, Other를 분류하지만 Google Calendar 원본은 수정하지 않는다.
 
 상태별 동작은 다음과 같다.
 
-- `unconfigured`: 환경변수 미설정
+- `unconfigured`: OAuth/Service Account 또는 Calendar ID 환경변수 미설정
 - `empty`: 연결은 정상이지만 조회 기간에 일정 없음
-- `auth_error`: Service Account 인증 또는 Calendar 공유 권한 문제
-- `invalid_calendar`: 잘못된 Calendar ID 또는 해당 Service Account에 공유되지 않은 Calendar
+- `auth_error`: OAuth refresh token/client credential 문제, Service Account 인증 문제 또는 공유 권한 문제
+- `insufficient_permissions`: OAuth consent scope 또는 Calendar 권한 부족
+- `invalid_calendar`: 잘못된 Calendar ID 또는 접근할 수 없는 Calendar
 - `quota_error`: Calendar API quota/rate limit
 - `network_error`: Google endpoint 연결 실패 또는 기타 upstream 오류
 - `malformed_response`: token/event 응답 형식이 예상 계약과 다름
 
-기준 문서는 [Service Account OAuth 2.0](https://developers.google.com/identity/protocols/oauth2/service-account), [Calendar API 인증](https://developers.google.com/workspace/calendar/api/auth), [Events.list reference](https://developers.google.com/calendar/api/v3/reference/events/list), [Events.insert reference](https://developers.google.com/calendar/api/v3/reference/events/insert)다.
+### 기존 Service Account 배포에서 OAuth로 전환
 
-### 다른 Calendar 추가
-
-1. 새 Calendar를 같은 Service Account 이메일에 **Make changes to events** 권한으로 공유한다.
-2. 해당 Calendar ID를 `GOOGLE_CALENDAR_IDS` 쉼표 목록에 추가한다.
-3. Vercel 환경변수를 갱신하고 필요하면 재배포한다.
-
-기존 OAuth runtime 경로(`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`)는 Service Account 전환으로 더 이상 사용하지 않는다. 배포 검증 후 Vercel과 로컬 `.env.local`에서 제거할 수 있다. `GOOGLE_CALENDAR_ID`는 구버전 단일 ID의 임시 fallback으로만 남아 있다.
-
-환경변수 migration:
+기존 Calendar 코드는 그대로 두고 환경변수만 다음처럼 추가하면 된다.
 
 ```text
-GOOGLE_CLIENT_ID                  -> 제거
-GOOGLE_CLIENT_SECRET              -> 제거
-GOOGLE_REFRESH_TOKEN              -> 제거
-GOOGLE_CALENDAR_ID                -> GOOGLE_CALENDAR_IDS (쉼표 구분)
-신규 GOOGLE_SERVICE_ACCOUNT_EMAIL -> Service Account 이메일
-신규 GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY -> RS256 private key
+GOOGLE_CLIENT_ID       -> 추가
+GOOGLE_CLIENT_SECRET   -> 추가
+GOOGLE_REFRESH_TOKEN   -> 추가
+GOOGLE_CALENDAR_IDS    -> 유지 (개인 기본 캘린더라면 primary 가능)
+
+GOOGLE_SERVICE_ACCOUNT_EMAIL        -> OAuth 검증 후 제거 가능
+GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY  -> OAuth 검증 후 제거 가능
 ```
+
+OAuth live 검증이 끝나기 전까지 Service Account 변수를 남겨도 된다. OAuth가 완전하게 설정된 동안에는 OAuth가 우선되므로 fallback credential은 사용되지 않는다.
+
+기준 문서는 Google OAuth 2.0, OAuth refresh token, Calendar API, Gmail API, Drive API reference다. 자료실의 Google Drive 카드는 `drive.readonly` 범위에서 최근 수정 파일 metadata를 조회하고 원본 수정·삭제는 하지 않는다. 선택한 Google Docs·Slides는 plain text, Google Sheets는 첫 시트를 CSV, `text/*`·JSON/XML/JavaScript 파일은 원문 텍스트로 읽어 최대 200,000자까지 미리보기·내부 검색에 사용한다. 통합 연구자료 검색은 Drive API의 `fullText contains`/`name contains` 인덱스로 후보를 찾은 뒤 읽을 수 있는 상위 문서의 실제 본문에서 최대 3개 문맥 스니펫을 만든다. PDF와 기타 binary 파일은 Drive 인덱스 검색 결과에는 포함될 수 있지만 본문 텍스트 추출은 하지 않는다.
+
+## Drive 연구 Q&A 모델 라우팅
+
+자료실의 Drive 통합 검색 결과는 Local Bridge의 Codex CLI로 넘겨 근거 기반 연구 Q&A에 사용할 수 있다. Google OAuth credential이나 Drive 원문 전체를 Local Bridge에 직접 전달하지 않고, 웹에서 검색된 최대 8개 자료의 제한된 문맥 스니펫만 전달한다.
+
+- **Luna 답변**: 기본 경로. `gpt-6-luna`를 사용한다. 일반적인 자료 찾기, 요약, 비교, 간단한 해석에 사용한다.
+- **Sol 정밀 분석**: 사용자가 명시적으로 선택할 때만 `gpt-6.1-sol`을 사용한다. 복잡한 논증 비교, 비판, 이론적 함의 검토용이다.
+- 두 모델 모두 Codex CLI의 기본 reasoning 설정을 사용한다.
+- 답변기는 제공된 Drive 근거만 사용하도록 프롬프트가 고정되어 있고, 근거가 부족하면 부족하다고 표시한다.
+- PDF처럼 Drive 인덱스에서만 검색된 자료는 `indexedOnly`로 전달되어 내용 근거로 추정하지 않는다.
+- 연구 Q&A 응답에는 사용 모델, 근거 source ID, 근거 부족 여부를 함께 반환한다.
+
+이 기능은 Local Bridge API v8의 `POST /research/answer`를 사용한다. 따라서 Local Bridge를 v8 코드로 업데이트하고 재시작해야 한다. Codex CLI에서 해당 모델에 대한 계정 접근 권한이 없으면 그 모드만 실패하며 다른 모델로 자동 강등하지 않는다.
 
 ## Microsoft 365 학교 메일 Graph 연결(선택)
 
@@ -241,16 +282,16 @@ Copy-Item config.example.json config.json
 python bridge.py
 ```
 
-Wallpaper Companion과 Bridge tray는 다음 공용 설정을 우선 사용한다.
-`%LOCALAPPDATA%\MasterThesisOSWallpaper\bridge\config.json`이 없으면 기존 `local-bridge\config.json`을 fallback으로 사용한다. 공용 config가 존재하면 유효성 오류가 있어도 다른 config로 조용히 fallback하지 않는다. 다른 위치를 사용해야 하면 `MTO_BRIDGE_CONFIG` 환경변수로 config 경로를 지정할 수 있으며, override가 설정되면 해당 경로만 사용한다. Companion 설치 시 기존 local config가 공용 위치에 없을 때만 한 번 복사하며, 기존 공용 config는 덮어쓰지 않는다.
+Bridge launcher와 tray는 다음 공용 설정을 우선 사용한다. 폴더 이름의 `Wallpaper`는 기존 사용자 데이터 위치를 유지하기 위한 호환 경로이며 Companion 의존성이 아니다.
+`%LOCALAPPDATA%\MasterThesisOSWallpaper\bridge\config.json`이 없으면 기존 `local-bridge\config.json`을 fallback으로 사용한다. 공용 config가 존재하면 유효성 오류가 있어도 다른 config로 조용히 fallback하지 않는다. 다른 위치를 사용해야 하면 `MTO_BRIDGE_CONFIG` 환경변수로 config 경로를 지정할 수 있으며, override가 설정되면 해당 경로만 사용한다.
 
-`token`은 32자 이상의 임의 문자열이어야 한다. Companion과 Bridge는 선택된 동일 config를 사용하며, token은 공백을 임의로 제거하지 않는다. 설정 파일을 변경한 뒤에는 실행 중인 Bridge와 tray를 다시 시작한다.
+`token`은 32자 이상의 임의 문자열이어야 한다. Bridge launcher와 tray는 선택된 동일 config를 사용하며, token은 공백을 임의로 제거하지 않는다. 설정 파일을 변경한 뒤에는 실행 중인 Bridge와 tray를 다시 시작한다.
 
 ```powershell
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. 새 메일 분석 UI는 `GET /mail/sync-status`, `GET /mail/analysis`, `GET /mail/analysis/<mail-id>`, `GET /mail/planning`, `POST /mail/sync`, `POST /mail/analysis/<mail-id>/reanalyze`, `POST /mail/analysis/candidate`, `POST /mail/task`를 사용한다. `/mail/sync`는 background job으로 `mail_cli.py`를 실행하고, 상태는 `mail-analysis.db`에서 polling한다. 기존 `POST /mail/recent`, `/mail/message`, `/mail/open`은 Thunderbird 열기·호환용으로 남아 있지만 새 동기화 UI의 수집 경로가 아니다. 메일 endpoint는 경로·본문·제목·발신자·token을 로그에 남기지 않는다. Settings의 token은 `보기/숨기기`와 `복사`로 관리할 수 있고, Local Bridge tray와 Wallpaper Companion tray의 **Bridge token 보기/복사**에서도 로컬 config 값을 확인·복사할 수 있다. token을 HTTP endpoint나 원격 페이지에 자동 노출하지는 않는다. 실제 `config.json`은 git에서 제외된다.
+브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. 새 메일 분석 UI는 `GET /mail/sync-status`, `GET /mail/analysis`, `GET /mail/analysis/<mail-id>`, `GET /mail/planning`, `POST /mail/sync`, `POST /mail/analysis/<mail-id>/reanalyze`, `POST /mail/analysis/candidate`, `POST /mail/task`를 사용한다. `/mail/sync`는 background job으로 `mail_cli.py`를 실행하고, 상태는 `mail-analysis.db`에서 polling한다. 기존 `POST /mail/recent`, `/mail/message`, `/mail/open`은 Thunderbird 열기·호환용으로 남아 있지만 새 동기화 UI의 수집 경로가 아니다. 메일 endpoint는 경로·본문·제목·발신자·token을 로그에 남기지 않는다. Settings의 token은 `보기/숨기기`와 `복사`로 관리할 수 있고, Local Bridge tray의 **Bridge token 보기/복사**에서도 로컬 config 값을 확인·복사할 수 있다. token을 HTTP endpoint나 원격 페이지에 자동 노출하지는 않는다. 실제 `config.json`은 git에서 제외된다.
 
 ## RITSUMEIKAN 학교 공지
 
@@ -328,9 +369,9 @@ Calendar 후보는 사용자가 제목·날짜·시간을 확인·수정한 뒤 
 
 ### 브리지 상시 실행
 
-Windows에서 `local-bridge/start_bridge.bat`을 실행하면 설정을 확인한 뒤 브리지를 계속 실행한다. 브리지가 일시적인 오류로 종료되면 3초 후 자동으로 재시작하지만, `config.json` 영구 설정 오류는 exit code 78로 식별해 재시작하지 않는다. 콘솔 없이 실행하려면 `start_bridge_hidden.vbs`를 사용한다. 시스템 트레이 아이콘과 상태 확인·종료 메뉴를 쓰려면 `start_bridge_tray.vbs`를 사용한다. Local Bridge tray 또는 Wallpaper Companion tray의 **Bridge token 복사**를 누른 뒤 Production Settings의 **붙여넣기**와 **저장**을 누르면 토큰을 설정할 수 있다. 브라우저 보안상 트레이가 웹페이지에 token을 자동 주입하지는 않는다. 트레이에서 상태 확인을 누르면 공용 또는 override config의 `port`를 사용하며, 생략 시 `38471`을 사용한다. 잘못된 port는 트레이에 설정 오류로 표시된다. 설정 오류 balloon이 표시되면 `config.json`을 수정한 뒤 트레이 실행기를 다시 시작한다. Windows 로그인 때마다 트레이 실행기를 자동 시작하려면 해당 VBS 파일의 바로가기를 `Win+R` → `shell:startup` 폴더에 넣는다. 일반 브라우저 개발 시에는 `start_bridge.bat`을 사용하고, 중지는 콘솔 창에서 `Ctrl+C` 또는 창 닫기로 수행한다.
+Windows에서 `local-bridge/start_bridge.bat`을 실행하면 설정을 확인한 뒤 브리지를 계속 실행한다. 브리지가 일시적인 오류로 종료되면 3초 후 자동으로 재시작하지만, `config.json` 영구 설정 오류는 exit code 78로 식별해 재시작하지 않는다. 콘솔 없이 실행하려면 `start_bridge_hidden.vbs`를 사용한다. 시스템 트레이 아이콘과 상태 확인·종료 메뉴를 쓰려면 `start_bridge_tray.vbs`를 사용한다. Local Bridge tray의 **Bridge token 복사**를 누른 뒤 Production Settings의 **붙여넣기**와 **저장**을 누르면 토큰을 설정할 수 있다. 브라우저 보안상 트레이가 웹페이지에 token을 자동 주입하지는 않는다. 트레이에서 상태 확인을 누르면 공용 또는 override config의 `port`를 사용하며, 생략 시 `38471`을 사용한다. 잘못된 port는 트레이에 설정 오류로 표시된다. 설정 오류 balloon이 표시되면 `config.json`을 수정한 뒤 트레이 실행기를 다시 시작한다. Windows 로그인 때마다 트레이 실행기를 자동 시작하려면 해당 VBS 파일의 바로가기를 `Win+R` → `shell:startup` 폴더에 넣는다. 일반 브라우저 개발 시에는 `start_bridge.bat`을 사용하고, 중지는 콘솔 창에서 `Ctrl+C` 또는 창 닫기로 수행한다.
 
-Wallpaper Companion의 설치된 `app\bridge-runtime`은 release 시점의 브리지 사본이다. 브리지 모듈을 추가·변경한 뒤에는 `experiments/wallpaper-host-poc/scripts/Install-WallpaperHost.ps1`로 Companion을 다시 설치하거나, 기존 브리지 프로세스를 종료하고 `local-bridge/start_bridge.bat`을 다시 실행해야 한다. `/health`가 응답하더라도 구버전 사본이면 새 메일·학교 공지 endpoint가 404가 될 수 있다.
+Windows에서 상시 실행할 때는 `local-bridge/Install-StandaloneBridge.ps1`로 브리지를 `%LOCALAPPDATA%\MasterThesisOS\bridge-runtime`에 복사하고 Startup 바로가기를 그 위치로 연결한다. 설치본은 복사 시점의 사본이므로 브리지 모듈을 바꾼 뒤에는 스크립트를 다시 실행하고 tray를 재시작해야 한다. 런타임 `data\`의 기존 DB는 덮어쓰지 않는다. `/health`가 응답하더라도 구버전 사본이면 새 endpoint가 404가 될 수 있다.
 
 ## Sucrose 설정
 
@@ -461,7 +502,7 @@ Calc result workbook
 - [x] Calendar, Results, GitHub 미설정·빈 결과·오류 상태 처리
 - [x] `.env.local`과 `local-bridge/config.json`이 Git에서 제외되고 client bundle에 server secret을 넣지 않음
 - [x] production build와 자동 테스트 통과
-- [ ] Calendar Service Account live data: Service Account에 Calendar를 공유하고 `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`, `GOOGLE_CALENDAR_IDS`를 Vercel에 설정한 뒤 `/api/calendar/events?days=14`가 `ready` 또는 `empty`를 반환하는지 확인
+- [ ] Calendar OAuth live data: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `GOOGLE_CALENDAR_IDS`를 Vercel에 설정한 뒤 `/api/calendar/events?days=14`가 `ready` 또는 `empty`를 반환하는지 확인
 - [x] bridge startup: `local-bridge/config.json` 설정 후 `python bridge.py`, `/health` 확인
 
 Release 직전에는 `git status`, `/api/results`, `/api/calendar/events?days=14`, `/api/github/tree`, `http://127.0.0.1:38471/health`를 다시 확인한다. GitHub와 로컬 파일의 공통 식별자는 repository root 기준 `/` 구분 상대경로다.

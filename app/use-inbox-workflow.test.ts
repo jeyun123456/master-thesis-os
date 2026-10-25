@@ -42,9 +42,13 @@ vi.mock('../lib/inbox-ai-client', () => ({
 }));
 
 vi.mock('../lib/planner-tasks-client', () => ({
-  addPlannerTask: (task: unknown) => mockHooks.services.addPlannerTask(task),
-  syncInboxPlannerTasks: () => mockHooks.services.syncInboxPlannerTasks(),
-  updatePlannerTaskProject: (taskId: string, projectId: string) => mockHooks.services.updatePlannerTaskProject(taskId, projectId),
+  loadPlannerTaskStore: () => mockHooks.services.loadPlannerTaskStore(),
+}));
+
+vi.mock('../lib/p0-tasks-client', () => ({
+  p0InboxTaskId: (entryId: string) => `inbox-${entryId.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 180)}`,
+  createP0Task: (body: unknown) => mockHooks.services.createP0Task(body),
+  updateP0Task: (id: string, body: unknown) => mockHooks.services.updateP0Task(id, body),
 }));
 
 vi.mock('../lib/calendar-client', () => ({
@@ -79,9 +83,9 @@ type InboxDeps = {
   savePersistedInbox: (entries: InboxEntry[]) => Promise<InboxEntry[]>;
   deletePersistedInboxEntry: (entryId: string) => Promise<InboxEntry[]>;
   organizeInboxEntries: (entries: InboxEntry[], token: string) => Promise<InboxSuggestion[]>;
-  addPlannerTask: (task: unknown) => Promise<unknown>;
-  syncInboxPlannerTasks: () => Promise<unknown>;
-  updatePlannerTaskProject: (taskId: string, projectId: string) => Promise<unknown>;
+  loadPlannerTaskStore: () => Promise<{ tasks: Array<{ id: string }>; deletedTaskIds: string[] }>;
+  createP0Task: (body: unknown) => Promise<{ task: { id: string; version: number; title: string } }>;
+  updateP0Task: (id: string, body: unknown) => Promise<unknown>;
   addCalendarEvent: (input: unknown) => Promise<unknown>;
   projects: Array<{ id: string; title: string }>;
   now: () => Date;
@@ -218,15 +222,18 @@ function makeServices(overrides: Partial<InboxDeps> = {}) {
       calls.events.push('organize');
       return [];
     },
-    addPlannerTask: async (task) => {
-      const taskId = typeof task === 'object' && task !== null && 'id' in task ? String(task.id) : 'unknown';
-      calls.events.push(`planner:${taskId}`);
+    loadPlannerTaskStore: async () => {
+      calls.events.push('load-planner');
+      return { tasks: [], deletedTaskIds: [] };
     },
-    syncInboxPlannerTasks: async () => {
-      calls.events.push('sync-planner');
+    createP0Task: async (body) => {
+      const task = typeof body === 'object' && body !== null && 'id' in body ? String(body.id) : 'unknown';
+      calls.events.push(`p0-create:${task}`);
+      return { task: { id: task, version: 1, title: task } };
     },
-    updatePlannerTaskProject: async (taskId, projectId) => {
-      calls.events.push(`project:${taskId}:${projectId}`);
+    updateP0Task: async (taskId, body) => {
+      const projectId = typeof body === 'object' && body !== null && 'changes' in body && typeof body.changes === 'object' && body.changes !== null && 'project_id' in body.changes ? String(body.changes.project_id) : 'unknown';
+      calls.events.push(`p0-project:${taskId}:${projectId}`);
     },
     addCalendarEvent: async (input) => {
       const eventId = typeof input === 'object' && input !== null && 'mailId' in input ? String(input.mailId) : 'unknown';
@@ -556,11 +563,12 @@ describe('Inbox workflow behavior after extraction', () => {
     expect(applied.map((entry) => entry.rawText)).toEqual(['초안 작성', '2026-11-03 14:00 lab meeting', 'next Friday meeting', 'reference note']);
     expect(applied.find((entry) => entry.id === relative.id)?.ai?.dueDate).toBe(null);
     expect(applied.find((entry) => entry.id === other.id)?.ai?.nextAction).toBe('');
+    expect(applied.find((entry) => entry.id === todo.id)?.p0TaskId).toBe('inbox-todo-1');
     expect(stateValue(controller, 'inboxStorageStatus')).toBe('failed');
     expect(stateValue(controller, 'inboxStorageError')).toBe('Vault write failed');
-    expect(services.calls.events).toEqual(['vault-save', 'planner:inbox:todo-1', 'calendar:inbox:schedule-1']);
-    expect(stateValue(controller, 'inboxRouteMessage')).toBe('분류 저장 완료 · Planner 1건 · Calendar 1건. 원문에 명시된 날짜를 등록하고, 시간이 없으면 종일 일정으로 저장해.');
-    expect(stateValue(controller, 'toast')).toBe('GPT 정리와 가능한 자동 전달을 마쳤어. 원문은 보존했어.');
+    expect(services.calls.events).toEqual(['vault-save', 'load-planner', 'p0-create:inbox-todo-1', 'calendar:inbox:schedule-1', 'vault-save']);
+    expect(stateValue(controller, 'inboxRouteMessage')).toBe('분류는 저장했어. 자동 전달 실패 1건: P0 할 일은 저장됐지만 Inbox의 중복 방지 표식을 Vault에 저장하지 못했어.');
+    expect(stateValue(controller, 'toast')).toBe('분류는 끝났어. 자동 전달 경고를 확인해줘.');
     expect(stateValue(controller, 'inboxPreview')).toBe(null);
     harness.unmount();
   });
@@ -593,9 +601,9 @@ describe('Inbox workflow behavior after extraction', () => {
       makeSuggestion(schedule.id, 'schedule', { title: 'Review', dueDate: '2026-11-03' }),
     ];
     const services = makeServices();
-    services.deps.addPlannerTask = async () => {
-      services.calls.events.push('planner-attempt');
-      throw new Error('Planner offline');
+    services.deps.createP0Task = async () => {
+      services.calls.events.push('p0-attempt');
+      throw new Error('P0 offline');
     };
     services.deps.addCalendarEvent = async () => {
       services.calls.events.push('calendar-attempt');
@@ -608,11 +616,11 @@ describe('Inbox workflow behavior after extraction', () => {
 
     await action<() => Promise<void>>(controller, 'applyInboxPreview')();
     controller = current();
-    expect(services.calls.events).toEqual([`save:${todo.id},${schedule.id}`, 'planner-attempt', 'calendar-attempt']);
+    expect(services.calls.events).toEqual([`save:${todo.id},${schedule.id}`, 'load-planner', 'p0-attempt', 'calendar-attempt']);
     expect(services.calls.saves).toHaveLength(1);
     expect(stateValue(controller, 'inboxStorageStatus')).toBe('saved');
     expect(stateValue<InboxEntry[]>(controller, 'inboxEntries').every((entry) => entry.processed)).toBe(true);
-    expect(stateValue(controller, 'inboxRouteMessage')).toBe('분류는 저장했어. 자동 전달 실패 2건: Abstract → Planner: Planner offline · Review → Calendar: Calendar quota');
+    expect(stateValue(controller, 'inboxRouteMessage')).toBe('분류는 저장했어. 자동 전달 실패 2건: Abstract → P0 SQLite: P0 offline · Review → Calendar: Calendar quota');
     harness.unmount();
   });
 
@@ -672,8 +680,8 @@ describe('Inbox workflow behavior after extraction', () => {
 
     await action<(entryId: string, projectId: string) => Promise<void>>(first.current(), 'addInboxTaskToProject')('association', 'project-1');
     let controller = first.current();
-    expect(services.calls.events).toEqual(['sync-planner', 'project:inbox:association:project-1']);
-    expect(stateValue(controller, 'toast')).toBe('Planner와 Project One 다음 작업에 연결했어.');
+    expect(services.calls.events).toEqual(['load-planner', 'p0-create:inbox-association', 'save:association', 'p0-project:inbox-association:project-1']);
+    expect(stateValue(controller, 'toast')).toBe('P0 할 일을 Project One 프로젝트에 연결했어.');
     expect(stateValue(controller, 'projectTaskSavingId')).toBe(null);
 
     services.calls.events.length = 0;
@@ -683,16 +691,24 @@ describe('Inbox workflow behavior after extraction', () => {
     expect(stateValue(controller, 'toast')).toBe('선택한 프로젝트를 찾지 못했어.');
     first.harness.unmount();
 
+    const legacyServices = makeServices();
+    legacyServices.deps.loadPlannerTaskStore = async () => ({ tasks: [{ id: 'inbox:association' }], deletedTaskIds: [] });
+    const legacy = makeActionHarness(legacyServices.deps, [todo]);
+    await action<(entryId: string, projectId: string) => Promise<void>>(legacy.current(), 'addInboxTaskToProject')('association', 'project-1');
+    expect(legacyServices.calls.events).toEqual([]);
+    expect(stateValue(legacy.current(), 'toast')).toBe('기존 Vault Planner 항목이 있어. 자동 복제는 막았고 원본은 그대로 뒀어.');
+    legacy.harness.unmount();
+
     const failingServices = makeServices();
-    failingServices.deps.syncInboxPlannerTasks = async () => {
-      failingServices.calls.events.push('sync-failed');
-      throw new Error('Planner sync failed');
+    failingServices.deps.loadPlannerTaskStore = async () => {
+      failingServices.calls.events.push('load-failed');
+      throw new Error('Planner read failed');
     };
     const second = makeActionHarness(failingServices.deps, [todo]);
     await action<(entryId: string, projectId: string) => Promise<void>>(second.current(), 'addInboxTaskToProject')('association', 'project-1');
     controller = second.current();
-    expect(failingServices.calls.events).toEqual(['sync-failed']);
-    expect(stateValue(controller, 'toast')).toBe('Planner sync failed');
+    expect(failingServices.calls.events).toEqual(['load-failed']);
+    expect(stateValue(controller, 'toast')).toBe('Planner read failed');
     expect(stateValue(controller, 'projectTaskSavingId')).toBe(null);
     second.harness.unmount();
   });

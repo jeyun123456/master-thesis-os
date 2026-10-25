@@ -1,49 +1,9 @@
-import { isAbsoluteLocalTarget, type Shortcut } from './shortcuts';
+import type { Shortcut } from './shortcuts';
 
-const CHANNEL = 'master-thesis-os.shortcuts.v1';
 const REQUEST_TIMEOUT_MS = 8000;
-const nativeIconCache = new Map<string, Promise<string | null>>();
 const steamIconCache = new Map<string, Promise<string | null>>();
 
-type WebViewMessageEvent = { data: unknown };
-type WebViewBridge = {
-  postMessage: (message: unknown) => void;
-  addEventListener: (name: 'message', listener: (event: WebViewMessageEvent) => void) => void;
-  removeEventListener: (name: 'message', listener: (event: WebViewMessageEvent) => void) => void;
-};
-
-type HostResponse = {
-  channel?: string;
-  requestId?: string;
-  ok?: boolean;
-  error?: string;
-  path?: string;
-  icon?: string;
-};
-
-export type PickShortcutResult = {
-  available: boolean;
-  path?: string;
-  icon?: string;
-  error?: string;
-};
-
-export async function pickShortcutTarget(kind: 'app' | 'file' | 'folder'): Promise<PickShortcutResult> {
-  const response = await requestHost('pick', { kind });
-  if (!response) return { available: false };
-  if (!response.ok) return { available: true, error: response.error || '대상을 선택하지 못했어.' };
-  return { available: true, path: response.path, icon: response.icon };
-}
-
 export async function launchExternalShortcut(shortcut: Shortcut): Promise<{ ok: boolean; message: string }> {
-  const embeddedWebView = getWebView() !== null;
-  const hostResponse = await requestHost('execute', { shortcut });
-  if (hostResponse) {
-    return hostResponse.ok
-      ? { ok: true, message: '실행했어.' }
-      : { ok: false, message: hostResponse.error || 'Windows에서 실행하지 못했어.' };
-  }
-
   try {
     const token = window.localStorage.getItem('thesisBridgeToken') || '';
     const base = process.env.NEXT_PUBLIC_LOCAL_BRIDGE_URL || 'http://127.0.0.1:38471';
@@ -73,29 +33,13 @@ export async function launchExternalShortcut(shortcut: Shortcut): Promise<{ ok: 
       window.clearTimeout(timeout);
     }
   } catch (error) {
-    if (shortcut.type === 'web' && !embeddedWebView) {
+    if (shortcut.type === 'web') {
       window.open(shortcut.target, '_blank', 'noopener,noreferrer');
       return { ok: true, message: '' };
     }
     if (error instanceof DOMException && error.name === 'AbortError') return { ok: false, message: '로컬 실행 요청 시간이 초과됐어.' };
-    return { ok: false, message: 'Windows Wallpaper Host 또는 로컬 브리지가 필요해.' };
+    return { ok: false, message: '로컬 브리지가 필요해. PC에서 bridge를 실행했는지 확인해줘.' };
   }
-}
-
-export function getNativeShortcutIcon(shortcut: Shortcut): Promise<string | null> {
-  if (!['app', 'file', 'folder'].includes(shortcut.type) || !isAbsoluteLocalTarget(shortcut.target)) {
-    return Promise.resolve(null);
-  }
-
-  const cacheKey = `${shortcut.type}:${shortcut.target}`;
-  const cached = nativeIconCache.get(cacheKey);
-  if (cached) return cached;
-
-  const pending = requestHost('icon', { path: shortcut.target }).then((response) => (
-    response?.ok && typeof response.icon === 'string' ? response.icon : null
-  ));
-  nativeIconCache.set(cacheKey, pending);
-  return pending;
 }
 
 export function getSteamShortcutIcon(target: string): Promise<string | null> {
@@ -115,37 +59,4 @@ export function getSteamShortcutIcon(target: string): Promise<string | null> {
     .catch(() => null);
   steamIconCache.set(appId, pending);
   return pending;
-}
-
-function getWebView(): WebViewBridge | null {
-  if (typeof window === 'undefined') return null;
-  const candidate = window as unknown as { chrome?: { webview?: WebViewBridge } };
-  return candidate.chrome?.webview || null;
-}
-
-function requestHost(action: 'pick' | 'execute' | 'icon', payload: Record<string, unknown>): Promise<HostResponse | null> {
-  const webview = getWebView();
-  if (!webview) return Promise.resolve(null);
-  const requestId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
-  return new Promise((resolve) => {
-    let settled = false;
-    const finish = (response: HostResponse | null) => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timeout);
-      webview.removeEventListener('message', listener);
-      resolve(response);
-    };
-    const listener = (event: WebViewMessageEvent) => {
-      const data = event.data as HostResponse | null;
-      if (!data || data.channel !== CHANNEL || data.requestId !== requestId) return;
-      finish(data);
-    };
-    const timeout = window.setTimeout(() => finish({ channel: CHANNEL, requestId, ok: false, error: 'Windows Host 응답 시간이 초과됐어.' }), REQUEST_TIMEOUT_MS);
-    webview.addEventListener('message', listener);
-    webview.postMessage({ channel: CHANNEL, requestId, action, ...payload });
-  });
 }
