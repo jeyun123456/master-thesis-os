@@ -1,6 +1,6 @@
 # P0 통합 — HTTPS 스테이징·실사용 전 체크리스트
 
-이 문서는 `master-thesis-os-standalone`의 same-origin P0 연결을 실제 로그인·배포 전에 안전하게 설정하기 위한 절차야. 원격 배포나 실서비스 데이터 이전은 이 작업에서 수행하지 않았어.
+이 문서는 `master-thesis-os-standalone`의 same-origin P0 연결을 실제 로그인·Production 배포 전에 안전하게 설정하기 위한 절차야. 기능 브랜치 Preview는 배포됐지만 실제 계정 로그인, Production 배포, 실서비스 데이터 이전은 수행하지 않았어.
 
 ## 1. 네트워크 경계와 Next.js 설정
 

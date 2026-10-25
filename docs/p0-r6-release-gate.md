@@ -1,12 +1,13 @@
 # P0 integration release gate snapshot — 2026-10-25
 
-**Decision: NO-GO for merge and Production promotion.** This is a staging/local implementation checkpoint, not a release approval. The local feature branch has not been pushed; PR #15 and the current Production deployment remain unchanged.
+**Decision: NO-GO for merge and Production promotion.** The app feature branch has been pushed to PR #15 and its latest Preview is READY, but the release gates below remain open. PR #15 is still unmerged; Production remains unchanged.
 
 ## G1 — Network and security: partial / block
 
 - Dedicated Cloudflare tunnel and Access Service Auth policy were previously verified; unauthenticated external requests returned the Access sign-in response.
 - Vercel Preview previously reached the configured P0 upstream through the service token.
-- The latest Preview is READY at remote commit `90422a8`; the latest local app-code commit `280abe5` adds the home/sync changes but has not been deployed. The latest local code has not been exercised through Preview. Tunnel reboot auto-start and the running P0 process's exact checkout remain unverified.
+- The dedicated tunnel is currently healthy. A limited-privilege `MTOS_P0_CloudflareTunnel` logon task was registered; a controlled stop/start through that task restored the P0 tunnel, with P0/Next local health at HTTP 200 and unauthenticated external P0 health returning HTTP 302. A real reboot/user-logon cycle has not been exercised.
+- The Preview deployment for commit `6ecc291` is READY. Its root returns HTTP 200 with the app login-check screen; authenticated user flows remain untested.
 
 ## G2 — Authentication: block
 
@@ -37,13 +38,13 @@
 ## G7 — CI: block
 
 - Local `pnpm lint`, `pnpm build`, targeted Vitest (5 files / 19 tests), P0 `node --test` (40 tests), syntax checks, and PowerShell parser checks passed.
-- GitHub Actions for the latest local commits have not run because the commits have not been pushed.
+- GitHub Actions `verify` and the Vercel Preview check passed for commit `6ecc291`; its Preview deployment is READY. Production was not deployed or promoted.
 
 ## Required before reconsidering merge
 
 1. Configure and validate the actual Google allowlist and HTTPS origin through protected settings; verify both allowed and disallowed account behavior on current Preview.
 2. If Drive backup remains in release scope, use an actual Workspace Shared Drive or obtain explicit approval for backup-only OAuth, then verify live upload, downloaded hash, and isolated restore. The current My Drive/service-account path is blocked.
 3. Do not register a scheduled Drive task under the current local-only decision. If Drive automation is later re-enabled, validate a manual remote backup/restore first, then schedule 03:00 Asia/Seoul with indefinite retention and no automatic deletion.
-4. Push the reviewed feature commits to their respective branches; verify current Preview and latest GitHub Actions without changing Production.
+4. The app feature branch is pushed and its latest Preview/CI are green. The P0 implementation remains on a local branch inside the Chocomint Lab workspace; confirm the intended publication route before pushing that separate source branch.
 5. Complete the G3/G4 real browser/device checks and G6 representative-screen check.
 6. Recheck protected staging/Production boundaries and document the rollback target. Only then reconsider PR #15 merge and the automatic Production release.
