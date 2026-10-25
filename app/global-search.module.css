@@ -1,13 +1,13 @@
 .root { position: relative; display: flex; flex-direction: column; gap: 6px; width: min(560px, 100%); }
 .bar { display: flex; gap: 6px; }
-.bar input { flex: 1; min-width: 0; border: 1px solid var(--line, #dce5ec); border-radius: 10px; padding: 8px 10px; font: inherit; font-size: 14px; background: var(--surface, #fff); color: inherit; }
-.results { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 60; max-height: min(70vh, 560px); overflow: auto; background: var(--surface, #fff); border: 1px solid var(--line, #dce5ec); border-radius: 14px; box-shadow: 0 16px 40px rgba(20, 33, 61, .16); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-.group h4 { margin: 0 0 4px; font-size: 12px; color: var(--muted, #65758a); }
+.bar input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font: inherit; font-size: 14px; background: var(--surface); color: inherit; }
+.results { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 60; max-height: min(70vh, 560px); overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 16px 40px rgba(20, 33, 61, .16); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.group h4 { margin: 0 0 4px; font-size: 12px; color: var(--muted); }
 .group button, .group a { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; background: none; border: 0; border-radius: 8px; padding: 6px 8px; cursor: pointer; color: inherit; font: inherit; text-decoration: none; }
-.group button:hover, .group a:hover, .group button:focus-visible { background: var(--surface-muted, #f2f5f8); }
+.group button:hover, .group a:hover, .group button:focus-visible { background: var(--surface-muted); }
 .group b { font-size: 14px; overflow-wrap: anywhere; }
-.group small { font-size: 12px; color: var(--muted, #65758a); overflow-wrap: anywhere; }
-.empty { margin: 4px; font-size: 13px; color: var(--muted, #65758a); }
+.group small { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.empty { margin: 4px; font-size: 13px; color: var(--muted); }
 .warn { margin: 0; font-size: 12px; color: #8a5100; background: #fff6e8; border-radius: 8px; padding: 6px 8px; }
 .urgent { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border-radius: 12px; background: #fdecee; color: #8f1d32; margin-bottom: 12px; font-size: 14px; }
 .urgent span { flex: 1 1 200px; }

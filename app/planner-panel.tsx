@@ -1,5 +1,6 @@
 'use client';
 
+import { agendaDayLabel } from '@/lib/calendar-agenda';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { dashboardApi, type CalendarApiResponse } from '@/lib/client-api';
 import { calendarWeekDates } from '@/lib/calendar-dates';
@@ -185,6 +186,7 @@ export function PlannerPanel({ projects = [] }: { projects?: ResearchProject[] }
 
   return <div className="planner-workspace">
     <P0TasksPanel />
+    <DeadlineStrip events={calendar?.items || []} loading={calendarLoading} failed={Boolean(calendarError)} />
     <section className="card section planner-calendar-card">
       <div className="head"><div><h3>월간 Calendar</h3><small>Google Calendar · {calendar?.items.length || 0}개 일정</small></div><div className="planner-month-nav"><button className="mini" type="button" aria-label="이전 달" onClick={() => { const next = shiftMonth(month, -1); setMonth(next); setSelectedDate(`${next}-01`); }}>←</button><b>{monthLabel(month)}</b><button className="mini" type="button" aria-label="다음 달" onClick={() => { const next = shiftMonth(month, 1); setMonth(next); setSelectedDate(`${next}-01`); }}>→</button><button className="mini" type="button" onClick={() => { setMonth(currentMonth()); setSelectedDate(todayDate()); }}>오늘</button></div></div>
       {calendarError && <div className="error">{calendarError}</div>}
@@ -203,6 +205,16 @@ export function PlannerPanel({ projects = [] }: { projects?: ResearchProject[] }
       </div>
     </section>
 
+    <section className="card section planner-candidates-card">
+      <div className="head"><h3>메일 일정 후보</h3><span>보조 기능 · 사용자 확인 후 Calendar 등록</span></div>
+      {mailError && <div className="error">{mailError}</div>}
+      {pendingCandidates.length ? <div className="planner-candidate-list">{pendingCandidates.map(({ item, candidate }) => <article className="planner-candidate" key={candidate.id}><div className="planner-candidate-source"><b>{item.mail.subject}</b><small>{item.mail.senderName} · {folderLabel(item.folder)}</small><button className="mini" type="button" disabled={openingMailId === item.mail.id} onClick={() => void openMail(item)}>{openingMailId === item.mail.id ? '여는 중…' : '메일 열기'}</button></div><CalendarCandidateCard candidate={candidate} onAdd={(next, edit) => addCandidate(item, next, edit)} onIgnore={(next) => ignoreCandidate(item, next)} /></article>)}</div> : <div className="empty compact-empty">{planning ? '확인할 메일 일정 후보가 없어.' : '메일의 보조 일정 후보를 확인할 수 없어.'}</div>}
+      {openError && <div className="error">{thunderbirdMailErrorMessage(openError)}</div>}
+      {planning?.tasks.filter((task) => task.status === 'pending' || task.status === 'snoozed').map((task) => <article className="planner-mail-task" key={task.id}><span>{task.title}</span><small>{task.mail.subject} · {task.dueAt || '기한 없음'}</small><div><button className="mini" type="button" disabled={busyTaskId === task.id} onClick={() => void changeMailTask(task, 'done')}>완료</button><button className="mini" type="button" disabled={busyTaskId === task.id} onClick={() => { const item = planning.items.find((value) => value.mail.id === task.mailId); if (item) void openMail(item); }}>메일 열기</button></div></article>)}
+    </section>
+
+    <details className="planner-fold">
+      <summary>주간 시간표 · {weekEvents.length}건</summary>
     <section className="card section planner-timetable-card">
       <div className="head"><div><h3>주간 Timetable</h3><small>{formatDateLabel(weekDays[0])} – {formatDateLabel(weekDays[6])}</small></div><span>{weekEvents.length}건</span></div>
       <div className="planner-timetable">
@@ -211,7 +223,10 @@ export function PlannerPanel({ projects = [] }: { projects?: ResearchProject[] }
         {Array.from({ length: 15 }, (_, index) => index + 7).map((hour) => <div className="planner-hour-row" key={hour}><time>{String(hour).padStart(2, '0')}:00</time>{weekDays.map((day) => <div key={day}>{(eventsByDate.get(day) || []).filter((event) => !event.allDay && eventHour(event) === hour).map((event) => <span className="planner-time-event" key={event.id} title={`${event.title} · ${formatEventTime(event)}`}>{formatEventTime(event)} {event.title}</span>)}</div>)}</div>)}
       </div>
     </section>
+    </details>
 
+    <details className="planner-fold" open={activeTasks.length > 0}>
+      <summary>기존 Vault Planner 기록 · 미완료 {activeTasks.length}개</summary>
     <section className="card section planner-tasks-card">
       <div className="head"><div><h3>기존 Vault Planner 기록</h3><small>기존 항목은 자동 이전·삭제하지 않았어. 새 실행 할 일은 위 P0 SQLite 영역에서 관리해.</small></div><span>{activeTasks.length}개 미완료</span></div>
       <div className="planner-persistence-status"><span className={vaultSaved ? 'saved' : 'local'}>{vaultSaved ? 'Vault · shared/planner/tasks.json' : '브라우저 캐시'}</span><button className="mini" type="button" disabled={tasksLoading} onClick={() => void loadTasks()}>새로고침</button></div>
@@ -227,15 +242,22 @@ export function PlannerPanel({ projects = [] }: { projects?: ResearchProject[] }
         </article>;
       })}</div> : tasksLoading ? <div className="empty compact-empty">Vault 할 일을 읽는 중…</div> : <div className="empty compact-empty">할 일이 없어.</div>}
     </section>
-
-    <section className="card section planner-candidates-card">
-      <div className="head"><h3>메일 일정 후보</h3><span>보조 기능 · 사용자 확인 후 Calendar 등록</span></div>
-      {mailError && <div className="error">{mailError}</div>}
-      {pendingCandidates.length ? <div className="planner-candidate-list">{pendingCandidates.map(({ item, candidate }) => <article className="planner-candidate" key={candidate.id}><div className="planner-candidate-source"><b>{item.mail.subject}</b><small>{item.mail.senderName} · {folderLabel(item.folder)}</small><button className="mini" type="button" disabled={openingMailId === item.mail.id} onClick={() => void openMail(item)}>{openingMailId === item.mail.id ? '여는 중…' : '메일 열기'}</button></div><CalendarCandidateCard candidate={candidate} onAdd={(next, edit) => addCandidate(item, next, edit)} onIgnore={(next) => ignoreCandidate(item, next)} /></article>)}</div> : <div className="empty compact-empty">{planning ? '확인할 메일 일정 후보가 없어.' : '메일의 보조 일정 후보를 확인할 수 없어.'}</div>}
-      {openError && <div className="error">{thunderbirdMailErrorMessage(openError)}</div>}
-      {planning?.tasks.filter((task) => task.status === 'pending' || task.status === 'snoozed').map((task) => <article className="planner-mail-task" key={task.id}><span>{task.title}</span><small>{task.mail.subject} · {task.dueAt || '기한 없음'}</small><div><button className="mini" type="button" disabled={busyTaskId === task.id} onClick={() => void changeMailTask(task, 'done')}>완료</button><button className="mini" type="button" disabled={busyTaskId === task.id} onClick={() => { const item = planning.items.find((value) => value.mail.id === task.mailId); if (item) void openMail(item); }}>메일 열기</button></div></article>)}
-    </section>
+    </details>
   </div>;
+}
+
+/** Upcoming deadline events from the loaded Google Calendar range; nothing is inferred beyond event category and date. */
+export function DeadlineStrip({ events, loading, failed }: { events: CalendarEvent[]; loading: boolean; failed: boolean }) {
+  const today = todayDate();
+  const deadlines = events
+    .filter((event) => event.category === 'Deadline' && eventDate(event) >= today)
+    .sort((left, right) => eventDate(left).localeCompare(eventDate(right)))
+    .slice(0, 3);
+  if (loading || failed || !deadlines.length) return null;
+  return <section className="card section planner-deadline-strip" aria-label="임박한 마감">
+    <div className="head"><h3>임박한 마감</h3><span>불러온 달 기준 · Google Calendar</span></div>
+    <ul>{deadlines.map((event) => <li key={`${event.calendarId}:${event.id}`}><b>{agendaDayLabel(eventDate(event), today)}</b><span>{event.title}</span></li>)}</ul>
+  </section>;
 }
 
 function groupByDate(events: CalendarEvent[]) {

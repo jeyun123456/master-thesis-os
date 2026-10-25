@@ -290,7 +290,7 @@ code,
 
 .head > span {
   color: #7b8a98;
-  font-size: 9px;
+  font-size:12px;
 }
 
 .empty {
@@ -367,7 +367,7 @@ code,
 .active-project-main small {
   margin-top: 4px;
   color: #718191;
-  font-size: 9.5px;
+  font-size:12px;
   line-height: 1.45;
 }
 
@@ -386,7 +386,7 @@ code,
   border-radius: 6px;
   background: var(--panel);
   color: var(--blue-strong);
-  font-size: 8.5px;
+  font-size:12px;
   line-height: 1.2;
   white-space: nowrap;
 }
@@ -473,12 +473,12 @@ code,
 .event small,
 .commit small {
   color: #7c8b99;
-  font-size: 9.5px;
+  font-size:12px;
 }
 
 .home-page .shortcut-main small,
 .home-page .quick-open small {
-  font-size: 9.5px;
+  font-size:12px;
 }
 
 .numbered-item > span {
@@ -1088,7 +1088,7 @@ code,
 
   .top > div:first-child::before {
     margin-bottom: 7px;
-    font-size: 9px;
+    font-size:12px;
     letter-spacing: .075em;
   }
 
@@ -1219,7 +1219,7 @@ code,
   }
 
   .library-stat span {
-    font-size: 8px;
+    font-size:12px;
   }
 
   .library-stat b {
@@ -1299,7 +1299,7 @@ code,
   padding: 0 12px 4px;
   color: rgba(184, 194, 205, .72);
   font-family: var(--mono);
-  font-size: 10px;
+  font-size:12px;
   font-weight: 750;
   letter-spacing: .12em;
 }
@@ -1396,7 +1396,7 @@ code,
   margin-bottom: 9px;
   color: var(--blue-strong);
   font-family: var(--mono);
-  font-size: 10px;
+  font-size:12px;
   font-weight: 800;
   letter-spacing: .13em;
 }
@@ -1425,7 +1425,7 @@ code,
   margin: 6px 0 0;
   overflow: hidden;
   color: #718191;
-  font-size: 11px;
+  font-size:13px;
   line-height: 1.5;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1509,7 +1509,7 @@ code,
   display: block;
   overflow: hidden;
   color: #748494;
-  font-size: 11px;
+  font-size:13px;
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1758,7 +1758,7 @@ code,
 .research-mini-trend-year {
   fill: #7b8a98;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size:12px;
 }
 
 .research-mini-trend-reading {
@@ -1804,7 +1804,7 @@ code,
 
 @media (max-width: 760px) {
   .nav-group-label {
-    font-size: 9px;
+    font-size:12px;
   }
 
   .home-research-hero {

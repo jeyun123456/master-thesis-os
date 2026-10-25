@@ -11,6 +11,7 @@ import {
   type ThunderbirdAnalysisFolderId,
 } from '../lib/thunderbird-mail';
 import { getMailAnalysis, MailAnalysisClientError, readBridgeToken } from '../lib/mail-analysis-client';
+import { MailErrorNotice } from './mail-error-notice';
 import {
   mailPriorityLabel,
   prioritizeMails,
@@ -155,10 +156,7 @@ export function SchoolMailRow({
 }
 
 function SchoolMailErrorState({ errorCode, onRetry }: { errorCode: ThunderbirdMailErrorCode | null; onRetry: () => void }) {
-  return <div className="microsoft-mail-error-wrap">
-    <div className="error microsoft-mail-error">{schoolMailStateMessage(errorCode)}</div>
-    <button className="mini" onClick={onRetry} type="button">다시 시도</button>
-  </div>;
+  return <MailErrorNotice message={schoolMailStateMessage(errorCode)} code={errorCode} onRetry={onRetry} />;
 }
 
 export function schoolMailStatusLabel(status: SchoolMailStatus, errorCode: ThunderbirdMailErrorCode | null): string {

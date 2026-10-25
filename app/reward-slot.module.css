@@ -45,7 +45,7 @@
   display: block;
   margin-bottom: 5px;
   color: var(--blue);
-  font-size: 8px;
+  font-size:12px;
   font-weight: 900;
   letter-spacing: 0.16em;
 }
@@ -58,7 +58,7 @@
 .slotHeader p {
   margin: 6px 0 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size:12px;
 }
 
 .creditBadge {
@@ -78,7 +78,7 @@
 
 .creditBadge span {
   color: var(--muted);
-  font-size: 8px;
+  font-size:12px;
   font-weight: 700;
 }
 
@@ -91,7 +91,7 @@
 
 .creditBadge small {
   margin-left: 2px;
-  font-size: 9px;
+  font-size:12px;
 }
 
 .machineStage {
@@ -177,14 +177,14 @@
 }
 
 .machineLabel span {
-  font-size: 10px;
+  font-size:12px;
   font-weight: 900;
   letter-spacing: 0.1em;
 }
 
 .machineLabel b {
   color: #ffdd70;
-  font-size: 8px;
+  font-size:12px;
   letter-spacing: 0.16em;
 }
 
@@ -466,7 +466,7 @@
   display: block;
   margin-top: 4px;
   color: var(--muted);
-  font-size: 8px;
+  font-size:12px;
 }
 
 .history {
@@ -481,7 +481,7 @@
 
 .history span {
   color: var(--muted);
-  font-size: 8px;
+  font-size:12px;
   font-weight: 700;
 }
 
@@ -490,14 +490,14 @@
   border-radius: 8px;
   background: #f1f5fa;
   color: #53617a;
-  font-size: 8px;
+  font-size:12px;
 }
 
 .taskCard {
   width: 100%;
 }
 
-.rewardTask {
+.rewardTask:global(.numbered-item) {
   grid-template-columns: 25px minmax(0, 1fr) auto;
   align-items: center;
 }
@@ -514,7 +514,7 @@
   color: var(--blue);
   border-radius: 9px;
   padding: 7px 9px;
-  font-size: 8px;
+  font-size:12px;
   font-weight: 800;
   cursor: pointer;
   white-space: nowrap;
@@ -535,7 +535,7 @@
 .localHint {
   margin: 12px 0 0;
   color: var(--muted);
-  font-size: 8px;
+  font-size:12px;
   line-height: 1.5;
 }
 
