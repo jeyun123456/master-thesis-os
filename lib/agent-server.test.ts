@@ -29,7 +29,7 @@ describe('proxyToAgent', () => {
     const response = await proxyToAgent(request('memos?project_id=thesis&evil=1'), ['memos']);
     expect(response.status).toBe(200);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe('http://127.0.0.1:8788/agent/api/memos?project_id=thesis');
+    expect(String(url)).toBe('http://127.0.0.1:8789/agent/api/memos?project_id=thesis');
     expect(new Headers(init.headers).get('authorization')).toBe('Bearer session-token');
   });
 

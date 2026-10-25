@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { noStore, P0_APP_SESSION_COOKIE, P0ApiError, readRequestBytesLimited, sameOriginMutationError, serviceBaseUrl, serviceFetch } from './p0-server';
 
-const DEFAULT_AGENT_URL = 'http://127.0.0.1:8788';
+const DEFAULT_AGENT_URL = 'http://127.0.0.1:8789';
 const MAX_BODY = 512 * 1024;
 // First segment must be a known agent resource; deeper segments are ids/actions.
 const RESOURCE = /^(status|worker|jobs|memos|milestones|inbox|approvals|task-meta|occurrences|focus|context|settings|search)(\/[A-Za-z0-9_-]{1,200}){0,2}$/;

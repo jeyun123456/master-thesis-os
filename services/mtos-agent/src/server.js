@@ -220,7 +220,7 @@ function main() {
   const root = join(dirname(fileURLToPath(import.meta.url)), '..');
   const db = openAgentDb(env.MTOS_AGENT_DB_PATH ?? join(root, 'data', 'mtos-agent.db'));
   const app = createAgentApp({ db, verifySession: createSessionVerifier({ p0Url: env.MTOS_P0_URL ?? 'http://127.0.0.1:8787' }) });
-  const port = Number(env.MTOS_AGENT_PORT ?? 8788);
+  const port = Number(env.MTOS_AGENT_PORT ?? 8789);
   // Loopback only; reachable from Vercel through the P0 Cloudflare tunnel path rule.
   createServer(app).listen(port, '127.0.0.1', () => console.log(`mtos-agent listening on 127.0.0.1:${port}`));
 }
