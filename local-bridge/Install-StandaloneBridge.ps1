@@ -45,4 +45,5 @@ if (-not $NoStartupShortcut) {
 }
 
 Write-Host "Local Bridge runtime installed at $Destination"
-Write-Host 'Start it now with: wscript.exe "' + (Join-Path $Destination 'start_bridge_tray.vbs') + '"'
+$tray = Join-Path $Destination 'start_bridge_tray.vbs'
+Write-Host "Start it now with: wscript.exe `"$tray`""

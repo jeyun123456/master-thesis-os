@@ -44,15 +44,39 @@ def allows_private_network(requested: str) -> bool:
     return requested.lower() == 'true'
 
 
+def is_link(path: Path) -> bool:
+    """Symlink or Windows junction (Path.is_symlink() is False for junctions)."""
+    return path.is_symlink() or getattr(path, 'is_junction', lambda: False)()
+
+
+def allowed_bases(root: Path, top_level: str) -> list[Path]:
+    """The Vault root, plus the target of a top-level Vault folder that is a link.
+
+    A top-level folder such as 02_Projects may be a junction to another drive
+    (e.g. Google Drive). Only that folder's own target is trusted; links deeper
+    in the tree still count as escapes.
+    """
+    bases = [root]
+    top = root / top_level if top_level else None
+    if top is not None and top.is_dir() and is_link(top):
+        bases.append(top.resolve())
+    return bases
+
+
 def _contained_path(root: Path, relative: str) -> Path:
     """Resolve a repository-relative path without allowing vault escape."""
     rel = relative.replace('\\', '/').lstrip('/')
+    parts = [part for part in rel.split('/') if part]
+    if '..' in parts:
+        raise ValueError('Path escapes master_path')
     target = (root / rel).resolve()
-    try:
-        target.relative_to(root)
-    except ValueError as exc:
-        raise ValueError('Path escapes master_path') from exc
-    return target
+    for base in allowed_bases(root, parts[0] if parts else ''):
+        try:
+            target.relative_to(base)
+            return target
+        except ValueError:
+            continue
+    raise ValueError('Path escapes master_path')
 
 
 def safe_path(root: Path, relative: str) -> Path:
