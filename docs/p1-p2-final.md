@@ -1,6 +1,6 @@
 # Master Thesis OS P1·P2 최종 구현 기록 (2026-10-25)
 
-브랜치 `feat/mtos-p1p2-final-and-wallpaper-removal` (기준 `origin/main` 493ea11). 원본 기획 문서 `Master_Thesis_OS_제품기획서_v1.0_20261022.docx`, `Master_Thesis_OS_대화_전체정리_20261023.md`는 메인 PC에서 찾지 못해 작업 지시서를 기준선으로 사용했다.
+브랜치 `feat/mtos-p1-p2-final-and-wallpaper-removal` (기준 `origin/main` 493ea11). 원본 기획 문서 `Master_Thesis_OS_제품기획서_v1.0_20261022.docx`, `Master_Thesis_OS_대화_전체정리_20261023.md`는 메인 PC에서 찾지 못해 작업 지시서를 기준선으로 사용했다.
 
 ## 1. 확인된 실행 구조
 
