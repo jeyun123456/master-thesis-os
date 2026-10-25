@@ -55,4 +55,4 @@ P1/P2 backend for Master Thesis OS: research memos, milestones, the AI inbox, ap
 
 ## Tests
 
-`node --test test/` (45 tests, temp/in-memory SQLite, fake AI and fake Gmail; no network or real Codex call).
+`node --test test/` (49 tests, temp/in-memory SQLite, fake AI and fake Gmail; no network or real Codex call).

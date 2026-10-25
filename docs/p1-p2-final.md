@@ -32,7 +32,7 @@
 | 마일스톤(공식/내부, 근거, 이력, 공식 마감 보호) | 완료 | agent `milestones` + history, 공식 날짜 변경은 사용자 명시 확인만 |
 | 연구 메모(4유형, P0측 영속 DB) | 완료 | agent `memos` (서버 PC SQLite) |
 | 전역 검색(접힘, 할 일·프로젝트·메모·마일스톤·인박스·원본 링크) | 완료 | `global-search.tsx`; agent 불가 시 명시 |
-| 영속 작업 큐(중복 방지·우선순위·재시도·비정상 종료 복구·인증 정지/재개) | 완료 | `queue.js`, 47개 agent 테스트 |
+| 영속 작업 큐(중복 방지·우선순위·재시도·비정상 종료 복구·인증 정지/재개) | 완료 | `queue.js`, 49개 agent 테스트 |
 | AI 결과 스키마 검증 | 완료 | `--output-schema` + 재검증 |
 | Worker 장애와 P0 분리 | 완료 | 별도 프로세스·DB, agent 오류 시 홈은 안내만 |
 | Windows 자동 시작·제한 재시작·저우선순위·로그 | 외부 설정 필요 | `register-tasks.ps1` 작성, 서버 PC 등록 전 |
@@ -73,7 +73,7 @@
 
 - `pnpm version:check`, `pnpm lint`(tsc), `pnpm build` 통과.
 - `vitest`(통합 제외) 49 files / 303 tests 통과. `lib/p0-tasks.integration.test.ts` 8 통과.
-- `pnpm test:agent` 47 통과. `pnpm test:bridge` 152 통과, exporter 통과.
+- `pnpm test:agent` 49 통과. `pnpm test:bridge` 152 통과, exporter 통과.
 - `pnpm test:p0:integration`, `pnpm test:p0:production` 각 7개 PASS(임시 SQLite). 기존 main에서도 실패하던 "오늘 집중할 일" 단정문을 현재 로그인 게이트 기준으로 고치고, 신규 쓰기 경로의 미인증 401 검사를 추가했다.
 - `test:p0:backup:isolated` 3개 PASS(P0 CLI 출력 형식 변화에 맞춰 파싱 수정).
 - P0 자체 테스트 39개 통과(서버 PC 소스의 읽기 전용 스냅샷, 메인 PC `D:\worktrees\master-thesis-os-p0`).
