@@ -7,7 +7,7 @@
 - Dedicated Cloudflare tunnel and Access Service Auth policy were previously verified; unauthenticated external requests returned the Access sign-in response.
 - Vercel Preview previously reached the configured P0 upstream through the service token.
 - The dedicated tunnel is currently healthy. A limited-privilege `MTOS_P0_CloudflareTunnel` logon task was registered; a controlled stop/start through that task restored the tunnel. The active `MTOS_Staging_P0` task is enabled and `Run-Stage.ps1` launches from the expected P0 source checkout. P0/Next local health returned HTTP 200; unauthenticated external P0 health returned HTTP 302. A real reboot/user-logon cycle has not been exercised.
-- The Preview deployment for commit `6ecc291` is READY. Its root returns HTTP 200 with the app login-check screen; authenticated user flows remain untested.
+- The Preview deployment for commit `f0ee2d4` is READY. Its root returns HTTP 200 with the app login-check screen; authenticated user flows remain untested.
 
 ## G2 — Authentication: block
 
@@ -38,7 +38,12 @@
 ## G7 — CI: block
 
 - Local `pnpm lint`, `pnpm build`, targeted Vitest (5 files / 19 tests), P0 `node --test` (40 tests), syntax checks, and PowerShell parser checks passed.
-- GitHub Actions `verify` and the Vercel Preview check passed for commit `6ecc291`; its Preview deployment is READY. Production was not deployed or promoted.
+- GitHub Actions `verify` and the Vercel Preview check passed for commit `f0ee2d4`; its Preview deployment is READY. No Production deployment or promotion was performed.
+
+## Current Production boundary / rollback reference
+
+- Read-only Vercel deployment listing showed the current Production deployment is `dpl_GEEd7v1CSoSuFqEMX6iYYrw9bGfN` from `main` commit `03c3d2564e8891c9e4353128c9d3acf96813970f`, state READY. No Production deployment, promotion, or rollback was performed during this work.
+- Treat that deployment as the rollback reference for any separately approved future release. Recheck the current target immediately before a future promotion; Production data and deployment were not modified.
 
 ## Required before reconsidering merge
 
@@ -47,4 +52,4 @@
 3. Do not register a scheduled Drive task under the current local-only decision. If Drive automation is later re-enabled, validate a manual remote backup/restore first, then schedule 03:00 Asia/Seoul with indefinite retention and no automatic deletion.
 4. The app feature branch is pushed and its latest Preview/CI are green. The P0 implementation remains on a local branch inside the Chocomint Lab workspace; confirm the intended publication route before pushing that separate source branch.
 5. Complete the G3/G4 real browser/device checks and G6 representative-screen check.
-6. Recheck protected staging/Production boundaries and document the rollback target. Only then reconsider PR #15 merge and the automatic Production release.
+6. Recheck protected staging/Production boundaries immediately before any merge or promotion; the current rollback reference is recorded above. Only then reconsider PR #15 merge and any automatic Production release.
