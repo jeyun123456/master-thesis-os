@@ -25,9 +25,9 @@
 
 ## G5 — Backup and restore: block pending real Drive
 
-- The dedicated `drive.file` uploader/downloader, DPAPI setup, local encryption, hash verification, deduplication, and restore guard are implemented.
-- Tests use temporary SQLite databases and a mocked Drive API. No actual Drive folder/service account, uploaded backup, Drive download, isolated full restore, or selective restore has been performed.
-- The scheduled task has not been registered. The selected time is 03:00 Asia/Seoul and the selected retention is indefinite with no automatic deletion; Drive provisioning is deferred.
+- The dedicated `drive.file` uploader/downloader, DPAPI setup, local encryption, hash verification, deduplication, restore guard, and Shared Drive API compatibility are implemented and covered by the P0 test suite.
+- Local encrypted backup decryption, SQLite integrity, and restore into an isolated staging clone passed. No live Drive upload/download was verified: the configured destination is a personal My Drive folder and the service-account upload returned 403.
+- The user chose to keep authentication unchanged and pause Drive automation. Local encrypted backups remain available; no Drive scheduled task is registered. The 03:00 Asia/Seoul schedule and indefinite retention remain policy only if Drive upload is re-enabled.
 
 ## G6 — Existing data: partial / block
 
@@ -42,8 +42,8 @@
 ## Required before reconsidering merge
 
 1. Configure and validate the actual Google allowlist and HTTPS origin through protected settings; verify both allowed and disallowed account behavior on current Preview.
-2. Provision the dedicated Drive service account/folder, enter the existing P0 backup key only in the masked local DPAPI setup, then confirm a real upload, downloaded hash, and isolated full/selective restore.
-3. After Drive provisioning and one successful manual upload, register the scheduled task for 03:00 Asia/Seoul. Preserve backups indefinitely; do not add pruning unless a later policy changes.
+2. If Drive backup remains in release scope, use an actual Workspace Shared Drive or obtain explicit approval for backup-only OAuth, then verify live upload, downloaded hash, and isolated restore. The current My Drive/service-account path is blocked.
+3. Do not register a scheduled Drive task under the current local-only decision. If Drive automation is later re-enabled, validate a manual remote backup/restore first, then schedule 03:00 Asia/Seoul with indefinite retention and no automatic deletion.
 4. Push the reviewed feature commits to their respective branches; verify current Preview and latest GitHub Actions without changing Production.
 5. Complete the G3/G4 real browser/device checks and G6 representative-screen check.
 6. Recheck protected staging/Production boundaries and document the rollback target. Only then reconsider PR #15 merge and the automatic Production release.
