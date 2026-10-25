@@ -531,18 +531,28 @@ function AuthenticatedPage() {
           onDelete={deleteInboxEntry}
         /></details></section>}
 
-        {page === 'settings' && <section className="page active">
-          <div className="grid2">
-            <Card title="연구 저장소" right={repositorySource === 'none' ? '설정 필요' : repositorySource === 'local' ? '로컬' : 'GitHub'}><div className="note">Obsidian Vault가 연구 데이터의 기준이야. 프로젝트는 <code>projects/*/project.md</code>에서 자동 발견하고, 기존 <code>wiki/ · Calc/ · 연구/</code> 경로는 manifest가 연결해.</div></Card>
+        {page === 'settings' && <section className="page active settings-page">
+          <section className="settings-group" aria-labelledby="settings-connections">
+            <h3 id="settings-connections">연결 상태</h3>
+            <p>연구 자료와 일정, 메일이 어디에서 오는지 확인해요.</p>
+            <div className="grid2">
+              <Card title="연구 저장소" right={repositorySource === 'none' ? '설정 필요' : repositorySource === 'local' ? '로컬' : 'GitHub'}><div className="note">Obsidian Vault가 연구 데이터의 기준이야. 프로젝트는 <code>projects/*/project.md</code>에서 자동 발견하고, 기존 <code>wiki/ · Calc/ · 연구/</code> 경로는 manifest가 연결해.</div></Card>
+              <Card title="Google Calendar" right={calendar.state === 'ready' || calendar.state === 'empty' ? '연결됨' : '확인 필요'}><div className="note">현재 상태: {calendarStateText(calendar)}</div></Card>
+            </div>
+            <div className="section-gap"><SchoolMailPanel variant="settings" folder="school-work" /></div>
+          </section>
+          <section className="settings-group" aria-labelledby="settings-account">
+            <h3 id="settings-account">계정과 보안</h3>
+            <p>로그인한 기기와 세션을 관리해요.</p>
+            <P0SessionsPanel />
+          </section>
+          <details className="card section settings-advanced">
+            <summary>고급 · 진단</summary>
+            <p>평소에는 건드릴 필요가 없어요. 이 PC의 로컬 브리지, 선택 연결, 버전 정보가 들어 있어요.</p>
             <Card title="로컬 브리지" right="127.0.0.1 전용"><div className="note">로컬 파일·볼트 폴더 열기는 PC에서 bridge를 실행했을 때만 동작해. 토큰은 이 브라우저의 localStorage에 저장돼.</div><div className="toolbar bridge-toolbar"><button className="btn" type="button" onClick={() => openLocalFolder()}>볼트 폴더 열기</button></div><BridgeToken onSave={bridgeTokenSaved} onNotice={pop} /></Card>
-          </div>
-          <div className="grid2 section-gap">
-            <Card title="Google Calendar" right={calendar.state === 'ready' || calendar.state === 'empty' ? '연결됨' : '확인 필요'}><div className="note">현재 상태: {calendarStateText(calendar)}</div></Card>
-            <SchoolMailPanel variant="settings" folder="school-work" />
-          </div>
-          <div className="section-gap"><MicrosoftMailPanel variant="settings" /></div>
-          <div className="section-gap"><P0SessionsPanel /></div>
-          <div className="section-gap"><Card title="버전" right={`v${APP_VERSION}`}><div className="note">프로젝트 기반 연구탭 · repo project manifest · 한국어 UI · 큐레이션 자료실 · 모바일 내비게이션.</div></Card></div>
+            <div className="section-gap"><MicrosoftMailPanel variant="settings" /></div>
+            <div className="section-gap"><Card title="버전" right={`v${APP_VERSION}`}><div className="note">프로젝트 기반 연구탭 · repo project manifest · 한국어 UI · 큐레이션 자료실 · 모바일 내비게이션.</div></Card></div>
+          </details>
         </section>}
       </main>
 
