@@ -1,17 +1,17 @@
 # Master Thesis OS ↔ P0 통합 작업 보고서
 
-> **2026-10-25 진행 상태 갱신:** 아래 본문 1차 보고는 2026-10-24 당시의 기준 상태를 기록한 이력이다. 아래 현재 진행 요약이 이후 변경사항에 대해 우선한다. 이 문서는 R1–R6의 전체 완료 또는 Production 배포 승인을 뜻하지 않는다.
+> **2026-10-25 최신 상태:** 본문 1차 보고는 2026-10-24 기준 이력이다. 현재 릴리스 판단은 `docs/p0-r6-release-gate.md`를 우선한다. 이 요약은 R1–R6 전체 통과나 Production 배포 승인을 뜻하지 않는다.
 
-## 현재 진행 요약 (2026-10-25)
+## 현재 진행 요약 (2026-10-25 최신)
 
-- Standalone: `C:\worktrees\master-thesis-os-standalone`, branch `feat/integrate-p0-tasks`; home/offline UI 작업은 로컬 커밋에 포함됐고 아직 push하지 않았다. PR #15 원격에는 마지막으로 확인된 `90422a87c0741eb241d56434036fb713bbfe2823`가 남아 있다.
-- P0: `C:\worktrees\master-thesis-os-p0\tools\master-thesis-os-p0`, branch `feat/master-thesis-os-p0`; task category/read-state/offline delete/Drive backup 구현은 로컬 커밋 `5f8c0282`에 포함됐고 아직 push하지 않았다.
-- R1: 전용 Cloudflare tunnel/Access와 Vercel Preview upstream 경로는 구성됐지만 tunnel 재부팅 자동 시작 및 최신 브랜치 Preview 검증은 미완료다.
-- R2: 앱 공통 Google sign-in/session UI와 P0 API 인증 테스트가 구현됐지만 실제 `ALLOWED_GOOGLE_SUB`/OAuth 설정 및 최신 Preview에서의 로그인 검증은 미완료다. Vercel MCP 인증 상태는 변경하지 않았다.
-- R3–R4: 홈 중심 P0 task workspace, 미분류/read-state, offline CRUD queue/bridge, 모바일 More 메뉴의 캘린더·메일·공지·바로가기·설정 접근을 구현했다. Planner/Slot은 데스크톱 주 내비게이션에서 숨기고 More에는 보존했다.
-- R5: 전용 Drive service account(`drive.file`), encrypted upload/download/hash verification, DPAPI setup 및 restore guard를 구현했다. 테스트는 mock Drive API/임시 SQLite만 사용했다. 실제 계정·폴더/backup/restore는 미진행이며, 사용자가 Drive 설정을 나중으로 미뤘다. 백업은 매일 03:00 Asia/Seoul, 무기한 보존(자동 삭제 없음)으로 선택됐지만, Drive provisioning 전이라 스케줄 작업은 등록하지 않았다.
-- 검증: Standalone `pnpm lint`, `pnpm build`, 선택 Vitest 5 files/19 tests 통과. P0 `node --test` 40 tests 통과, JS syntax checks와 PowerShell parser 통과. 통합 브라우저 로그인/오프라인 실기기 검증은 미완료.
-- PR #15은 열려 있고 Production deployment/SQLite, 기존 Cloudflare/Tailscale 매핑은 건드리지 않았다. Merge/Production 승격은 R1–R5 운영 설정과 R6 확인 전까지 금지한다. G1–G7 상세 상태는 `docs/p0-r6-release-gate.md`에 기록했다.
+- Standalone: `C:\worktrees\master-thesis-os-standalone`, `feat/integrate-p0-tasks`; 앱 코드 기준 커밋 `171dcdc8`은 PR #15에 push돼 있고, 이 상태 갱신 문서가 후속 커밋으로 추가될 예정이야. Preview와 GitHub 검사는 통과했고 PR은 open/unmerged다.
+- P0: `C:\worktrees\master-thesis-os-p0\tools\master-thesis-os-p0`, `feat/master-thesis-os-p0`, HEAD `2843657d`; 로컬 작업 트리는 clean이나 별도 P0 source branch는 게시 경로가 정해지지 않아 push하지 않았다.
+- R1: 전용 Cloudflare tunnel/Access와 사용자 로그인 시 실행되는 제한 권한 task를 구성했다. P0/Next loopback 응답과 외부 Access 차단을 확인했고, 제어된 tunnel 재시작도 통과했다. 실제 재부팅 후 시작은 미검증이다. 빌드 후 stale 상태였던 staging Next 프로세스를 해당 task만 재시작했고, 현재 root와 모든 9개 script asset이 HTTP 200이다.
+- R2: 보호된 P0 staging store preflight 통과. 값은 노출하지 않았고, local `/api/p0/session`은 `configured=true`, `authenticated=false`를 반환한다. Google 로그인 버튼은 local browser에서 렌더링되지만 실제 로그인은 하지 않았다. Vercel SSO가 Preview 상호작용을 막고 있으며, 실사용자 거부 로그인은 P0 audit log가 거부된 `sub`를 저장하므로 수행하지 않는다.
+- R3–R4: 홈 task, CRUD, offline queue/sync 코드는 구현·테스트돼 있다. 인증 브라우저 task 흐름, 실제 PC↔모바일 및 offline/reconnect/conflict 검증은 남았다.
+- R5: 로컬 암호화 백업 복호화·SQLite 무결성 및 격리 staging 복구가 통과했다. Drive 자동화는 사용자의 local-only 결정에 따라 중단돼 있고 Drive task는 없다. 반복 실행되는 로컬 예약 작업도 현재 등록되지 않았다.
+- 검증: Standalone `pnpm lint`, `pnpm build`, Vitest 5 files/19 tests; P0 `node --test` 40 tests; JS/PowerShell 검증이 통과했다. 상세한 G1–G7 잔여 항목은 `docs/p0-r6-release-gate.md`에 기록한다.
+- Production/SQLite와 기존 Cloudflare/Tailscale ingress는 변경하지 않았다. PR 병합과 Production 승격은 남은 R6 관문 확인 전까지 보류한다.
 
 ## 1. 기획서의 작업 목적
 

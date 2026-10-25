@@ -1,6 +1,6 @@
 # Local staging runbook — Master Thesis OS + P0
 
-This is an operator checklist, not a deployment. It does not change DNS, Tailscale, Vercel, firewall rules, Windows startup, Google OAuth, or production data.
+This is an operator checklist, not a deployment script. It records the local staging topology as of 2026-10-25; the Windows staging tasks and dedicated P0 tunnel are already registered separately. Reading this runbook does not change DNS, Tailscale/Cloudflare ingress, Google OAuth, Production configuration, or data.
 
 ## Recommended connection shape
 
@@ -18,10 +18,11 @@ The host currently has two separate Node requirements: Next.js declares `22.x`; 
 
 ## Current ingress observations
 
-- Tailscale Serve is configured on HTTPS port 8443 for a local service on port 8767; that target was not listening in the check. This is not a Next.js route.
-- Tailscale Funnel is already enabled for local ports 8000 and 8001. Those are unrelated Python processes and are public-ingress configuration; do not reuse, change, or assume they are safe for this app.
-- No Next.js (3000) or P0 (8787) staging listener was running during the check.
-- A new Serve route and any domain/TLS changes need explicit approval. Prefer tailnet-only Serve; Funnel is public internet access and is not an acceptable P0 ingress.
+- Tailscale Serve `:8443` remains tailnet-only and proxies to `127.0.0.1:8767`; the original baseline check found no listener on 8767 at that time. It is not the Next.js route.
+- The existing public Tailscale Funnel maps `/` to port 8000 and `/gravity-worker` to port 8001. Those are unrelated services and must not be reused or changed.
+- Current verified listeners are Next.js `127.0.0.1:3000` and P0 `127.0.0.1:8787`. Next is exposed through tailnet-only Tailscale Serve `:10000`; P0 uses a separate Cloudflare tunnel with Access protection. Local health/session checks passed; unauthenticated external P0 health returns the Access response.
+- The staging tasks `MTOS_Staging_P0`, `MTOS_Staging_Next`, and `MTOS_P0_CloudflareTunnel` are registered. After rebuilding `.next`, restart only `MTOS_Staging_Next`; its prior process served stale chunk URLs (404), while a controlled restart made all nine referenced script assets return 200.
+- New Serve/Funnel routes and domain/TLS changes require explicit approval. Funnel is public ingress and is not acceptable for P0.
 
 ## Templates and environment separation
 
@@ -72,13 +73,13 @@ $node22 = 'C:\path\to\node-v22\node.exe'
 
 ## Login rate-limit limitation
 
-P0's login limiter allows 10 attempts per 60 seconds per `req.socket.remoteAddress`; it ignores `X-Forwarded-For`, which avoids spoofing but means every phone proxied through the same Next.js process appears as the same P0 peer. That is a shared throttle and can let one client temporarily block other clients. Keep the current safe behavior for this staging run. A future P0 change should use layered limits: keep a server-side network/ingress limit, add an account-level limit only after cryptographically verifying the Google token, or accept a forwarded client identity only when a fixed trusted proxy is the immediate peer and that proxy overwrites the header. Do not trust arbitrary forwarding headers. P0 source is not modified in this task.
+P0's login limiter allows 10 attempts per 60 seconds per `req.socket.remoteAddress`; it ignores `X-Forwarded-For`, which avoids spoofing but means every phone proxied through the same Next.js process appears as the same P0 peer. That is a shared throttle and can let one client temporarily block other clients. Keep the current safe behavior for this staging run. A future P0 change should use layered limits: keep a server-side network/ingress limit, add an account-level limit only after cryptographically verifying the Google token, or accept a forwarded client identity only when a fixed trusted proxy is the immediate peer and that proxy overwrites the header. Do not trust arbitrary forwarding headers. This integration did not alter the limiter to trust forwarded-IP headers.
 
 Privacy note: the current P0 code writes a rejected, but otherwise valid, Google `sub` into its SQLite audit log when the account is not allowlisted. Do not run a real-user denial test for this staging rehearsal. Redacting or hashing that identifier requires a separate approved P0-source change.
 
 ## Google OAuth domain gate
 
-Google's web-client rules require HTTPS JavaScript origins outside localhost, reject raw-IP hosts, require the explicit port when it is not 80, and require a public-suffix-list TLD. Google documents that development/testing/staging projects do not need brand verification when the consent screen remains in **Testing** and only explicitly listed test users can sign in. A private Tailscale HTTPS FQDN on a dedicated Serve listener is therefore a candidate staging origin, but its acceptance by the specific Google Cloud OAuth client must be checked there; the existing Serve route on 8443 currently points to port 8767, so do not reuse or replace it without approval. For a published external app, Google requires ownership verification of the top private domains used by the app page, origins, and redirect URIs, so use an owner-controlled domain for production branding. No Google Cloud OAuth project/client or test-user allowlist was configured in this task, so no real Google sign-in is claimed.
+Google's web-client rules require HTTPS JavaScript origins outside localhost, reject raw-IP hosts, require the explicit port when it is not 80, and require a public-suffix-list TLD. Google documents that development/testing/staging projects do not need brand verification when the consent screen remains in **Testing** and only explicitly listed test users can sign in. The P0 protected staging store currently passes a value-free preflight for `GOOGLE_CLIENT_ID` and `ALLOWED_GOOGLE_SUB`, and the local Next session route reports the P0 as configured; neither check exposes the values or verifies Google's cloud-side origin allowlist. The candidate local origin is `https://hermes-laptop.tail315532.ts.net:10000` via tailnet-only Serve; Next uses `:10000`, while the existing `:8443` route to `8767` is unrelated. Verify the exact origin in the existing OAuth client without changing authentication settings, then perform an allowed-account sign-in. No live Google sign-in is claimed. For a published external app, Google requires ownership verification of the top private domains used by the app page, origins, and redirect URIs, so use an owner-controlled domain for production branding.
 
 Sources: [Google Web client origins](https://support.google.com/cloud/answer/6158849?hl=en), [Google OAuth domain ownership and testing/staging exception](https://developers.google.com/identity/verification/authentication-verification), [Tailscale Serve](https://tailscale.com/kb/1242/tailscale-serve), [Tailscale Funnel](https://tailscale.com/kb/1223/funnel).
 
