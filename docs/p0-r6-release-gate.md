@@ -12,7 +12,7 @@
 ## G2 — Authentication: block
 
 - Single-account Google sign-in/session UI and P0 API auth/session tests are implemented.
-- `Run-Stage.ps1 -Mode Preflight` passed for the staging configuration; its protected P0 store requires both `GOOGLE_CLIENT_ID` and `ALLOWED_GOOGLE_SUB` before P0 can start. Local `/api/p0/session` reports configured=true and authenticated=false; no client ID or subject value was exposed or changed. Actual allowed-account sign-in and post-logout 401 remain unverified: interactive Preview access is behind Vercel SSO, and no Google account has been selected for local staging. Do not test a real disallowed account yet: the P0 runbook notes that a rejected valid `sub` is written to its audit log.
+- `Run-Stage.ps1 -Mode Preflight` passed for the staging configuration, whose protected P0 store requires both `GOOGLE_CLIENT_ID` and `ALLOWED_GOOGLE_SUB` before P0 can start. `/api/p0/session` returns configured=true and authenticated=false on both loopback and the tailnet-only HTTPS origin `https://hermes-laptop.tail315532.ts.net:10000`; the root renders the Google sign-in button with no horizontal overflow. No client ID or subject value was exposed or changed. Actual allowed-account sign-in and post-logout 401 remain unverified: no Google account has been selected for local staging, and interactive Preview access is behind Vercel SSO. Do not test a real disallowed account yet: P0 writes a rejected valid `sub` to its audit log.
 
 ## G3 — Home CRUD: block pending browser check
 
