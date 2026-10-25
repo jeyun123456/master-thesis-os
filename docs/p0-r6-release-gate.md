@@ -27,7 +27,7 @@
 ## G5 — Backup and restore: block pending real Drive
 
 - The dedicated `drive.file` uploader/downloader, DPAPI setup, local encryption, hash verification, deduplication, restore guard, and Shared Drive API compatibility are implemented and covered by the P0 test suite.
-- Local encrypted backup decryption, SQLite integrity, and restore into an isolated staging clone passed. No live Drive upload/download was verified: the configured destination is a personal My Drive folder and the service-account upload returned 403.
+- Local encrypted backup decryption, SQLite integrity, restore into an isolated staging clone, and a fresh staging-only `Run-Stage.ps1 -Mode Backup` create/verify run passed. No live Drive upload/download was verified: the configured destination is a personal My Drive folder and the service-account upload returned 403.
 - The user chose to keep authentication unchanged and pause Drive automation. Local encrypted backups remain available; no Drive scheduled task is registered. The 03:00 Asia/Seoul schedule and indefinite retention remain policy only if Drive upload is re-enabled.
 
 ## G6 — Existing data: partial / block

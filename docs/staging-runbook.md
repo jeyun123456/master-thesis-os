@@ -93,6 +93,14 @@ pnpm test:p0:backup:isolated
 
 It creates a random one-run key in memory and a disposable SQLite database under Hermes `TMPDIR`, calls the read-only P0 backup CLI with only those test paths, verifies/decrypts the backup, checks that the sentinel is not plaintext, mutates and fully restores the test DB, verifies the pre-restore snapshot, runs SQLite `integrity_check`, and deletes the temporary tree. It does not touch the P0 checkout's `data` directory or any real database.
 
+To create and verify a local encrypted snapshot of the protected **staging** DB only (no Drive upload), use the guarded launcher:
+
+```powershell
+powershell.exe -NoProfile -File "$env:LOCALAPPDATA\master-thesis-os-staging\p0\ops\Run-Stage.ps1" -Mode Backup
+```
+
+A successful run prints only `BACKUP_VERIFIED (path and secrets omitted)`. Re-run after a `.next` rebuild only if needed; restart the Next task separately to refresh served static assets.
+
 For real operations, keep encrypted backups and the 32-byte key in separate protected locations, restrict backup-directory ACLs, and rehearse restore against a disposable copy first. Full restore requires the P0 server to be stopped and overwrites its target DB after preserving a pre-restore snapshot; never use `restore-full` against production without a separately approved recovery plan.
 
 ## Real-device checklist (manual; not replaced by desktop automation)

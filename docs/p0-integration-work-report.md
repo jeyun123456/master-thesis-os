@@ -4,7 +4,7 @@
 
 ## 현재 진행 요약 (2026-10-25 최신)
 
-- Standalone: `C:\worktrees\master-thesis-os-standalone`, `feat/integrate-p0-tasks`; 앱 코드 기준 커밋 `171dcdc8`은 PR #15에 push돼 있고, 이 상태 갱신 문서가 후속 커밋으로 추가될 예정이야. Preview와 GitHub 검사는 통과했고 PR은 open/unmerged다.
+- Standalone: `C:\worktrees\master-thesis-os-standalone`, `feat/integrate-p0-tasks`; PR #15에는 앱 코드 기준 `171dcdc8`과 후속 문서 갱신이 포함돼 있다. PR은 open/unmerged이며 Production 승격은 하지 않았다.
 - P0: `C:\worktrees\master-thesis-os-p0\tools\master-thesis-os-p0`, `feat/master-thesis-os-p0`, HEAD `2843657d`; 로컬 작업 트리는 clean이나 별도 P0 source branch는 게시 경로가 정해지지 않아 push하지 않았다.
 - R1: 전용 Cloudflare tunnel/Access와 사용자 로그인 시 실행되는 제한 권한 task를 구성했다. P0/Next loopback 응답과 외부 Access 차단을 확인했고, 제어된 tunnel 재시작도 통과했다. 실제 재부팅 후 시작은 미검증이다. 빌드 후 stale 상태였던 staging Next 프로세스를 해당 task만 재시작했고, 현재 root와 모든 9개 script asset이 HTTP 200이다.
 - R2: 보호된 P0 staging store preflight 통과. 값은 노출하지 않았고, local `/api/p0/session`은 `configured=true`, `authenticated=false`를 반환한다. Google 로그인 버튼은 local browser에서 렌더링되지만 실제 로그인은 하지 않았다. Vercel SSO가 Preview 상호작용을 막고 있으며, 실사용자 거부 로그인은 P0 audit log가 거부된 `sub`를 저장하므로 수행하지 않는다.
