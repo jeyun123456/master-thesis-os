@@ -6,12 +6,12 @@
 
 - Dedicated Cloudflare tunnel and Access Service Auth policy were previously verified; unauthenticated external requests returned the Access sign-in response.
 - Vercel Preview previously reached the configured P0 upstream through the service token.
-- The latest home/sync/P0 server changes are local commits and have not been deployed or exercised through the current Preview. Tunnel reboot auto-start and the running P0 process's exact checkout remain unverified.
+- The latest Preview is READY at remote commit `90422a8`; the latest local app-code commit `280abe5` adds the home/sync changes but has not been deployed. The latest local code has not been exercised through Preview. Tunnel reboot auto-start and the running P0 process's exact checkout remain unverified.
 
 ## G2 — Authentication: block
 
 - Single-account Google sign-in/session UI and P0 API auth/session tests are implemented.
-- The real Google OAuth origin/client and `ALLOWED_GOOGLE_SUB` have not been confirmed for the current Preview. No allowed-user login, rejected-user login, or post-logout 401 has been checked against the latest deployed build.
+- A read-only Vercel environment listing showed no `ALLOWED_GOOGLE_SUB` entry; Google OAuth client values were not inspected or changed. The latest Preview root returns HTTP 200 with the app's login-check screen, but Vercel SSO blocked interactive/API end-to-end validation. Allowed-user login, rejected-user login, and post-logout 401 remain unverified.
 
 ## G3 — Home CRUD: block pending browser check
 

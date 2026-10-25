@@ -19,9 +19,9 @@ P0 서버 PC의 보호된 환경변수/비밀 저장소에만 설정하고, 채�
 
 ## 3. 암호화 백업
 
-- 스테이징 P0에는 SQLite online backup API → integrity check → AES-256-GCM 암호화 → 전용 Google Drive 폴더 업로드 → 다운로드 후 SHA-256 검증 경로가 구현돼 있어. 일반 Google 계정의 Drive 전체 권한 대신 전용 서비스 계정과 `drive.file` scope만 사용해.
-- Windows DPAPI에 백업 키와 전용 서비스 계정 키를 보관하는 setup helper가 있으며, 비밀값을 채팅·Git·로그에 남기지 않아. 보호된 로컬 백업과 영수증을 유지하고, Drive에서 복구 파일을 다운로드할 때 폴더·해시·복호화·SQLite integrity를 확인해.
-- 자세한 설치/복구 절차는 P0 저장소의 `docs/drive-backup-recovery.md`를 따라. 이 세션에서는 Drive 서비스 계정·전용 폴더를 아직 만들지 않았고, 실제 업로드·복구를 수행하지 않았어. 매일 03:00 KST와 무기한 보존(자동 삭제 없음)은 선택됐지만, Drive 설정이 미뤄져 예약 작업은 등록하지 않았어.
+- 스테이징 P0에는 SQLite online backup API → integrity check → AES-256-GCM 암호화 → Drive 업로드 → 다운로드한 파일의 SHA-256 검증 경로가 구현돼 있어. Shared Drive API 호환성은 테스트로 확인했어. 현재 설정된 대상은 개인 My Drive 폴더이고, service account 업로드는 HTTP 403으로 실패했어. 실제 Drive 업로드·다운로드나 원격 복구는 검증되지 않았어.
+- Windows DPAPI가 기존 P0 백업 키와 service account 설정을 보호해. 새 로컬 암호화 백업의 복호화·SQLite integrity 검증은 통과했고, 격리한 staging 복제본 복구도 통과했어. 현재 결정에 따라 Drive uploader를 실행하거나 Drive 예약 작업을 등록하지 않아.
+- 사용자는 인증 변경 없이 로컬 암호화 백업만 사용하기로 했어. 03:00 Asia/Seoul 일정과 무기한 보존은 Drive 자동화를 다시 켤 경우의 정책으로 남아 있고, 현재 Drive 예약 작업은 등록되지 않았어.
 - `MTOS_BACKUP_KEY`는 기존 staging P0의 AES-256-GCM 키와 정확히 같아야 해. 키를 잃으면 Drive 백업도 복구할 수 없으니 승인된 비밀번호 관리자/복구 절차에 별도로 보관해.
 
 ## 4. 모바일 및 오프라인 검증
