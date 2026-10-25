@@ -20,5 +20,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm version:check
       - run: pnpm exec vitest run --exclude "lib/p0-tasks.integration.test.ts"
+      - run: pnpm test:agent
       - run: pnpm lint
       - run: pnpm build
