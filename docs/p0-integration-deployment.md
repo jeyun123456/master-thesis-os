@@ -8,6 +8,7 @@
 - Next.js와 P0는 같은 서버에서 실행하고, 브라우저는 Next.js의 `/api/p0/native/*` 프록시만 사용하게 해. 리버스 프록시가 외부 요청의 `Host`/forwarded 헤더를 보존·덮어쓰는지 확인하되, `X-Forwarded-Host`나 `X-Forwarded-Proto`를 CSRF 검증의 신뢰 근거로 삼지 마.
 - Next.js 운영 환경에 `MTOS_PUBLIC_ORIGIN`을 **정확한 공개 origin 하나**로 설정해. 예: `https://tasks.example.org` (경로·쿼리·사용자정보 없이). 운영에서 이 값이 없거나 유효하지 않으면 변경 요청은 fail-closed로 차단돼.
 - P0와 같은 호스트에 둔 경우 Next.js의 `P0_API_URL`은 `http://127.0.0.1:8787`로 설정해. 다른 호스트로 옮기려면 네트워크·인증 경계를 별도로 검토하고, P0를 공개 주소에 바인딩하지 마.
+- P0 전용 Cloudflare Tunnel은 별도 로컬 설정을 사용하고, `MTOS_P0_CloudflareTunnel` 예약 작업이 현재 Windows 사용자 로그인 시 제한 권한으로 실행되도록 설정돼 있어. 기존 다른 tunnel은 변경하지 않았어. 작업을 통한 중지·재시작과 외부 Access 차단은 확인했지만, 실제 재부팅 후 로그인 과정은 아직 시험하지 않았어.
 
 ## 2. Google 로그인 설정
 

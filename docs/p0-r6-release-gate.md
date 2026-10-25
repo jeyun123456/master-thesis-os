@@ -6,7 +6,7 @@
 
 - Dedicated Cloudflare tunnel and Access Service Auth policy were previously verified; unauthenticated external requests returned the Access sign-in response.
 - Vercel Preview previously reached the configured P0 upstream through the service token.
-- The dedicated tunnel is currently healthy. A limited-privilege `MTOS_P0_CloudflareTunnel` logon task was registered; a controlled stop/start through that task restored the P0 tunnel, with P0/Next local health at HTTP 200 and unauthenticated external P0 health returning HTTP 302. A real reboot/user-logon cycle has not been exercised.
+- The dedicated tunnel is currently healthy. A limited-privilege `MTOS_P0_CloudflareTunnel` logon task was registered; a controlled stop/start through that task restored the tunnel. The active `MTOS_Staging_P0` task is enabled and `Run-Stage.ps1` launches from the expected P0 source checkout. P0/Next local health returned HTTP 200; unauthenticated external P0 health returned HTTP 302. A real reboot/user-logon cycle has not been exercised.
 - The Preview deployment for commit `6ecc291` is READY. Its root returns HTTP 200 with the app login-check screen; authenticated user flows remain untested.
 
 ## G2 — Authentication: block
