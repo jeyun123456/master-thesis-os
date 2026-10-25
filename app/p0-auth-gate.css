@@ -1,0 +1,67 @@
+.p0-auth-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: clamp(16px, 4vw, 40px);
+}
+
+.p0-auth-card {
+  width: min(100%, 30rem);
+  margin: 0;
+}
+
+.p0-auth-brand {
+  margin: 0 0 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  opacity: 0.68;
+}
+
+.p0-auth-card h1 {
+  margin: 0 0 12px;
+}
+
+.p0-auth-google {
+  min-height: 44px;
+  margin: 20px 0 12px;
+}
+
+.p0-auth-card .btn {
+  margin-top: 10px;
+}
+
+.p0-session-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.p0-session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 10px;
+}
+
+.p0-session-row > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.p0-session-row small {
+  opacity: 0.72;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 540px) {
+  .p0-session-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

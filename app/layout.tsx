@@ -1,4 +1,5 @@
 import './globals.css';
+import './p0-auth-gate.css';
 import './library-panel.css';
 import './research-panel.css';
 import './shortcuts-panel.css';

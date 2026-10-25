@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parseShortcutMarkdown, serializeShortcutMarkdown, SHORTCUTS_MARKER_END, SHORTCUTS_MARKER_START } from '@/lib/shortcut-markdown';
 import { parseShortcuts, shortcuts } from '@/lib/shortcuts';
 import { VaultConflictError, readVaultTextIfPresent, vaultConfigured, vaultWritable, writeVaultText } from '@/lib/vault-repository';
+import { requireP0Session, sameOriginMutationError } from '@/lib/p0-server';
 
 export const runtime = 'nodejs';
 
 const SHORTCUTS_PATH = 'shared/shortcuts.md';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authError = await requireP0Session(request);
+  if (authError) return authError;
   if (!vaultConfigured()) {
     return NextResponse.json({ configured: false, source: 'fallback', path: SHORTCUTS_PATH, items: shortcuts, writable: false });
   }
@@ -28,6 +31,10 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
+  const originError = sameOriginMutationError(request);
+  if (originError) return originError;
+  const authError = await requireP0Session(request);
+  if (authError) return authError;
   if (!vaultConfigured()) return NextResponse.json({ configured: false, error: 'Vault repository is not configured' }, { status: 503 });
   if (!canWriteVault()) return NextResponse.json({ configured: true, error: 'Vault write access is not configured' }, { status: 503 });
 

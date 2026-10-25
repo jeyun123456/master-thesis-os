@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ResultChart, ResultTable } from '@/app/result-view-components';
 import type { LoadedProjectResultDataset, ProjectResultsBundle } from '@/lib/project-results-loader';
+import { notifyP0SessionInvalid } from '@/lib/p0-tasks-client';
 import {
   compatibleDatasets,
   datasetForView,
@@ -57,6 +58,7 @@ export function StandardResultsView({ resultPath }: { resultPath: string }) {
     setAddDatasetId('');
     fetch(`/api/project-results?path=${encodeURIComponent(resultPath)}`, { cache: 'no-store' })
       .then(async (response) => {
+        notifyP0SessionInvalid(response);
         const data = await response.json() as ProjectResultsBundle & { error?: string };
         if (!response.ok) throw new Error(data.error || '표준 결과를 불러오지 못했어.');
         return data;

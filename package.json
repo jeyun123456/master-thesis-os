@@ -11,11 +11,15 @@
     "build": "next build --webpack",
     "start": "next start",
     "test": "vitest run",
+    "test:p0:integration": "node scripts/test-p0-http-integration.mjs",
+    "test:p0:production": "node scripts/test-p0-http-integration.mjs --production",
     "lint": "tsc --noEmit",
     "test:bridge": "python -m unittest discover -s local-bridge -p test_*.py && python scripts/test_bridge_package.py",
     "test:portal:e2e": "python scripts/portal_e2e_smoke.py",
     "test:exporter": "python -m unittest exporter.test_export_results",
     "test:web": "vitest run",
+    "test:p0:backup:isolated": "node scripts/test-p0-backup-isolated.mjs",
+    "staging:doctor": "node ops/staging/staging-doctor.mjs",
     "version:check": "node scripts/check-versions.mjs"
   },
   "dependencies": {
