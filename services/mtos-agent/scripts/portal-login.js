@@ -22,7 +22,7 @@ if (process.argv[2] === 'status') {
     console.error(`로그인 실패: ${result.code} ${result.message ?? ''}`);
     process.exit(1);
   }
-  const db = openAgentDb(env.MTOS_AGENT_DB_PATH ?? join(root, 'data', 'mtos-agent.db'));
+  const db = openAgentDb(env.MTOS_AGENT_DB_PATH ?? join(env.LOCALAPPDATA ?? root, 'MasterThesisOS', 'agent', 'data', 'mtos-agent.db'));
   resumePortal(createStore(db));
   db.close();
   console.log('로그인 확인됨. 공지 수집이 다시 활성화됐어.');
