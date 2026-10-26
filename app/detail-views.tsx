@@ -101,6 +101,16 @@ export function NoticeDetailBody({ notice }: { notice: NoticeDetailModel }) {
  * Inside an embedded web view (wallpaper app) normal links would load inside that view, so there the link is
  * handed to the OS (Edge) instead, and a copy-link button is always available.
  */
+/** Hands a protocol URL to the OS from a click by loading it in a throwaway hidden frame, so the page itself never navigates. */
+function launchProtocol(url: string) {
+  const frame = document.createElement('iframe');
+  frame.style.display = 'none';
+  frame.setAttribute('aria-hidden', 'true');
+  frame.src = url;
+  document.body.appendChild(frame);
+  setTimeout(() => frame.remove(), 3000);
+}
+
 export function SourceActions({ source, kind, embedded: embeddedProp, desktop: desktopProp }: { source: DetailSource; kind: SourceKind; embedded?: boolean; desktop?: boolean }) {
   const [embeddedState, setEmbedded] = useState(false);
   const [desktopState, setDesktop] = useState(false);
@@ -119,9 +129,11 @@ export function SourceActions({ source, kind, embedded: embeddedProp, desktop: d
   const linkProps = embedded ? {} : { target: '_blank', rel: 'noopener noreferrer' } as const;
   return <>
     {open
-      ? <a className={`${styles.btn} ${styles.primary}`} href={(embedded && chrome) || external(open) || open} {...linkProps}>{embedded ? `${source.openLabel} (${chrome ? 'Chrome' : 'Edge'})` : source.openLabel}</a>
+      ? (embedded && chrome
+        ? <button type="button" className={`${styles.btn} ${styles.primary}`} onClick={() => launchProtocol(chrome)}>{`${source.openLabel} (Chrome)`}</button>
+        : <a className={`${styles.btn} ${styles.primary}`} href={external(open) || open} {...linkProps}>{embedded ? `${source.openLabel} (Edge)` : source.openLabel}</a>)
       : <span className={styles.btn} role="link" aria-disabled="true">{source.openLabel}</span>}
-    {open && chrome && !embedded && <a className={styles.btn} href={chrome}>Chrome으로 열기</a>}
+    {open && chrome && !embedded && <button type="button" className={styles.btn} onClick={() => launchProtocol(chrome)}>Chrome으로 열기</button>}
     {open && chrome && <a className={styles.btn} href={edgeLaunchUrl(open) ?? open}>Edge로 열기</a>}
     {open && desktop && !embedded && <button type="button" className={styles.btn} onClick={() => void copy(open)}>링크 복사</button>}
     {desktop && source.thunderbirdUrl && <a className={styles.btn} href={source.thunderbirdUrl}>Thunderbird로 열기</a>}
