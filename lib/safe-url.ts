@@ -55,3 +55,17 @@ export function chromeLaunchUrl(verifiedPortalUrl: string | null): string | null
   try { const u = new URL(verifiedPortalUrl); if (u.protocol !== 'https:' || u.hostname !== 'sp.ritsumei.ac.jp') return null; } catch { return null; }
   return `chocomint-open:${verifiedPortalUrl}`;
 }
+
+/**
+ * Thunderbird registers the mid: protocol on the PC that has it, so a mid:<Message-ID> link opens that exact mail there.
+ * The ID comes from the collected mail header; anything that is not a plain Message-ID is refused.
+ */
+export function thunderbirdMidUrl(messageId: unknown): string | null {
+  if (typeof messageId !== 'string') return null;
+  const id = messageId.trim().replace(/^<|>$/g, '');
+  // a plain Message-ID: no whitespace, angle brackets, quotes, backticks, backslashes or control characters
+  if (id.length < 3 || id.length > 300 || /[\s<>"'\x60\\\x00-\x1f]/.test(id) || !id.includes('@')) return null;
+  return `mid:${encodeURIComponent(id).replace(/%40/g, '@')}`;
+}
+
+export const isMobileUserAgent = (userAgent: string) => /Android|iPhone|iPad|iPod/i.test(userAgent);

@@ -1,5 +1,5 @@
 import type { GmailMessageDetail } from './gmail';
-import { OUTLOOK_APP_HOME, OUTLOOK_WEB_HOME, safeSourceUrl } from './safe-url';
+import { OUTLOOK_APP_HOME, OUTLOOK_WEB_HOME, safeSourceUrl, thunderbirdMidUrl } from './safe-url';
 import type { SchoolAnalysis, SchoolAttachment, SchoolMailDetail, SchoolNoticeDetail } from './mtos-client';
 
 /** One shape for everything the detail drawer can show, whatever the source. */
@@ -15,6 +15,8 @@ export type DetailSource = {
   /** Optional fixed app link (generic, not per item) */
   appUrl?: string | null;
   appLabel?: string;
+  /** mid: link that opens this exact mail in Thunderbird on the viewer's PC */
+  thunderbirdUrl?: string | null;
   hint: string;
 };
 export type MailDetailModel = {
@@ -64,7 +66,7 @@ export function fromSchoolMail(mail: SchoolMailDetail): MailDetailModel {
     source: {
       openUrl: null, openLabel: '원본 링크 없음',
       fallbackUrl: safeSourceUrl(OUTLOOK_WEB_HOME, 'outlook-web'), fallbackLabel: 'Outlook 웹 열기',
-      appUrl: OUTLOOK_APP_HOME, appLabel: 'Outlook 앱 열기',
+      appUrl: OUTLOOK_APP_HOME, appLabel: 'Outlook 앱 열기', thunderbirdUrl: thunderbirdMidUrl(mail.message_id),
       hint: '이 메일의 정확한 Outlook 링크는 수집 데이터에 없어. Outlook 앱/웹 버튼은 이 메일이 아니라 받은편지함을 열어. 앱이 없으면 아무 일도 일어나지 않을 수 있어.',
     },
   };

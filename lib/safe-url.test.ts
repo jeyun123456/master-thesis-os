@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chromeLaunchUrl, edgeLaunchUrl, gmailThreadUrl, isEmbeddedWebView, OUTLOOK_APP_HOME, safeSourceUrl } from './safe-url';
+import { thunderbirdMidUrl, chromeLaunchUrl, edgeLaunchUrl, gmailThreadUrl, isEmbeddedWebView, OUTLOOK_APP_HOME, safeSourceUrl } from './safe-url';
 
 describe('safeSourceUrl', () => {
   it('accepts only https URLs on the allow-list for the given source', () => {
@@ -46,5 +46,13 @@ describe('external launch helpers', () => {
   it('recognises the wallpaper web view host by its user agent only', () => {
     expect(isEmbeddedWebView('Sucrose/2.0 Chrome/120')).toBe(true);
     expect(isEmbeddedWebView('Mozilla/5.0 (Windows NT 10.0) Chrome/120 Safari/537.36')).toBe(false);
+  });
+});
+
+describe('thunderbirdMidUrl', () => {
+  it('turns a plain Message-ID into a mid: link and refuses anything else', () => {
+    expect(thunderbirdMidUrl('<abc.123@mail.x.ac.jp>')).toBe('mid:abc.123@mail.x.ac.jp');
+    expect(thunderbirdMidUrl('a+b/c@x.jp')).toBe('mid:a%2Bb%2Fc@x.jp');
+    for (const bad of [null, undefined, 42, '', 'ab', 'no-at-sign', 'a b@x.jp', 'x"@y.jp', 'x@y.jp\nfoo', '<a@b>' + 'x'.repeat(400), 'javascript:alert(1)']) expect(thunderbirdMidUrl(bad), String(bad)).toBeNull();
   });
 });

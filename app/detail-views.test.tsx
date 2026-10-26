@@ -8,7 +8,7 @@ import { DetailDrawer, DrawerPanel } from './detail-drawer';
 import { DetailState, MailDetailBody, NoticeDetailBody, SourceActions } from './detail-views';
 
 const mail: SchoolMailDetail = {
-  id: 'm1', account_id: 'a', folder_id: 'f', subject: '학교 메일', from_addr: 'a@x.ac.jp', to_addr: 'me@x.ac.jp', cc_addr: '', received_at: '2026-10-26T01:00:00Z', sent_at: null, read_state: false,
+  id: 'm1', message_id: '<abc.123@mail.x.ac.jp>', account_id: 'a', folder_id: 'f', subject: '학교 메일', from_addr: 'a@x.ac.jp', to_addr: 'me@x.ac.jp', cc_addr: '', received_at: '2026-10-26T01:00:00Z', sent_at: null, read_state: false,
   collected_at: '2026-10-26T01:01:00Z', body_text: '본문 <script>alert(1)</script>', body_html: null,
   attachments: [{ id: 'att/1', filename: 'a.pdf', mime: null, size: 2048, stored: true, url: null }, { id: 'att2', filename: 'gone.pdf', mime: null, size: null, stored: false, url: null }],
   analysis: { summary: '제출 필요', importance: 'high', requires_action: true, suggested_task: '서류 제출', deadline: '2026-11-01', project_id: null, reason: null, model: 'm', analyzed_at: '' },
@@ -77,6 +77,17 @@ describe('detail views', () => {
     expect(unverified).not.toContain('microsoft-edge:'); expect(unverified).not.toContain('chocomint-open:'); expect(unverified).not.toContain('evil.example');
     const ol = renderToStaticMarkup(<SourceActions source={fromSchoolMail(mail).source} kind="outlook-web" embedded />);
     expect(ol).toContain('href="microsoft-edge:https://outlook.office.com/mail/"'); expect(ol).toContain('href="ms-outlook://emails"');
+  });
+
+  it('desktop shows extra open-with buttons (Chrome/Edge/copy for notices, Thunderbird for school mail); phones do not', () => {
+    const nt = renderToStaticMarkup(<SourceActions source={fromNotice(notice).source} kind="school-notice" desktop />);
+    expect(nt).toContain('href="https://sp.ritsumei.ac.jp/notice/1"'); expect(nt).toContain('target="_blank"');
+    expect(nt).toContain('Chrome으로 열기'); expect(nt).toContain('href="chocomint-open:https://sp.ritsumei.ac.jp/notice/1"'); expect(nt).toContain('Edge로 열기'); expect(nt).toContain('링크 복사');
+    const tb = renderToStaticMarkup(<SourceActions source={fromSchoolMail(mail).source} kind="outlook-web" desktop />);
+    expect(tb).toContain('href="mid:abc.123@mail.x.ac.jp"'); expect(tb).toContain('Thunderbird로 열기');
+    const phone = renderToStaticMarkup(<SourceActions source={fromSchoolMail(mail).source} kind="outlook-web" desktop={false} />);
+    expect(phone).not.toContain('mid:'); expect(phone).not.toContain('Thunderbird');
+    expect(renderToStaticMarkup(<SourceActions source={fromSchoolMail({ ...mail, message_id: null }).source} kind="outlook-web" desktop />)).not.toContain('Thunderbird로 열기');
   });
 
   it('drawer is an accessible modal dialog with a labelled close button, and renders nothing when closed', () => {

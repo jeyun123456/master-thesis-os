@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { hasRemoteImages, htmlSrcDoc, type DetailAnalysis, type DetailAttachment, type DetailSource, type MailDetailModel, type NoticeDetailModel } from '../lib/detail-model';
-import { chromeLaunchUrl, edgeLaunchUrl, isEmbeddedWebView, safeSourceUrl, type SourceKind } from '../lib/safe-url';
+import { chromeLaunchUrl, edgeLaunchUrl, isEmbeddedWebView, isMobileUserAgent, safeSourceUrl, type SourceKind } from '../lib/safe-url';
 import styles from './detail-drawer.module.css';
 
 const IMPORTANCE: Record<string, string> = { high: '중요도 높음', normal: '중요도 보통', low: '중요도 낮음' };
@@ -101,27 +101,33 @@ export function NoticeDetailBody({ notice }: { notice: NoticeDetailModel }) {
  * Inside an embedded web view (wallpaper app) normal links would load inside that view, so there the link is
  * handed to the OS (Edge) instead, and a copy-link button is always available.
  */
-export function SourceActions({ source, kind, embedded: embeddedProp }: { source: DetailSource; kind: SourceKind; embedded?: boolean }) {
+export function SourceActions({ source, kind, embedded: embeddedProp, desktop: desktopProp }: { source: DetailSource; kind: SourceKind; embedded?: boolean; desktop?: boolean }) {
   const [embeddedState, setEmbedded] = useState(false);
+  const [desktopState, setDesktop] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
-  useEffect(() => { setEmbedded(isEmbeddedWebView(navigator.userAgent)); }, []);
+  useEffect(() => { setEmbedded(isEmbeddedWebView(navigator.userAgent)); setDesktop(!isMobileUserAgent(navigator.userAgent)); }, []);
   const embedded = embeddedProp ?? embeddedState;
+  // Desktop only: protocol links for apps installed on this PC. Phones keep the plain https / app links.
+  const desktop = desktopProp ?? desktopState;
   const open = safeSourceUrl(source.openUrl, kind);
   const fallback = source.fallbackUrl ? safeSourceUrl(source.fallbackUrl, 'outlook-web') : null;
   const external = (url: string | null) => (embedded ? edgeLaunchUrl(url) : url);
   const copy = async (url: string) => {
     try { await navigator.clipboard.writeText(url); setCopied('링크를 복사했어.'); } catch { setCopied('복사하지 못했어. 링크를 길게 눌러 복사해줘.'); }
   };
-  const chrome = embedded && kind === 'school-notice' ? chromeLaunchUrl(open) : null;
+  const chrome = (embedded || desktop) && kind === 'school-notice' ? chromeLaunchUrl(open) : null;
   const linkProps = embedded ? {} : { target: '_blank', rel: 'noopener noreferrer' } as const;
   return <>
     {open
-      ? <a className={`${styles.btn} ${styles.primary}`} href={chrome ?? external(open) ?? open} {...linkProps}>{embedded ? `${source.openLabel} (${chrome ? 'Chrome' : 'Edge'})` : source.openLabel}</a>
+      ? <a className={`${styles.btn} ${styles.primary}`} href={(embedded && chrome) || external(open) || open} {...linkProps}>{embedded ? `${source.openLabel} (${chrome ? 'Chrome' : 'Edge'})` : source.openLabel}</a>
       : <span className={styles.btn} role="link" aria-disabled="true">{source.openLabel}</span>}
+    {open && chrome && !embedded && <a className={styles.btn} href={chrome}>Chrome으로 열기</a>}
     {open && chrome && <a className={styles.btn} href={edgeLaunchUrl(open) ?? open}>Edge로 열기</a>}
+    {open && desktop && !embedded && <button type="button" className={styles.btn} onClick={() => void copy(open)}>링크 복사</button>}
+    {desktop && source.thunderbirdUrl && <a className={styles.btn} href={source.thunderbirdUrl}>Thunderbird로 열기</a>}
     {open && embedded && <button type="button" className={styles.btn} onClick={() => void copy(open)}>링크 복사</button>}
     {source.appUrl && <a className={styles.btn} href={source.appUrl}>{source.appLabel}</a>}
     {fallback && <a className={styles.btn} href={external(fallback) ?? fallback} {...linkProps}>{source.fallbackLabel}{embedded ? ' (Edge)' : ''}</a>}
-    <p className={styles.hint}>{source.hint}{embedded && open ? (chrome ? ' Chrome으로 열려면 이 PC에 한 번 설치가 필요해(ops/open-in-chrome). 안 열리면 Edge로 열기를 써.' : ' 배경화면/웹뷰 앱 안에서는 기본 브라우저를 직접 지정할 수 없어서 Edge로 열려.') : ''}{copied ? ` ${copied}` : ''}</p>
+    <p className={styles.hint}>{source.hint}{(embedded || desktop) && open ? (chrome ? ' Chrome으로 열려면 이 PC에 한 번 설치가 필요해(ops/open-in-chrome). 안 열리면 Edge로 열기를 써.' : ' 배경화면/웹뷰 앱 안에서는 기본 브라우저를 직접 지정할 수 없어서 Edge로 열려.') : ''}{copied ? ` ${copied}` : ''}</p>
   </>;
 }

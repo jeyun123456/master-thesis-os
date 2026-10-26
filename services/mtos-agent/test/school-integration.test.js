@@ -142,6 +142,7 @@ test('school endpoints require the P0 session and expose lists, details, status 
     assert.equal(detail.body_text, 'body');
     // HTML is now returned (capped) for the web app's sandboxed viewer; mails without HTML get null
     assert.ok('body_html' in detail);
+    assert.ok('message_id' in detail);
     assert.ok(detail.body_html === null || detail.body_html.length <= 300_000);
     const download = await get(`/school/attachments/${detail.attachments[0].id}`);
     assert.equal(download.headers.get('content-type'), 'application/octet-stream');
