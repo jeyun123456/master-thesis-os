@@ -72,3 +72,12 @@ Vercel(서버 환경변수, `NEXT_PUBLIC_` 아님): `MTOS_OPS_ADMIN_SECRET` — 
 ## 롤백
 
 `agent.env`에서 `MTOS_OPS_ENABLED`를 지우고 API 작업을 재시작하면 즉시 비활성(라우트 404, 수집 중지). 데이터 정리는 `ops.db*` 파일 삭제로 끝난다. 에이전트 DB는 변경되지 않았으므로 복구가 필요 없다.
+
+## Vercel CLI 운영 (서버)
+
+- 설치: `npm install -g vercel` (확인: `vercel --version`). 서버에서는 `next build`를 실행하지 않고 빌드는 항상 Vercel에서 한다.
+- 인증: `vercel login`(디바이스 코드, 브라우저 승인). 자격 증명은 사용자 프로필(`%APPDATA%\com.vercel.cli`)에만 저장되며 Git에 들어가지 않는다. 확인: `vercel whoami`.
+- 재인증: 세션이 만료되거나 `vercel whoami`가 실패하면 `vercel login`을 다시 실행하고 표시되는 코드를 브라우저에서 승인한다(코드는 수 분 내 만료).
+- 연결: `vercel link --yes --project master-thesis-os`. 연결 정보(`.vercel/`)와 `.env.local`은 Git에 커밋하지 않는다.
+- 환경변수: `<값> | vercel env add NAME preview <branch> --sensitive` (표준입력 전달, 명령행 인자 금지). Production 환경변수·배포는 사용자 승인 후에만 변경한다.
+- Preview는 Vercel Authentication으로 보호된다. 검증은 `vercel curl <전체 URL>`을 사용한다.
