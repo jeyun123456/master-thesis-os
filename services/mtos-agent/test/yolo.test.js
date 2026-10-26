@@ -164,3 +164,17 @@ test('worker schedules and runs yolo_manage through the real queue, once per slo
   for (let i = 0; i < 3; i += 1) await worker.tick(); // same 30-minute slot: no new jobs
   assert.equal(db.prepare('SELECT COUNT(*) n FROM jobs').get().n, before);
 });
+
+test('several next-actions from one project source become separate tasks (no source-level dedupe)', async () => {
+  const p0 = fakeP0();
+  const { db, store } = setup({ p0, ai: fakeAi(), seedItem: false });
+  const ai = fakeAi({ ops: [
+    op({ source_type: 'github', source_id: 'thesis', title: '3장 초고 작성', memo: '첫째' }),
+    op({ source_type: 'github', source_id: 'thesis', title: '참고문헌 정리', memo: '둘째' }),
+  ] });
+  const y = createYolo({ db, store, p0, ai, labRoot: labRoot() });
+  const result = await y.run({});
+  assert.equal(result.applied, 2);
+  const titles = [...p0.tasks.values()].map((t) => `${t.title}:${t.memo}`).sort();
+  assert.deepEqual(titles, ['3장 초고 작성:첫째', '참고문헌 정리:둘째']);
+});

@@ -138,7 +138,8 @@ export function createYolo({ db, store, p0, ai, labRoot, now = () => Date.now() 
             const title = (op.title ?? '').trim();
             if (!title) { skip(base, 'empty title'); continue; }
             const sourceRef = `${op.source_type}:${op.source_id}`;
-            const existing = obviousDuplicate(title, sourceRef, openTasks);
+            // A project file lists many separate tasks, so only mail/inbox sources may dedupe by source ref.
+            const existing = obviousDuplicate(title, op.source_type === 'github' ? null : sourceRef, openTasks);
             if (existing) {
               await applyUpdate(op, byId.get(existing.id) ?? existing, fieldsOf(op), { ...base, action: 'update', reason: `duplicate of existing task: ${op.reason}` });
               if (op.source_type !== 'github') createdFromItem.set(op.source_id, existing.id);
