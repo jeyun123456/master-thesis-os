@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { edgeLaunchUrl, gmailThreadUrl, isEmbeddedWebView, OUTLOOK_APP_HOME, safeSourceUrl } from './safe-url';
+import { chromeLaunchUrl, edgeLaunchUrl, gmailThreadUrl, isEmbeddedWebView, OUTLOOK_APP_HOME, safeSourceUrl } from './safe-url';
 
 describe('safeSourceUrl', () => {
   it('accepts only https URLs on the allow-list for the given source', () => {
@@ -36,6 +36,11 @@ describe('external launch helpers', () => {
     expect(edgeLaunchUrl('https://sp.ritsumei.ac.jp/x')).toBe('microsoft-edge:https://sp.ritsumei.ac.jp/x');
     for (const bad of [null, 'http://x.example/', 'javascript:alert(1)', 'not a url']) expect(edgeLaunchUrl(bad)).toBeNull();
     expect(OUTLOOK_APP_HOME).toBe('ms-outlook://emails');
+  });
+
+  it('offers the Chrome protocol link for the school portal only', () => {
+    expect(chromeLaunchUrl('https://sp.ritsumei.ac.jp/n/1')).toBe('chocomint-open:https://sp.ritsumei.ac.jp/n/1');
+    for (const bad of [null, 'https://mail.google.com/x', 'http://sp.ritsumei.ac.jp/x', 'https://sp.ritsumei.ac.jp.evil.example/', 'javascript:alert(1)']) expect(chromeLaunchUrl(bad)).toBeNull();
   });
 
   it('recognises the wallpaper web view host by its user agent only', () => {
