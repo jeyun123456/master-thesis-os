@@ -46,3 +46,24 @@ export function buildP0HomeView(tasks: P0Task[], today: string, category: P0Home
     overdueCount: groups[0].tasks.length,
   };
 }
+
+export const NOW_LIMIT = 3;
+
+/** "Right now": today's focus first, then what is overdue, then what is due today. At most `limit`, each task once. */
+export function pickNowTasks(view: ReturnType<typeof buildP0HomeView>, limit = NOW_LIMIT): P0Task[] {
+  const overdue = view.groups.find((group) => group.id === 'overdue')?.tasks ?? [];
+  const dueToday = view.groups.find((group) => group.id === 'today')?.tasks ?? [];
+  const seen = new Set<string>();
+  return [...view.focus, ...overdue, ...dueToday].filter((task) => !seen.has(task.id) && seen.add(task.id)).slice(0, limit);
+}
+
+/** Short deadline wording for a row: "2일 지남", "오늘까지", "내일까지", "10/29까지". */
+export function dueLabel(dueDate: string | null, today: string): { text: string; level: 'late' | 'soon' | 'later' } | null {
+  if (!dueDate) return null;
+  const days = Math.round((Date.parse(dueDate) - Date.parse(today)) / 86_400_000);
+  if (Number.isNaN(days)) return { text: dueDate, level: 'later' };
+  if (days < 0) return { text: `${-days}일 지남`, level: 'late' };
+  if (days === 0) return { text: '오늘까지', level: 'soon' };
+  if (days === 1) return { text: '내일까지', level: 'soon' };
+  return { text: `${dueDate.slice(5).replace('-', '/')}까지`, level: 'later' };
+}

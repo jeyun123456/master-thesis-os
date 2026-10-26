@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { createP0Task, deleteP0Task, listP0Tasks, markP0TasksSeen, setP0SyncBridge, updateP0Task, type P0SyncBridge, type P0SyncStatus, type P0Task, type P0TaskCategory } from '@/lib/p0-tasks-client';
 import { clearP0PendingCreate, readP0PendingCreate, saveP0PendingCreate, type P0PendingCreate } from '@/lib/p0-pending-create';
-import { buildP0HomeView, p0TodayInTokyo, type P0HomeCategory } from '@/lib/p0-home';
+import { buildP0HomeView, dueLabel, p0TodayInTokyo, pickNowTasks, type P0HomeCategory } from '@/lib/p0-home';
 import type { ResearchProject } from '@/lib/projects';
 import type { CalendarEvent } from '@/lib/calendar';
 import { addDays, homeHiddenIds, isMissedOccurrence, nextStep, type TaskMeta } from '@/lib/mtos-planning';
 import { completeTask, deferOccurrence, skipOccurrence } from '@/lib/mtos-task-actions';
 import { FocusRecommendations } from '@/app/focus-recommendations';
 import { TaskAssist } from '@/app/task-assist';
+import { DetailDrawer } from '@/app/detail-drawer';
 import styles from './p0-home-tasks.module.css';
 
 const categoryLabels: Record<P0TaskCategory, string> = {
@@ -268,6 +269,11 @@ export function P0HomeWorkspace({
     }
   }
 
+  function closeDetail() {
+    setSelectedId(null);
+    setDraft(null);
+  }
+
   async function saveDetails(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selected || !draft || savingId) return;
@@ -349,12 +355,33 @@ export function P0HomeWorkspace({
     setTasks((current) => current.map((item) => item.id === task.id ? result.task : item));
   }
 
-  function renderTask(task: P0Task, done = false) {
-    const overdue = task.status === 'open' && task.due_date && task.due_date < today;
+  const toneOf = { late: styles.chipDanger, soon: styles.chipWarn, later: '' } as const;
+  function dueChip(task: P0Task) {
+    const label = dueLabel(task.due_date, today);
+    return label && { text: label.text, tone: toneOf[label.level] };
+  }
+
+  function taskMetaLine(task: P0Task) {
     const taskMeta = meta.get(task.id);
     const step = nextStep(task.id, tasks, meta);
+    const due = dueChip(task);
+    const project = task.project_id ? projects.find((item) => item.id === task.project_id)?.title ?? task.project_id : '';
+    return <span className={styles.metaLine}>
+      {due && <span className={`${styles.chip} ${due.tone}`}>{due.text}</span>}
+      <span className={styles.metaText}>{categoryLabels[task.category]}{project ? ` · ${project}` : ''}</span>
+      {taskMeta?.recur && <span className={styles.tag}>반복</span>}
+      {taskMeta?.ai_generated && <span className={styles.tag}>AI</span>}
+      {task._pending ? <span className={`${styles.tag} ${styles.pending}`}>동기화 대기</span> : task.is_new && <span className={styles.tag}>새 항목</span>}
+      {step.next && <span className={styles.metaText}>다음 단계 {step.done}/{step.total}: {step.next.title}</span>}
+      {step.allDone && task.status === 'open' && <span className={styles.metaText}>모든 단계 완료 · 상위 작업을 확인해줘</span>}
+      {taskMeta?.blocked_reason && <span className={`${styles.chip} ${styles.chipDanger}`}>막힘: {taskMeta.blocked_reason}</span>}
+    </span>;
+  }
+
+  function renderTask(task: P0Task, done = false, large = false) {
+    const taskMeta = meta.get(task.id);
     const missed = isMissedOccurrence(task, taskMeta, today);
-    return <li className={styles.taskRow} key={task.id}>
+    return <li className={`${styles.taskRow} ${large ? styles.nowRow : ''}`} key={task.id}>
       <input
         type="checkbox"
         aria-label={task.status === 'done' ? `${task.title} 다시 열기` : `${task.title} 완료`}
@@ -362,120 +389,122 @@ export function P0HomeWorkspace({
         disabled={savingId === task.id}
         onChange={() => void toggleStatus(task)}
       />
-      <button className={styles.taskSelect} type="button" aria-pressed={selectedId === task.id} onClick={() => void selectTask(task)}>
+      <button className={styles.taskSelect} type="button" data-detail-item aria-pressed={selectedId === task.id} onClick={() => void selectTask(task)}>
         <span className={styles.taskTitle}>{task.title}</span>
-        <span className={`${styles.taskMeta} ${overdue ? styles.overdue : ''}`}>
-          {categoryLabels[task.category]}{task.due_date ? ` · ${task.due_date}` : ''}
-          {task.project_id ? ` · ${projects.find((project) => project.id === task.project_id)?.title ?? task.project_id}` : ''}
-        </span>
-        {step.next && <span className={styles.taskMeta}>다음 단계: {step.next.title} ({step.done}/{step.total})</span>}
-        {step.allDone && task.status === 'open' && <span className={styles.taskMeta}>모든 단계 완료 · 상위 작업 완료 여부를 확인해줘</span>}
-        {taskMeta?.blocked_reason && <span className={`${styles.taskMeta} ${styles.overdue}`}>막힘: {taskMeta.blocked_reason}</span>}
+        {taskMetaLine(task)}
       </button>
       {missed && <span className={styles.rowActions}>
         <button className="mini" type="button" disabled={savingId === task.id} onClick={() => void toggleStatus(task)}>완료</button>
         <button className="mini" type="button" disabled={savingId === task.id} onClick={() => void occurrenceAction(task, 'skip')}>건너뛰기</button>
         <button className="mini" type="button" disabled={savingId === task.id} onClick={() => void occurrenceAction(task, 'defer')}>미루기</button>
       </span>}
-      {taskMeta?.recur && <span className={styles.badge}>반복</span>}
-      {taskMeta?.ai_generated && <span className={styles.badge}>AI 생성</span>}
-      {task._pending ? <span className={`${styles.badge} ${styles.pending}`}>동기화 대기</span> : task.is_new && <span className={styles.badge}>새 항목</span>}
     </li>;
   }
 
+  const nowTasks = pickNowTasks(view);
+  const nowIds = new Set(nowTasks.map((task) => task.id));
+  const restFocus = view.focus.filter((task) => !nowIds.has(task.id));
+  const restGroups = view.groups.map((group) => ({ ...group, tasks: group.tasks.filter((task) => !nowIds.has(task.id)) })).filter((group) => group.tasks.length);
+  const restCount = restFocus.length + restGroups.reduce((sum, group) => sum + group.tasks.length, 0);
+
   return <section className={`card section ${styles.root}`} aria-labelledby="p0-home-title">
     <div className={styles.header}>
-      <div><h3 id="p0-home-title">오늘 할 일</h3><p>{today} · {state === 'ready' ? `미완료 ${view.openCount}개` : '할 일 확인 중'}</p></div>
+      <div><h3 id="p0-home-title">오늘 할 일</h3><p>{today} · {state === 'ready' ? `미완료 ${view.openCount}개${view.overdueCount ? ` · 기한 지남 ${view.overdueCount}개` : ''}` : '할 일 확인 중'}</p></div>
       <div className={styles.headerActions}>
-        {newCount > 0 && <button className="mini" type="button" onClick={() => void markAllSeen()}>새 항목 {newCount}개 모두 읽음</button>}
+        {newCount > 0 && <button className="mini" type="button" onClick={() => void markAllSeen()}>새 항목 {newCount}개 읽음</button>}
         <button className="mini" type="button" onClick={() => void load()} disabled={state === 'loading'}>새로고침</button>
-        <button className="mini" type="button" onClick={onOpenPlanner}>기존 Planner</button>
+        <button className="mini" type="button" onClick={onOpenPlanner}>Planner</button>
       </div>
     </div>
 
-    <form className={styles.quick} onSubmit={(event) => void submitCreate(event)}>
-      <label>새 할 일
-        <input ref={titleInput} value={title} onChange={(event) => setTitle(event.target.value)} maxLength={500} placeholder="다음 행동을 입력해" disabled={createBusy || Boolean(pendingCreate)} />
-      </label>
-      <label>기한
-        <input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} disabled={createBusy || Boolean(pendingCreate)} />
-      </label>
-      <label>분류
-        <select value={newCategory} onChange={(event) => setNewCategory(event.target.value as P0TaskCategory)} disabled={createBusy || Boolean(pendingCreate)}>
-          {Object.entries(categoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
-      </label>
-      <button className="mini primary" type="submit" disabled={createBusy || (!pendingCreate && !title.trim())}>{createBusy ? '저장 중…' : pendingCreate ? '같은 요청 재시도' : '추가'}</button>
-      <label className={styles.detailCheck}><input type="checkbox" checked={focusNew} onChange={(event) => setFocusNew(event.target.checked)} disabled={createBusy || Boolean(pendingCreate)} /> 오늘 집중</label>
-    </form>
-    {pendingCreate && <p className={styles.message} role="status">이전 생성 요청을 확인할 수 없어. 같은 ID로 재시도하면 중복 생성되지 않아.</p>}
     {error && <p className={styles.error} role="alert">{error}</p>}
     {state === 'loading' && <div className={styles.empty}>P0 할 일을 불러오는 중…</div>}
     {state === 'error' && <div className={styles.empty}>{error || 'P0에 연결할 수 없어.'}</div>}
+
+    {state === 'ready' && <section className={styles.now} aria-labelledby="p0-now-title">
+      <h4 id="p0-now-title">지금 할 일 <span className={styles.count}>{nowTasks.length}</span></h4>
+      {nowTasks.length
+        ? <ul className={styles.taskList}>{nowTasks.map((task) => renderTask(task, false, true))}</ul>
+        : <p className={styles.empty}>지금 급한 일이 없어. 아래에서 오늘 집중할 일을 골라봐.</p>}
+      <FocusRecommendations tasks={tasks} meta={meta} today={today} calendarEvents={calendarEvents} onAccept={pinToday} onVisibleChange={setRecommendedIds} />
+    </section>}
+
+    <form className={styles.quick} onSubmit={(event) => void submitCreate(event)}>
+      <input ref={titleInput} aria-label="새 할 일" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={500} placeholder="새 할 일을 입력하고 Enter" disabled={createBusy || Boolean(pendingCreate)} />
+      <button className="mini primary" type="submit" disabled={createBusy || (!pendingCreate && !title.trim())}>{createBusy ? '저장 중…' : pendingCreate ? '같은 요청 재시도' : '추가'}</button>
+      <details className={styles.quickMore}>
+        <summary>기한 · 분류 · 오늘 집중</summary>
+        <div className={styles.quickFields}>
+          <label>기한<input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} disabled={createBusy || Boolean(pendingCreate)} /></label>
+          <label>분류
+            <select value={newCategory} onChange={(event) => setNewCategory(event.target.value as P0TaskCategory)} disabled={createBusy || Boolean(pendingCreate)}>
+              {Object.entries(categoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          <label className={styles.detailCheck}><input type="checkbox" checked={focusNew} onChange={(event) => setFocusNew(event.target.checked)} disabled={createBusy || Boolean(pendingCreate)} /> 오늘 집중</label>
+        </div>
+      </details>
+    </form>
+    {pendingCreate && <p className={styles.message} role="status">이전 생성 요청을 확인할 수 없어. 같은 ID로 재시도하면 중복 생성되지 않아.</p>}
 
     {state === 'ready' && <>
       <div className={styles.toolbar}>
         <div className={styles.filters} role="group" aria-label="분류 필터">
           {categoryOptions.map((option) => <button key={option.value} className="mini" type="button" aria-pressed={category === option.value} onClick={() => setCategory(option.value)}>{option.label}</button>)}
         </div>
-        <span className={styles.message}>{view.focusCount}개 오늘 집중 · {view.overdueCount}개 기한 지남</span>
+        <span className={styles.message}>나머지 {restCount}개</span>
       </div>
 
-      <div className={styles.layout}>
-        <div className={styles.listColumn}>
-          <section className={styles.focusSection} aria-labelledby="p0-focus-title">
-            <h4 id="p0-focus-title">오늘 집중 <span className={styles.count}>{view.focus.length}</span></h4>
-            {view.focus.length ? <ul className={styles.taskList}>{view.focus.map((task) => renderTask(task))}</ul> : <p className={styles.empty}>집중할 일을 표시하면 여기서 바로 볼 수 있어.</p>}
-            <FocusRecommendations tasks={tasks} meta={meta} today={today} calendarEvents={calendarEvents} onAccept={pinToday} onVisibleChange={setRecommendedIds} />
-          </section>
-          {view.groups.map((group) => <section className={styles.taskGroup} key={group.id} aria-labelledby={`p0-group-${group.id}`}>
-            <h4 id={`p0-group-${group.id}`}>{group.label}<span className={styles.count}>{group.tasks.length}</span></h4>
-            <ul className={styles.taskList}>{group.tasks.map((task) => renderTask(task))}</ul>
-          </section>)}
-          {!view.openCount && <div className={styles.empty}>미완료 할 일이 없어. 새 항목을 하나 등록해봐.</div>}
-          {snoozed.length > 0 && <details className={styles.done}>
-            <summary>미뤄둔 일 ({snoozed.length})</summary>
-            <ul className={styles.taskList}>{snoozed.map((task) => <li key={task.id} className={styles.taskRow}><span />
-              <button className={styles.taskSelect} type="button" onClick={() => void selectTask(task)}><span className={styles.taskTitle}>{task.title}</span><span className={styles.taskMeta}>{meta.get(task.id)?.snooze_until}에 다시 표시</span></button>
-            </li>)}</ul>
-          </details>}
-          <details className={styles.done}>
-            <summary>오늘 완료한 일 {view.doneToday.length ? `(${view.doneToday.length})` : ''}</summary>
-            {view.doneToday.length ? <ul className={styles.taskList}>{view.doneToday.map((task) => renderTask(task, true))}</ul> : <p className={styles.empty}>오늘 완료한 일이 아직 없어.</p>}
-          </details>
-        </div>
-
-        <aside className={`${styles.detail} ${selected ? '' : styles.detailEmpty}`} aria-label="할 일 상세">
-          {selected && draft ? <>
-            <div className={styles.detailHead}><h4>할 일 상세</h4><button className={`mini ${styles.mobileClose}`} type="button" onClick={() => { setSelectedId(null); setDraft(null); }}>닫기</button></div>
-            <form onSubmit={(event) => void saveDetails(event)}>
-              <div className={styles.listColumn}>
-                <label>제목<input value={draft.title} maxLength={500} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
-                <div className={styles.inlineFields}>
-                  <label>기한<input type="date" value={draft.due_date} onChange={(event) => setDraft({ ...draft, due_date: event.target.value })} /></label>
-                  <label>분류<select value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value as P0TaskCategory })}>{Object.entries(categoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                </div>
-                <label className={styles.detailCheck}><input type="checkbox" checked={draft.is_today} onChange={(event) => setDraft({ ...draft, is_today: event.target.checked })} /> 오늘 집중</label>
-                <label>연구 프로젝트
-                  <select value={draft.project_id} onChange={(event) => setDraft({ ...draft, project_id: event.target.value })}>
-                    <option value="">프로젝트 연결 안 함</option>
-                    {draft.project_id && !projects.some((project) => project.id === draft.project_id) && <option value={draft.project_id}>기존 연결 유지 ({draft.project_id})</option>}
-                    {projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
-                  </select>
-                </label>
-                <label>원본 링크<input type="url" value={draft.source_url} onChange={(event) => setDraft({ ...draft, source_url: event.target.value })} /></label>
-                <label>메모<textarea rows={5} value={draft.memo} onChange={(event) => setDraft({ ...draft, memo: event.target.value })} /></label>
-                <div className={styles.rowActions}>
-                  <button className="mini primary" type="submit" disabled={savingId === selected.id}>{savingId === selected.id ? '저장 중…' : '저장'}</button>
-                  <button className="mini" type="button" disabled={savingId === selected.id} onClick={() => void removeTask(selected)}>삭제</button>
-                </div>
-              </div>
-            </form>
-            <TaskAssist task={selected} tasks={tasks} meta={meta} today={today} onChanged={() => { onMetaChanged?.(); void load(); }} onCompleteParent={(task) => void toggleStatus(task)} />
-          </> : <p className={styles.message}>목록에서 항목을 선택하면 기한·분류·프로젝트·링크·메모를 편집할 수 있어.</p>}
-        </aside>
+      <div className={styles.listColumn}>
+        {restFocus.length > 0 && <details className={styles.group} open>
+          <summary>오늘 집중 <span className={styles.count}>{restFocus.length}</span></summary>
+          <ul className={styles.taskList}>{restFocus.map((task) => renderTask(task))}</ul>
+        </details>}
+        {restGroups.map((group) => <details className={`${styles.group} ${group.id === 'overdue' ? styles.groupDanger : ''}`} key={group.id} open={group.id === 'overdue' || group.id === 'today'}>
+          <summary>{group.label} <span className={styles.count}>{group.tasks.length}</span></summary>
+          <ul className={styles.taskList}>{group.tasks.map((task) => renderTask(task))}</ul>
+        </details>)}
+        {!view.openCount && <div className={styles.empty}>미완료 할 일이 없어. 위에서 새 항목을 하나 등록해봐.</div>}
+        {snoozed.length > 0 && <details className={styles.group}>
+          <summary>미뤄둔 일 <span className={styles.count}>{snoozed.length}</span></summary>
+          <ul className={styles.taskList}>{snoozed.map((task) => <li key={task.id} className={styles.taskRow}><span />
+            <button className={styles.taskSelect} type="button" data-detail-item onClick={() => void selectTask(task)}><span className={styles.taskTitle}>{task.title}</span><span className={styles.metaText}>{meta.get(task.id)?.snooze_until}에 다시 표시</span></button>
+          </li>)}</ul>
+        </details>}
+        <details className={styles.group}>
+          <summary>오늘 완료한 일 {view.doneToday.length ? <span className={styles.count}>{view.doneToday.length}</span> : null}</summary>
+          {view.doneToday.length ? <ul className={styles.taskList}>{view.doneToday.map((task) => renderTask(task, true))}</ul> : <p className={styles.empty}>오늘 완료한 일이 아직 없어.</p>}
+        </details>
       </div>
     </>}
+
+    <DetailDrawer open={Boolean(selected && draft)} title={draft?.title || '할 일 상세'} onClose={closeDetail}>
+      {selected && draft && <>
+        <form className={styles.drawerForm} onSubmit={(event) => void saveDetails(event)}>
+          <label>제목<input value={draft.title} maxLength={500} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
+          <div className={styles.inlineFields}>
+            <label>기한<input type="date" value={draft.due_date} onChange={(event) => setDraft({ ...draft, due_date: event.target.value })} /></label>
+            <label>분류<select value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value as P0TaskCategory })}>{Object.entries(categoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          </div>
+          <label className={styles.detailCheck}><input type="checkbox" checked={draft.is_today} onChange={(event) => setDraft({ ...draft, is_today: event.target.checked })} /> 오늘 집중</label>
+          <label>연구 프로젝트
+            <select value={draft.project_id} onChange={(event) => setDraft({ ...draft, project_id: event.target.value })}>
+              <option value="">프로젝트 연결 안 함</option>
+              {draft.project_id && !projects.some((project) => project.id === draft.project_id) && <option value={draft.project_id}>기존 연결 유지 ({draft.project_id})</option>}
+              {projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
+            </select>
+          </label>
+          <label>원본 링크<input type="url" value={draft.source_url} onChange={(event) => setDraft({ ...draft, source_url: event.target.value })} /></label>
+          <label>메모<textarea rows={5} value={draft.memo} onChange={(event) => setDraft({ ...draft, memo: event.target.value })} /></label>
+          <div className={styles.rowActions}>
+            <button className="mini primary" type="submit" disabled={savingId === selected.id}>{savingId === selected.id ? '저장 중…' : '저장'}</button>
+            <button className="mini" type="button" disabled={savingId === selected.id} onClick={() => void removeTask(selected)}>삭제</button>
+          </div>
+        </form>
+        <TaskAssist task={selected} tasks={tasks} meta={meta} today={today} onChanged={() => { onMetaChanged?.(); void load(); }} onCompleteParent={(task) => void toggleStatus(task)} />
+      </>}
+    </DetailDrawer>
+
     <details className={styles.operations}>
       <summary>동기화 · 연결 상세{syncStatus && (syncStatus.authRequired || syncStatus.conflicts || syncStatus.rejected) ? ' · 확인 필요' : ''}</summary>
     <div className={styles.syncBar} role="status" aria-live="polite">

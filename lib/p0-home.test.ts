@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildP0HomeView, p0TodayInTokyo } from './p0-home';
+import { buildP0HomeView, dueLabel, p0TodayInTokyo, pickNowTasks } from './p0-home';
 import type { P0Task } from './p0-tasks-client';
 
 const task = (id: string, values: Partial<P0Task> = {}): P0Task => ({
@@ -57,5 +57,36 @@ describe('P0 home view', () => {
   it('uses the Asia/Tokyo calendar date at UTC midnight boundaries', () => {
     expect(p0TodayInTokyo(new Date('2026-10-22T15:15:00.000Z'))).toBe('2026-10-23');
     expect(p0TodayInTokyo(new Date('2026-10-22T14:55:00.000Z'))).toBe('2026-10-22');
+  });
+});
+
+describe('right-now picks and deadline wording', () => {
+  const today = '2026-10-26';
+
+  it('puts today focus first, then overdue, then due today, at most three and each task once', () => {
+    const tasks = [
+      task('later', { due_date: '2026-11-20' }),
+      task('focus-b', { is_today: true, due_date: '2026-10-29' }),
+      task('late', { due_date: '2026-10-24' }),
+      task('focus-a', { is_today: true, due_date: '2026-10-26' }),
+      task('due-today', { due_date: '2026-10-26' }),
+      task('no-date'),
+    ];
+    const picked = pickNowTasks(buildP0HomeView(tasks, today)).map((t) => t.id);
+    expect(picked).toEqual(['focus-a', 'focus-b', 'late']);
+    expect(pickNowTasks(buildP0HomeView(tasks, today), 5).map((t) => t.id)).toEqual(['focus-a', 'focus-b', 'late', 'due-today']);
+  });
+
+  it('is empty when nothing is urgent', () => {
+    expect(pickNowTasks(buildP0HomeView([task('x', { due_date: '2026-12-01' }), task('y')], today))).toEqual([]);
+  });
+
+  it('words deadlines briefly and flags late and near ones', () => {
+    expect(dueLabel(null, today)).toBeNull();
+    expect(dueLabel('2026-10-24', today)).toEqual({ text: '2일 지남', level: 'late' });
+    expect(dueLabel('2026-10-26', today)).toEqual({ text: '오늘까지', level: 'soon' });
+    expect(dueLabel('2026-10-27', today)).toEqual({ text: '내일까지', level: 'soon' });
+    expect(dueLabel('2026-10-29', today)).toEqual({ text: '10/29까지', level: 'later' });
+    expect(dueLabel('not-a-date', today)).toEqual({ text: 'not-a-date', level: 'later' });
   });
 });

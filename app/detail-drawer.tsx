@@ -30,7 +30,7 @@ export function DetailDrawer({ open, title, onClose, footer, children }: { open:
       const target = event.target;
       if (!(target instanceof Element) || panel.current?.contains(target)) return;
       // Rows of the list stay clickable while the panel is open: they swap the content instead of closing it.
-      if (target.closest('.school-mail-row-button')) return;
+      if (target.closest('.school-mail-row-button, [data-detail-item]')) return;
       onClose();
     };
     document.addEventListener('keydown', onKey);
