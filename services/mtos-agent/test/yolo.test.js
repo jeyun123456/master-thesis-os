@@ -146,3 +146,21 @@ test('invalid AI output fails the run without touching tasks', async () => {
   assert.equal(p0.tasks.size, 0);
   assert.equal(db.prepare('SELECT status FROM yolo_runs').get().status, 'failed');
 });
+
+test('worker schedules and runs yolo_manage through the real queue, once per slot', async () => {
+  const { createWorker } = await import('../src/worker.js');
+  const { clock } = await import('./helpers.js');
+  const db = freshDb();
+  const p0 = fakeP0();
+  const ai = fakeAi({ ops: [] }, { ops: [] });
+  const now = clock(Date.parse('2026-10-26T02:30:00Z'));
+  const store = createStore(db);
+  const yolo = createYolo({ db, store, p0, ai, labRoot: labRoot(), now });
+  const worker = createWorker({ db, ai, now, yolo, collectMail: async () => ({ fetched: 0, newItemIds: [] }) });
+  for (let i = 0; i < 6; i += 1) await worker.tick();
+  const types = db.prepare('SELECT type, state FROM jobs ORDER BY created_at').all();
+  assert.ok(types.some((j) => j.type === 'yolo_manage' && j.state === 'done'), JSON.stringify(types));
+  const before = db.prepare('SELECT COUNT(*) n FROM jobs').get().n;
+  for (let i = 0; i < 3; i += 1) await worker.tick(); // same 30-minute slot: no new jobs
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM jobs').get().n, before);
+});
