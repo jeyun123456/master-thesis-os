@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { fromGmail, fromNotice, fromSchoolMail } from '../lib/detail-model';
 import type { GmailMessageDetail } from '../lib/gmail';
 import type { SchoolMailDetail, SchoolNoticeDetail } from '../lib/mtos-client';
-import { DetailDrawer } from './detail-drawer';
+import { DetailDrawer, DrawerPanel } from './detail-drawer';
 import { DetailState, MailDetailBody, NoticeDetailBody, SourceActions } from './detail-views';
 
 const mail: SchoolMailDetail = {
@@ -69,10 +69,12 @@ describe('detail views', () => {
   });
 
   it('drawer is an accessible modal dialog with a labelled close button, and renders nothing when closed', () => {
-    const open = renderToStaticMarkup(<DetailDrawer open title="제목" onClose={() => {}} footer={<span>푸터</span>}><p>내용</p></DetailDrawer>);
+    const open = renderToStaticMarkup(<DrawerPanel title="제목" titleId="t1" onClose={() => {}} footer={<span>푸터</span>}><p>내용</p></DrawerPanel>);
     expect(open).toContain('role="dialog"'); expect(open).toContain('aria-modal="true"'); expect(open).toContain('aria-labelledby=');
     expect(open).toContain('aria-label="상세 패널 닫기"'); expect(open).toContain('제목'); expect(open).toContain('푸터');
     expect(renderToStaticMarkup(<DetailDrawer open={false} title="x" onClose={() => {}}><p>내용</p></DetailDrawer>)).toBe('');
+    // the real drawer is portaled to <body>, so it renders nothing during server rendering
+    expect(renderToStaticMarkup(<DetailDrawer open title="x" onClose={() => {}}><p>내용</p></DetailDrawer>)).toBe('');
   });
 
   it('loading and error states are announced', () => {

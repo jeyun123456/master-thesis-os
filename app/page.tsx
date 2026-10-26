@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GoogleDrivePanel } from '@/app/google-drive-panel';
 import { LibraryPanel } from '@/app/library-panel';
-import { GmailMailPanel } from '@/app/gmail-mail-panel';
 import { P0HomeWorkspace } from '@/app/p0-home-workspace';
 import { P0AuthGate, useP0Auth } from '@/app/p0-auth-gate';
 import { P0SessionsPanel } from '@/app/p0-sessions-panel';
@@ -419,7 +418,7 @@ function AuthenticatedPage() {
           onOpenFile={openRepoFile}
           onOpenFolder={openRepoFolder}
         /></section>}
-        {page === 'mail' && <section className="page active"><GmailMailPanel /><div className="section-gap"><ThunderbirdMailPanel /></div></section>}
+        {page === 'mail' && <section className="page active"><ThunderbirdMailPanel /></section>}
         {page === 'portal' && <section className="page active"><SchoolNoticesPanel /></section>}
         {page === 'planner' && <section className="page active"><P0TasksPanel /></section>}
         {page === 'server' && <section className="page active"><ServerOpsPanel /></section>}

@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { detailUrl, readDetailParam } from '../lib/detail-model';
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode, type Ref } from 'react';
+import { createPortal } from 'react-dom';
 import { agentErrorText } from '../lib/mtos-client';
 import styles from './detail-drawer.module.css';
 
@@ -26,14 +26,28 @@ export function DetailDrawer({ open, title, onClose, footer, children }: { open:
       if (event.shiftKey && (document.activeElement === first || document.activeElement === panel.current)) { event.preventDefault(); last.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element) || panel.current?.contains(target)) return;
+      // Rows of the list stay clickable while the panel is open: they swap the content instead of closing it.
+      if (target.closest('.school-mail-row-button')) return;
+      onClose();
+    };
     document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = previousOverflow; };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('pointerdown', onPointerDown); document.body.style.overflow = previousOverflow; };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open || typeof document === 'undefined') return null;
+  // Rendered on <body>: an ancestor's transform/overflow/stacking context can no longer hide or clip a fixed panel.
+  return createPortal(<DrawerPanel title={title} titleId={titleId} onClose={onClose} footer={footer} panelRef={panel}>{children}</DrawerPanel>, document.body);
+}
+
+/** The dialog markup itself (kept separate so it can be rendered and tested without a browser). */
+export function DrawerPanel({ title, titleId, onClose, footer, panelRef, children }: { title: string; titleId: string; onClose: () => void; footer?: ReactNode; panelRef?: Ref<HTMLDivElement>; children: ReactNode }) {
   return <>
-    <div className={styles.overlay} onClick={onClose} aria-hidden="true" />
-    <div className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} ref={panel}>
+    <div className={styles.overlay} aria-hidden="true" />
+    <div className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} ref={panelRef}>
       <div className={styles.header}>
         <h2 id={titleId}>{title}</h2>
         <button type="button" className={styles.close} onClick={onClose} aria-label="상세 패널 닫기">✕</button>
@@ -45,7 +59,7 @@ export function DetailDrawer({ open, title, onClose, footer, children }: { open:
 }
 
 /**
- * Selection state for one list. Opening pushes a single history entry (`?detail=kind:id`); picking another item
+ * Selection state for one list. Opening pushes a single history entry (no URL change, so the app router is left alone); picking another item
  * replaces it, so Back closes the panel instead of stepping through every item. Focus returns to the clicked row.
  */
 export function useDetailSelection(kind: string) {
@@ -58,17 +72,17 @@ export function useDetailSelection(kind: string) {
   const restoreFocus = useCallback(() => {
     const el = trigger.current;
     trigger.current = null;
-    if (el && document.contains(el)) requestAnimationFrame(() => el.focus());
+    if (el && document.contains(el)) setTimeout(() => el.focus(), 0);
   }, []);
 
   const select = useCallback((id: string) => {
     try {
       if (selected.current === null) {
         trigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-        window.history.pushState({ detail: kind }, '', detailUrl(window.location.href, kind, id));
+        window.history.pushState({ ...(window.history.state ?? {}), detail: kind }, '');
         pushed.current = true;
       } else {
-        window.history.replaceState(window.history.state, '', detailUrl(window.location.href, kind, id));
+        window.history.replaceState({ ...(window.history.state ?? {}), detail: kind }, '');
       }
     } catch { /* history is a nicety; the panel works without it */ }
     setSelectedId(id);
@@ -81,15 +95,13 @@ export function useDetailSelection(kind: string) {
       pushed.current = false;
       try { window.history.back(); } catch { /* ignore */ }
     } else {
-      try { window.history.replaceState(window.history.state, '', detailUrl(window.location.href, kind, null)); } catch { /* ignore */ }
     }
     restoreFocus();
   }, [kind, restoreFocus]);
 
   useEffect(() => {
     const onPop = () => {
-      const param = readDetailParam(window.location.href);
-      if (selected.current !== null && !(param && param.kind === kind)) {
+      if (selected.current !== null && window.history.state?.detail !== kind) {
         pushed.current = false;
         setSelectedId(null);
         restoreFocus();
