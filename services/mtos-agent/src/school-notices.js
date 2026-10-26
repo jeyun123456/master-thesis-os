@@ -47,6 +47,8 @@ function defaultRunner(env) {
 export function createSchoolNoticeCollector({ db, store, env = process.env, now = () => Date.now(), run = defaultRunner(env) }) {
   const filesDir = join(env.MTOS_SOURCE_FILES_DIR ?? env.MTOS_SOURCE_DIR ?? `${env.LOCALAPPDATA ?? '.'}/MasterThesisOS/agent/sources`, 'attachments');
   const backfillDays = Math.max(1, Number(env.MTOS_SCHOOL_BACKFILL_DAYS) || 90);
+  // After the portal asked for a login, one quiet retry per interval: the Microsoft SSO cookie often rebuilds the session by itself.
+  const recoverMs = Math.max(5, Number(env.MTOS_PORTAL_RECOVER_MINUTES) || 30) * 60_000;
 
   function save(detail, stamp, out) {
     const noticeId = String(detail.notice_id);
@@ -92,8 +94,13 @@ export function createSchoolNoticeCollector({ db, store, env = process.env, now 
     const state = store.settings.collector('school_notices');
     const cursor = parseCursor(state);
     store.settings.setCollector('school_notices', { last_checked_at: startedAt });
-    // Paused after the portal asked for a login: do nothing until the user signs in again.
-    if (SESSION_CODES.has(cursor.session)) return { fetched: 0, newItemIds: [], paused: true, session: cursor.session };
+    // Paused after the portal asked for a login: stay quiet, but retry every recoverMs; a silent SSO sign-in ends the pause by itself.
+    const wasPaused = SESSION_CODES.has(cursor.session);
+    if (wasPaused) {
+      if (now() - Date.parse(cursor.recover_at ?? 0) < recoverMs) return { fetched: 0, newItemIds: [], paused: true, session: cursor.session };
+      cursor.recover_at = startedAt;
+      store.settings.setCollector('school_notices', { cursor: JSON.stringify(cursor) });
+    }
     try {
       mkdirSync(filesDir, { recursive: true });
       const since = new Date(Date.parse(cursor.initialized_at ?? startedAt) - backfillDays * DAY_MS).toISOString();
@@ -110,8 +117,8 @@ export function createSchoolNoticeCollector({ db, store, env = process.env, now 
 
       if (!result.ok) {
         if (SESSION_CODES.has(result.code)) {
-          store.settings.setCollector('school_notices', { cursor: JSON.stringify({ ...cursor, session: result.code }), last_error: '학교 포털 재로그인 필요' });
-          store.audit('portal_session', result.code);
+          store.settings.setCollector('school_notices', { cursor: JSON.stringify({ ...cursor, session: result.code, recover_at: startedAt }), last_error: '학교 포털 재로그인 필요' });
+          if (!wasPaused) store.audit('portal_session', result.code); // a failed quiet retry is not a new event
           return { fetched: 0, newItemIds: [], paused: true, session: result.code };
         }
         throw new Error(`portal ${result.code}: ${result.message ?? ''}`.trim());
@@ -126,8 +133,9 @@ export function createSchoolNoticeCollector({ db, store, env = process.env, now 
       }
       store.settings.setCollector('school_notices', {
         last_success_at: startedAt, last_error: null,
-        cursor: JSON.stringify({ ...cursor, session: 'ok', initialized_at: cursor.initialized_at ?? startedAt, fingerprints, detail_at: detailAt, download_tries: tries, pending: result.pending ?? 0 }),
+        cursor: JSON.stringify({ ...cursor, session: 'ok', recover_at: null, initialized_at: cursor.initialized_at ?? startedAt, fingerprints, detail_at: detailAt, download_tries: tries, pending: result.pending ?? 0 }),
       });
+      if (wasPaused) store.audit('portal_session', 'recovered');
       return { fetched: out.stored, newItemIds: out.newItemIds, updated: out.updated, session: 'ok' };
     } catch (error) {
       store.settings.setCollector('school_notices', { last_error: String(error.message).slice(0, 500) });
