@@ -1,4 +1,4 @@
-import type { GmailMessage } from './gmail';
+import type { GmailMessage, GmailMessageDetail } from './gmail';
 
 export type GmailClientState = 'ready' | 'empty' | 'unconfigured' | 'error';
 
@@ -49,4 +49,19 @@ export async function getRecentGmail(fetchImpl: typeof fetch = fetch, limit = 20
     account: typeof value.account === 'string' ? value.account : '',
     items,
   };
+}
+
+export async function getGmailDetail(id: string, fetchImpl: typeof fetch = fetch): Promise<{ account: string; message: GmailMessageDetail }> {
+  let response: Response;
+  try {
+    response = await fetchImpl(`/api/google/gmail/messages/${encodeURIComponent(id)}`, { cache: 'no-store' });
+  } catch {
+    throw new GmailClientError('network_error', 'Gmail API에 연결하지 못했어.');
+  }
+  const raw: unknown = await response.json().catch(() => null);
+  const value = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+  if (!response.ok || !value.message || typeof value.message !== 'object') {
+    throw new GmailClientError(typeof value.errorCode === 'string' ? value.errorCode : 'network_error', 'Gmail 메일을 열지 못했어.');
+  }
+  return { account: typeof value.account === 'string' ? value.account : '', message: value.message as GmailMessageDetail };
 }

@@ -41,9 +41,10 @@ export function handleSchoolRoute({ db, store, method, path, url }) {
     return [200, { mails: rows.map((r) => ({ ...r, read_state: Boolean(r.read_state), analysis: withAnalysis('school_mail', r.id) })), total: db.prepare('SELECT COUNT(*) n FROM school_mails').get().n }];
   }
   if ((m = path.match(/^\/school\/mails\/([\w-]+)$/))) {
-    const row = db.prepare('SELECT id, account_id, folder_id, subject, from_addr, to_addr, cc_addr, received_at, sent_at, body_text, read_state, source, collected_at, updated_at FROM school_mails WHERE id = ?').get(m[1]);
+    const row = db.prepare('SELECT id, account_id, folder_id, subject, from_addr, to_addr, cc_addr, received_at, sent_at, body_text, body_html, read_state, source, collected_at, updated_at FROM school_mails WHERE id = ?').get(m[1]);
     if (!row) throw new NotFoundError('mail not found');
-    return [200, { mail: { ...row, read_state: Boolean(row.read_state), attachments: attachmentsOf(db, 'school_mail', row.id), analysis: withAnalysis('school_mail', row.id) } }];
+    // HTML is only shown inside a sandboxed, script-less frame in the web app; cap it so one huge mail cannot bloat the response
+    return [200, { mail: { ...row, body_html: row.body_html ? String(row.body_html).slice(0, 300_000) : null, read_state: Boolean(row.read_state), attachments: attachmentsOf(db, 'school_mail', row.id), analysis: withAnalysis('school_mail', row.id) } }];
   }
 
   if (path === '/school/notices') {

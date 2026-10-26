@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { gmailThreadUrl } from './safe-url';
 
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const GMAIL_API_ROOT = 'https://gmail.googleapis.com/gmail/v1';
@@ -191,7 +192,7 @@ function parseSender(value: string): { name: string; address: string } {
   };
 }
 
-export function normalizeGmailMessage(raw: unknown): GmailMessage {
+export function normalizeGmailMessage(raw: unknown, account = ''): GmailMessage {
   if (!isRecord(raw)) throw new GmailIntegrationError('malformed_response', 'Gmail message was malformed.');
   const id = text(raw.id);
   const threadId = text(raw.threadId) || id;
@@ -219,7 +220,7 @@ export function normalizeGmailMessage(raw: unknown): GmailMessage {
     isRead: !labelIds.includes('UNREAD'),
     ...(messageId ? { messageId } : {}),
     snippet: text(raw.snippet),
-    webUrl: `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(threadId)}`,
+    webUrl: gmailThreadUrl(threadId, account) ?? 'https://mail.google.com/mail/u/0/',
   };
 }
 
@@ -249,10 +250,62 @@ export async function getGmailMessages(limit = 20, options: GmailOptions = {}): 
       token,
       fetchImpl,
     );
-    return normalizeGmailMessage(raw);
+    return normalizeGmailMessage(raw, account);
   }));
 
   return { account, items };
+}
+
+export type GmailAttachmentInfo = { filename: string; mimeType: string; size: number | null };
+export type GmailMessageDetail = GmailMessage & { to: string; cc: string; bodyText: string; bodyHtml: string | null; attachments: GmailAttachmentInfo[] };
+
+const MAX_BODY_CHARS = 300_000;
+
+function decodePartData(data: string): string {
+  try { return Buffer.from(data.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'); } catch { return ''; }
+}
+
+function collectParts(part: unknown, out: { text: string[]; html: string[]; attachments: GmailAttachmentInfo[] }, depth = 0): void {
+  if (!isRecord(part) || depth > 12) return;
+  const mime = text(part.mimeType).toLowerCase();
+  const filename = text(part.filename);
+  const body = isRecord(part.body) ? part.body : {};
+  if (filename) {
+    out.attachments.push({ filename, mimeType: mime, size: typeof body.size === 'number' ? body.size : null });
+  } else if (mime === 'text/plain' && text(body.data)) {
+    out.text.push(decodePartData(text(body.data)));
+  } else if (mime === 'text/html' && text(body.data)) {
+    out.html.push(decodePartData(text(body.data)));
+  }
+  if (Array.isArray(part.parts)) for (const child of part.parts) collectParts(child, out, depth + 1);
+}
+
+/** Read-only full message fetch (format=full never changes labels, so the mail stays unread in Gmail). */
+export function normalizeGmailDetail(raw: unknown, account = ''): GmailMessageDetail {
+  const base = normalizeGmailMessage(raw, account);
+  const payload = isRecord(raw) && isRecord(raw.payload) ? raw.payload : {};
+  const parts = { text: [] as string[], html: [] as string[], attachments: [] as GmailAttachmentInfo[] };
+  collectParts(payload, parts);
+  return {
+    ...base,
+    to: headerValue(payload.headers, 'To'),
+    cc: headerValue(payload.headers, 'Cc'),
+    bodyText: parts.text.join('\n\n').slice(0, MAX_BODY_CHARS),
+    bodyHtml: parts.html.length ? parts.html.join('\n').slice(0, MAX_BODY_CHARS) : null,
+    attachments: parts.attachments,
+  };
+}
+
+export async function getGmailMessageDetail(id: string, options: GmailOptions = {}): Promise<{ account: string; message: GmailMessageDetail }> {
+  if (!/^[A-Za-z0-9_-]{6,64}$/.test(id)) throw new GmailIntegrationError('provider_bad_request', 'Invalid Gmail message id.');
+  const fetchImpl = options.fetchImpl || fetch;
+  const token = await accessToken(fetchImpl, options.now || new Date());
+  const [profileRaw, raw] = await Promise.all([
+    gmailRequest('/users/me/profile', token, fetchImpl),
+    gmailRequest(`/users/me/messages/${encodeURIComponent(id)}?format=full`, token, fetchImpl),
+  ]);
+  const account = isRecord(profileRaw) ? text(profileRaw.emailAddress) : '';
+  return { account, message: normalizeGmailDetail(raw, account) };
 }
 
 export function clearGmailTokenCacheForTests(): void {

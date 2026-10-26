@@ -1,10 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getRecentGmail, GmailClientError } from '../lib/gmail-client';
+import { getGmailDetail, getRecentGmail, GmailClientError } from '../lib/gmail-client';
+import { fromGmail } from '../lib/detail-model';
 import type { GmailMessage } from '../lib/gmail';
 import { filterAndSortMailItems, DEFAULT_MAIL_LIST_PREFERENCES } from '../lib/mail-list';
 import { prioritizeMail, type PrioritizedMail } from '../lib/mail-priority';
+import { DetailDrawer, useDetailSelection, useSelectedDetail } from './detail-drawer';
+import { DetailState, MailDetailBody, SourceActions } from './detail-views';
 import { MailErrorNotice } from './mail-error-notice';
 import { SchoolMailRow, schoolMailRowKey } from './school-mail-panel';
 
@@ -15,7 +18,10 @@ export function GmailMailPanel() {
   const [account, setAccount] = useState('');
   const [items, setItems] = useState<GmailMessage[]>([]);
   const [errorCode, setErrorCode] = useState<string | null>(null);
-  const [openingId, setOpeningId] = useState<string | null>(null);
+  const { selectedId, select, close } = useDetailSelection('gmail');
+  const detail = useSelectedDetail(selectedId, async (id) => (await getGmailDetail(id)).message, 'Gmail 메일을 열지 못했어.');
+  const model = useMemo(() => (detail.data ? fromGmail(detail.data) : null), [detail.data]);
+  const preview = items.find((value) => value.id === selectedId);
 
   const load = useCallback(async () => {
     setStatus('loading');
@@ -44,13 +50,7 @@ export function GmailMailPanel() {
     [items],
   );
 
-  async function openMail(item: PrioritizedMail) {
-    const gmail = items.find((value) => value.id === item.id);
-    if (!gmail) return;
-    setOpeningId(item.id);
-    window.open(gmail.webUrl, '_blank', 'noopener,noreferrer');
-    setOpeningId(null);
-  }
+  const openMail = (item: PrioritizedMail) => select(item.id);
 
   return <section className="card section microsoft-mail-card school-mail-card">
     <div className="head"><h3>Gmail</h3><span>{statusLabel(status)}</span></div>
@@ -59,7 +59,6 @@ export function GmailMailPanel() {
     {(status === 'ready' || status === 'empty') && (prioritized.length
       ? <div className="microsoft-mail-list">{prioritized.map((item, index) => <SchoolMailRow
           item={item}
-          isOpening={openingId === item.id}
           key={schoolMailRowKey(item, index)}
           onOpen={openMail}
         />)}</div>
@@ -69,6 +68,12 @@ export function GmailMailPanel() {
     <div className="toolbar school-mail-actions">
       <button className="mini" onClick={() => void load()} type="button">새로고침</button>
     </div>
+    <DetailDrawer open={selectedId !== null} title={model?.subject ?? preview?.subject ?? '메일'} onClose={close}
+      footer={model ? <SourceActions source={model.source} kind="gmail" /> : undefined}>
+      <DetailState loading={detail.loading} error={detail.error} onRetry={detail.retry} />
+      {!model && preview && !detail.error && <p className="muted"><small>{preview.snippet}</small></p>}
+      {model && <MailDetailBody mail={model} />}
+    </DetailDrawer>
   </section>;
 }
 
