@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gmailThreadUrl, safeSourceUrl } from './safe-url';
+import { edgeLaunchUrl, gmailThreadUrl, isEmbeddedWebView, OUTLOOK_APP_HOME, safeSourceUrl } from './safe-url';
 
 describe('safeSourceUrl', () => {
   it('accepts only https URLs on the allow-list for the given source', () => {
@@ -28,5 +28,18 @@ describe('gmailThreadUrl', () => {
 
   it('refuses ids that are not plain Gmail ids', () => {
     for (const id of ['', 'a', '../x', 'a b c d e f', 'x'.repeat(80), 'abc/def#x']) expect(gmailThreadUrl(id, 'me@example.com')).toBeNull();
+  });
+});
+
+describe('external launch helpers', () => {
+  it('wraps only verified https URLs for Edge and keeps the Outlook app link fixed', () => {
+    expect(edgeLaunchUrl('https://sp.ritsumei.ac.jp/x')).toBe('microsoft-edge:https://sp.ritsumei.ac.jp/x');
+    for (const bad of [null, 'http://x.example/', 'javascript:alert(1)', 'not a url']) expect(edgeLaunchUrl(bad)).toBeNull();
+    expect(OUTLOOK_APP_HOME).toBe('ms-outlook://emails');
+  });
+
+  it('recognises the wallpaper web view host by its user agent only', () => {
+    expect(isEmbeddedWebView('Sucrose/2.0 Chrome/120')).toBe(true);
+    expect(isEmbeddedWebView('Mozilla/5.0 (Windows NT 10.0) Chrome/120 Safari/537.36')).toBe(false);
   });
 });

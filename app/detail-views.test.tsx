@@ -65,7 +65,18 @@ describe('detail views', () => {
     const outlook = renderToStaticMarkup(<SourceActions source={fromSchoolMail(mail).source} kind="outlook-web" />);
     expect(outlook).toContain('aria-disabled="true"'); expect(outlook).toContain('원본 링크 없음');
     expect(outlook).toContain('href="https://outlook.office.com/mail/"'); expect(outlook).toContain('Outlook 웹 열기'); expect(outlook).toContain('받은편지함');
-    expect(outlook).not.toMatch(/ms-outlook|intent:|javascript:/);
+    expect(outlook).toContain('href="ms-outlook://emails"'); expect(outlook).toContain('Outlook 앱 열기');
+    expect(outlook).not.toMatch(/intent:|javascript:/);
+  });
+
+  it('inside an embedded web view the link is handed to Edge instead of loading in the view; copy-link is offered', () => {
+    const nt = renderToStaticMarkup(<SourceActions source={fromNotice(notice).source} kind="school-notice" embedded />);
+    expect(nt).toContain('href="microsoft-edge:https://sp.ritsumei.ac.jp/notice/1"');
+    expect(nt).toContain('원본 열기 (Edge)'); expect(nt).toContain('링크 복사'); expect(nt).not.toContain('target="_blank"');
+    const unverified = renderToStaticMarkup(<SourceActions source={{ ...fromNotice(notice).source, openUrl: 'https://evil.example/x' }} kind="school-notice" embedded />);
+    expect(unverified).not.toContain('microsoft-edge:'); expect(unverified).not.toContain('evil.example');
+    const ol = renderToStaticMarkup(<SourceActions source={fromSchoolMail(mail).source} kind="outlook-web" embedded />);
+    expect(ol).toContain('href="microsoft-edge:https://outlook.office.com/mail/"'); expect(ol).toContain('href="ms-outlook://emails"');
   });
 
   it('drawer is an accessible modal dialog with a labelled close button, and renders nothing when closed', () => {

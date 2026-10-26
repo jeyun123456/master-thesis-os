@@ -29,3 +29,19 @@ export function gmailThreadUrl(threadId: string, account: string): string | null
 }
 
 export const OUTLOOK_WEB_HOME = 'https://outlook.office.com/mail/';
+
+/** Fixed app link (no user input): opens the Outlook app at its mailbox. It cannot point at one specific mail. */
+export const OUTLOOK_APP_HOME = 'ms-outlook://emails';
+
+/**
+ * Hosts that render this page inside their own web view (e.g. a wallpaper app) open normal links inside that view.
+ * For them, "microsoft-edge:<https url>" is handed to the OS, which starts Edge outside the view. Only already
+ * verified https URLs are wrapped.
+ */
+export function edgeLaunchUrl(verifiedHttpsUrl: string | null): string | null {
+  if (!verifiedHttpsUrl) return null;
+  try { if (new URL(verifiedHttpsUrl).protocol !== 'https:') return null; } catch { return null; }
+  return `microsoft-edge:${verifiedHttpsUrl}`;
+}
+
+export const isEmbeddedWebView = (userAgent: string) => /Sucrose/i.test(userAgent);

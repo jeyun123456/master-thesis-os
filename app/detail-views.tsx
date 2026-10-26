@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { hasRemoteImages, htmlSrcDoc, type DetailAnalysis, type DetailAttachment, type DetailSource, type MailDetailModel, type NoticeDetailModel } from '../lib/detail-model';
-import { safeSourceUrl, type SourceKind } from '../lib/safe-url';
+import { edgeLaunchUrl, isEmbeddedWebView, safeSourceUrl, type SourceKind } from '../lib/safe-url';
 import styles from './detail-drawer.module.css';
 
 const IMPORTANCE: Record<string, string> = { high: '중요도 높음', normal: '중요도 보통', low: '중요도 낮음' };
@@ -96,15 +96,30 @@ export function NoticeDetailBody({ notice }: { notice: NoticeDetailModel }) {
   </article>;
 }
 
-/** "원본 열기" always opens in the viewer's own browser/app via a plain https link; nothing runs on the server. */
-export function SourceActions({ source, kind }: { source: DetailSource; kind: SourceKind }) {
+/**
+ * "원본 열기" opens on the viewer's own device through plain links; nothing runs on the server.
+ * Inside an embedded web view (wallpaper app) normal links would load inside that view, so there the link is
+ * handed to the OS (Edge) instead, and a copy-link button is always available.
+ */
+export function SourceActions({ source, kind, embedded: embeddedProp }: { source: DetailSource; kind: SourceKind; embedded?: boolean }) {
+  const [embeddedState, setEmbedded] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+  useEffect(() => { setEmbedded(isEmbeddedWebView(navigator.userAgent)); }, []);
+  const embedded = embeddedProp ?? embeddedState;
   const open = safeSourceUrl(source.openUrl, kind);
   const fallback = source.fallbackUrl ? safeSourceUrl(source.fallbackUrl, 'outlook-web') : null;
+  const external = (url: string | null) => (embedded ? edgeLaunchUrl(url) : url);
+  const copy = async (url: string) => {
+    try { await navigator.clipboard.writeText(url); setCopied('링크를 복사했어.'); } catch { setCopied('복사하지 못했어. 링크를 길게 눌러 복사해줘.'); }
+  };
+  const linkProps = embedded ? {} : { target: '_blank', rel: 'noopener noreferrer' } as const;
   return <>
     {open
-      ? <a className={`${styles.btn} ${styles.primary}`} href={open} target="_blank" rel="noopener noreferrer">{source.openLabel}</a>
+      ? <a className={`${styles.btn} ${styles.primary}`} href={external(open) ?? open} {...linkProps}>{embedded ? `${source.openLabel} (Edge)` : source.openLabel}</a>
       : <span className={styles.btn} role="link" aria-disabled="true">{source.openLabel}</span>}
-    {fallback && <a className={styles.btn} href={fallback} target="_blank" rel="noopener noreferrer">{source.fallbackLabel}</a>}
-    <p className={styles.hint}>{source.hint}</p>
+    {open && embedded && <button type="button" className={styles.btn} onClick={() => void copy(open)}>링크 복사</button>}
+    {source.appUrl && <a className={styles.btn} href={source.appUrl}>{source.appLabel}</a>}
+    {fallback && <a className={styles.btn} href={external(fallback) ?? fallback} {...linkProps}>{source.fallbackLabel}{embedded ? ' (Edge)' : ''}</a>}
+    <p className={styles.hint}>{source.hint}{embedded && open ? ' 배경화면/웹뷰 앱 안에서는 기본 브라우저를 직접 지정할 수 없어서 Edge로 열려.' : ''}{copied ? ` ${copied}` : ''}</p>
   </>;
 }
