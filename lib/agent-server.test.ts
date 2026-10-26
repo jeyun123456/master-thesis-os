@@ -63,6 +63,16 @@ describe('proxyToAgent', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('lets the app mark a school mail as opened, same-origin and signed-in only', async () => {
+    const ok = await proxyToAgent(request('school/seen', { method: 'POST', body: { id: 'mail-1' } }), ['school', 'seen']);
+    expect(ok.status).toBe(200);
+    expect(String(fetchMock.mock.calls[0][0])).toBe('http://127.0.0.1:8789/agent/api/school/seen');
+    expect(fetchMock.mock.calls[0][1].method).toBe('POST');
+    expect((await proxyToAgent(request('school/seen', { method: 'POST', body: { id: 'x' }, origin: 'https://evil.example' }), ['school', 'seen'])).status).toBe(403);
+    expect((await proxyToAgent(request('school/seen', { method: 'POST', body: { id: 'x' }, cookie: null }), ['school', 'seen'])).status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('reports a missing production URL as configuration, not as empty data', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     const response = await proxyToAgent(request('memos'), ['memos']);

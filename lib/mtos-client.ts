@@ -40,7 +40,7 @@ export type AgentStatus = {
 };
 export type SchoolAnalysis = { summary: string; importance: 'high' | 'normal' | 'low'; requires_action: boolean; suggested_task: string | null; deadline: string | null; project_id: string | null; reason: string | null; model: string | null; analyzed_at: string };
 export type SchoolAttachment = { id: string; filename: string; mime: string | null; size: number | null; stored: boolean; url: string | null };
-export type SchoolMailSummary = { id: string; folder_id: string; subject: string; from_addr: string; to_addr: string; received_at: string | null; sent_at: string | null; read_state: boolean; collected_at: string; attachment_count: number; analysis: SchoolAnalysis | null };
+export type SchoolMailSummary = { app_seen?: boolean; id: string; folder_id: string; subject: string; from_addr: string; to_addr: string; received_at: string | null; sent_at: string | null; read_state: boolean; collected_at: string; attachment_count: number; analysis: SchoolAnalysis | null };
 export type SchoolMailDetail = Omit<SchoolMailSummary, 'attachment_count'> & { account_id: string; message_id?: string | null; cc_addr: string; body_text: string; body_html?: string | null; attachments: SchoolAttachment[] };
 export type SchoolNoticeSummary = { notice_id: string; notice_type: string; category: string; department: string; title: string; importance: string; published_at: string | null; deadline: string | null; expires_at: string | null; source_url: string | null; collected_at: string; changed_at: string; attachment_count: number; analysis: SchoolAnalysis | null };
 export type SchoolNoticeDetail = Omit<SchoolNoticeSummary, 'attachment_count'> & { body_text: string; attachments: SchoolAttachment[]; history: Array<{ field: string; old_value: string | null; new_value: string | null; changed_at: string }> };
@@ -84,6 +84,7 @@ export const mtosApi = {
   schoolMail: (id: string) => agent<{ mail: SchoolMailDetail }>(`school/mails/${id}`),
   schoolNotices: (type?: 'ALL' | 'DM', limit = 100) => agent<{ notices: SchoolNoticeSummary[] }>('school/notices', { query: { type, limit: String(limit) } }),
   schoolNotice: (id: string) => agent<{ notice: SchoolNoticeDetail }>(`school/notices/${id}`),
+  markSchoolMailSeen: (id: string) => agent<{ ok: true }>('school/seen', { method: 'POST', body: { id } }),
   resumeWorker: () => agent<{ paused: null }>('worker/resume', { method: 'POST', body: {} }),
   jobs: (state?: string) => agent<{ jobs: AgentJob[] }>('jobs', { query: { state } }),
   job: (id: string) => agent<{ job: AgentJob }>(`jobs/${id}`),

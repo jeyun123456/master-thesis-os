@@ -28,7 +28,7 @@ function syncLabel(status: SchoolSourceStatus | null): string {
 function toRow(mail: SchoolMailSummary, seen: Set<string>): PrioritizedMail {
   return {
     id: mail.id, subject: mail.subject || '(제목 없음)', senderName: mail.from_addr || '발신자 정보 없음', senderAddress: '',
-    receivedAt: mail.received_at ?? mail.sent_at ?? mail.collected_at, isRead: mail.read_state || seen.has(mail.id),
+    receivedAt: mail.received_at ?? mail.sent_at ?? mail.collected_at, isRead: mail.read_state || Boolean(mail.app_seen) || seen.has(mail.id),
     priority: mailPriorityFromRating(mail.analysis), category: 'other',
   };
 }
@@ -43,7 +43,13 @@ export function ThunderbirdMailPanel() {
   const { selectedId, select, close } = useDetailSelection('school-mail');
   const [seen, setSeen] = useState<Set<string>>(() => new Set());
   useEffect(() => { setSeen(loadSeen('school-mail')); }, []);
-  const openMail = (id: string) => { setSeen(markSeen('school-mail', id)); select(id); };
+  // Marked read here at once, then saved on the server so every device sees it (failure keeps the local mark).
+  const openMail = (id: string) => {
+    setSeen(markSeen('school-mail', id));
+    setMails((list) => list.map((m) => (m.id === id ? { ...m, app_seen: true } : m)));
+    void mtosApi.markSchoolMailSeen(id).catch(() => {});
+    select(id);
+  };
   const detail = useSelectedDetail<SchoolMailDetail>(selectedId, async (id) => (await mtosApi.schoolMail(id)).mail, '메일을 열지 못했어.');
   const model = useMemo(() => (detail.data ? fromSchoolMail(detail.data) : null), [detail.data]);
 
@@ -67,7 +73,7 @@ export function ThunderbirdMailPanel() {
   const waiting = !loading && !error && status && !status.connected;
   return <section className="card section microsoft-mail-card school-mail-card">
     <div className="head"><h3>학교 Outlook (Thunderbird)</h3><span>{waiting ? '연결 준비 중' : syncLabel(status)}</span></div>
-    <div className="muted"><small>{accounts.length ? accounts.map(maskAccount).join(', ') : '서버 Thunderbird'} · 서버가 2분마다 확인 · 읽기 전용 · 여기서 연 메일은 이 기기에서만 읽음으로 보여(서버 Thunderbird의 읽음 상태는 그대로)</small></div>
+    <div className="muted"><small>{accounts.length ? accounts.map(maskAccount).join(', ') : '서버 Thunderbird'} · 서버가 2분마다 확인 · 읽기 전용 · Thunderbird에서 읽은 메일과 여기서 연 메일은 모든 기기에서 읽음으로 보여(Thunderbird 쪽 읽음 상태는 건드리지 않아)</small></div>
     {loading && <div className="microsoft-mail-state">학교 메일을 불러오는 중이야…</div>}
     {error && <MailErrorNotice message={error} code="school_mail" onRetry={() => void load()} />}
     {!error && status?.last_error && <div className="note">최근 동기화 오류: {status.last_error}. 이미 받은 메일은 그대로 보여줘.</div>}

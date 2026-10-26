@@ -36,9 +36,10 @@ export function handleSchoolRoute({ db, store, method, path, url }) {
   if (path === '/school/mails') {
     const { limit, offset } = page(url);
     const rows = db.prepare(`SELECT id, folder_id, subject, from_addr, to_addr, received_at, sent_at, read_state, collected_at,
-      (SELECT COUNT(*) FROM source_attachments a WHERE a.source_type = 'school_mail' AND a.source_id = school_mails.id) AS attachment_count
+      (SELECT COUNT(*) FROM source_attachments a WHERE a.source_type = 'school_mail' AND a.source_id = school_mails.id) AS attachment_count,
+      EXISTS (SELECT 1 FROM school_mail_seen s WHERE s.mail_id = school_mails.id) AS app_seen
       FROM school_mails ORDER BY COALESCE(received_at, sent_at, collected_at) DESC LIMIT ? OFFSET ?`).all(limit, offset);
-    return [200, { mails: rows.map((r) => ({ ...r, read_state: Boolean(r.read_state), analysis: withAnalysis('school_mail', r.id) })), total: db.prepare('SELECT COUNT(*) n FROM school_mails').get().n }];
+    return [200, { mails: rows.map((r) => ({ ...r, read_state: Boolean(r.read_state), app_seen: Boolean(r.app_seen), analysis: withAnalysis('school_mail', r.id) })), total: db.prepare('SELECT COUNT(*) n FROM school_mails').get().n }];
   }
   if ((m = path.match(/^\/school\/mails\/([\w-]+)$/))) {
     const row = db.prepare('SELECT id, account_id, folder_id, message_id, subject, from_addr, to_addr, cc_addr, received_at, sent_at, body_text, body_html, read_state, source, collected_at, updated_at FROM school_mails WHERE id = ?').get(m[1]);

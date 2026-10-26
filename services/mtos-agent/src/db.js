@@ -206,6 +206,9 @@ CREATE TABLE IF NOT EXISTS yolo_sources (
 -- School sources collected on the server: Outlook mail via Thunderbird (mbox, read-only)
 -- and Student Portal notices. Raw originals live on disk; sync progress is kept in
 -- collector_state (source = 'school_mail' | 'school_notices').
+-- Mails opened in the web app. Separate from school_mails.read_state, which mirrors Thunderbird and is overwritten on every collection.
+CREATE TABLE IF NOT EXISTS school_mail_seen (mail_id TEXT PRIMARY KEY, seen_at TEXT NOT NULL);
+
 CREATE TABLE IF NOT EXISTS school_mails (
   id TEXT PRIMARY KEY,
   account_id TEXT NOT NULL,

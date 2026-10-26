@@ -146,6 +146,24 @@ test('school endpoints require the P0 session and expose lists, details, status 
     assert.equal(status.mail.connected, true);
     assert.equal(status.notices.connected, false);
     assert.equal((await get('/school/mails/nope')).status, 404);
+
+    // opening a mail in the app is stored for every device, without touching the mailbox's own read state
+    const post = (path, body, token = TOKEN) => fetch(`${base}${path}`, { method: 'POST', headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) });
+    const mailId = list.mails[0].id;
+    assert.equal(list.mails[0].app_seen, false);
+    const before = list.mails[0].read_state;
+    assert.equal((await post('/school/seen', { id: mailId }, null)).status, 401);
+    assert.equal((await post('/school/seen', { id: 'does-not-exist' })).status, 404);
+    assert.equal((await post('/school/seen', {})).status, 400);
+    assert.equal((await post('/school/seen', { id: mailId })).status, 200);
+    assert.equal((await post('/school/seen', { id: mailId })).status, 200, 'marking twice is harmless');
+    const after = (await (await get('/school/mails')).json()).mails[0];
+    assert.equal(after.app_seen, true);
+    assert.equal(after.read_state, before, 'the Thunderbird read state is not changed');
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM school_mail_seen').get().n, 1);
+    // a later collection that finds the mail unchanged keeps the app mark
+    await createSchoolMailCollector({ db, store, now: clock(Date.parse('2026-10-26T03:10:00Z')), env: { MTOS_THUNDERBIRD_PROFILE: join(dir, 'tb'), MTOS_SOURCE_FILES_DIR: join(dir, 'files') } })();
+    assert.equal((await (await get('/school/mails')).json()).mails[0].app_seen, true);
   } finally { server.close(); }
 });
 

@@ -108,6 +108,14 @@ export function createAgentApp({ db, verifySession, yolo = null, ops = null, now
     }
     if (method === 'POST' && path === '/worker/resume') { queue.resume(); store.audit('worker_resumed', 'user'); return [200, { paused: null }]; }
 
+    // Opening a school mail in the web app marks it as read for every device. Only this app's own table is written; the mailbox is never touched.
+    if (method === 'POST' && path === '/school/seen') {
+      const mailId = id(body.id, 'id');
+      if (!db.prepare('SELECT 1 FROM school_mails WHERE id = ?').get(mailId)) throw new NotFoundError('mail not found');
+      db.prepare('INSERT INTO school_mail_seen (mail_id, seen_at) VALUES (?, ?) ON CONFLICT(mail_id) DO NOTHING').run(mailId, new Date(now()).toISOString());
+      return [200, { ok: true }];
+    }
+
     const school = handleSchoolRoute({ db, store, method, path, url });
     if (school) return school;
 
