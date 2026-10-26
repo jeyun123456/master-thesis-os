@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ResultsPanel as LegacyResultsPanel } from '@/app/results-panel-legacy';
 import { StandardResultsView } from '@/app/standard-results-view';
 import { dashboardApi } from '@/lib/client-api';
-import { groupFilesByParentFolder, projectStatusLabel, stageLabel, type ResearchProject } from '@/lib/projects';
+import { groupFilesByParentFolder, isThesisProject, projectStatusLabel, stageLabel, type ResearchProject } from '@/lib/projects';
 import { emptyProjectResultInventory, projectResultInventory, type ProjectResultInventory } from '@/lib/project-results';
 import type { RepositoryItem } from '@/lib/repository';
 import type { DashboardBundle } from '@/lib/results';
@@ -23,7 +23,7 @@ export function ResultsPanel({ dashboard, loading = false, projects = [], tree =
   const defaultProjectId = useMemo(() => {
     const withStandard = projects.find((project) => inventories.get(project.id)?.standardPath);
     const withDashboard = projects.find((project) => inventories.get(project.id)?.dashboardPath);
-    return withStandard?.id || withDashboard?.id || projects.find((project) => project.id === 'thesis')?.id || projects.find((project) => project.status === 'active')?.id || projects[0]?.id || '';
+    return withStandard?.id || withDashboard?.id || projects.find(isThesisProject)?.id || projects.find((project) => project.status === 'active')?.id || projects[0]?.id || '';
   }, [inventories, projects]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [fallbackDashboard, setFallbackDashboard] = useState<DashboardBundle>(dashboard);

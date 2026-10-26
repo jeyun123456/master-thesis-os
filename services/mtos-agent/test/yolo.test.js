@@ -42,7 +42,7 @@ function labRoot() {
   const root = mkdtempSync(join(tmpdir(), 'lab-'));
   mkdirSync(join(root, '02_Projects', 'thesis'), { recursive: true });
   writeFileSync(join(root, '02_Projects', 'thesis', 'project.md'),
-    '---\nid: project-thesis\ntitle: "석사논문"\nstatus: 진행중\n---\n\n# T\n\n## Next / Blocked\n- [ ] 3장 초고 작성\n- [x] 끝난 일\n\n## Other\n- [ ] 무시\n');
+    '---\nid: thesis\ntitle: "석사논문"\nstatus: 진행중\n---\n\n# T\n\n## Next / Blocked\n- [ ] 3장 초고 작성\n- [x] 끝난 일\n\n## Other\n- [ ] 무시\n');
   return root;
 }
 
@@ -59,18 +59,18 @@ test('creates one task from new info, applies it, logs before/after, and a retry
   const p0 = fakeP0();
   const { yolo, item, db, store } = setup({
     p0, ai: fakeAi(
-      { ops: [op({ source_type: 'manual', source_id: 'PLACEHOLDER', title: '3장 초안 보내기', due_date: '2026-10-30', priority: 'high', project_id: 'project-thesis' })] },
+      { ops: [op({ source_type: 'manual', source_id: 'PLACEHOLDER', title: '3장 초안 보내기', due_date: '2026-10-30', priority: 'high', project_id: 'thesis' })] },
     ),
   });
   // point the op at the real inbox item id
-  const ai = fakeAi({ ops: [op({ source_type: 'manual', source_id: item.id, title: '3장 초안 보내기', due_date: '2026-10-30', priority: 'high', project_id: 'project-thesis' })] },
+  const ai = fakeAi({ ops: [op({ source_type: 'manual', source_id: item.id, title: '3장 초안 보내기', due_date: '2026-10-30', priority: 'high', project_id: 'thesis' })] },
     { ops: [op({ source_type: 'manual', source_id: item.id, title: '3장 초안 보내기' })] });
   const y = createYolo({ db, store, p0, ai, labRoot: labRoot() });
   const first = await y.run({});
   assert.equal(first.applied, 1);
   const task = [...p0.tasks.values()][0];
   assert.equal(task.priority, 'high');
-  assert.equal(task.project_id, 'project-thesis');
+  assert.equal(task.project_id, 'thesis');
   assert.ok(store.taskMeta.get(task.id).ai_generated);
   assert.equal(store.inbox.get(item.id).state, 'applied');
   const [change] = y.changesOf(first.runId);

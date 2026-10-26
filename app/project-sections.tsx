@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { agentErrorText, mtosApi, type Memo } from '@/lib/mtos-client';
+import { PROJECTS_ROOT } from '@/lib/projects';
 import { projectTaskBuckets, type Milestone, type TaskMeta } from '@/lib/mtos-planning';
 import { createP0Task, type P0Task } from '@/lib/p0-tasks-client';
 import { p0TodayInTokyo } from '@/lib/p0-home';
@@ -203,7 +204,7 @@ export function MemosSection({ projectId, onConvertToTask }: { projectId: string
   }
 
   async function proposeObsidian(memo: Memo) {
-    const fallback = projectId ? `projects/${projectId}/memos.md` : 'shared/inbox-memos.md';
+    const fallback = projectId ? `${PROJECTS_ROOT}/${projectId}/memos.md` : 'shared/inbox-memos.md';
     const path = window.prompt('반영할 Obsidian 노트 경로 (Vault 기준 .md)', memo.obsidian_path ?? fallback);
     if (!path) return;
     const mode = window.prompt('반영 방식: append(끝에 추가) / section(AI가 알맞은 부분 수정) / new(새 노트)', 'append');

@@ -32,14 +32,14 @@ describe('local vault repository', () => {
     await expect(writeVaultText('shared/shortcuts.md', 'two\n', current.sha, 'test conflict')).rejects.toBeInstanceOf(VaultConflictError);
     expect(await readFile(path.join(root, 'shared/shortcuts.md'), 'utf8')).toBe('changed externally\n');
 
-    await mkdir(path.join(root, 'projects', 'alpha', 'results'), { recursive: true });
-    await writeFile(path.join(root, 'projects', 'alpha', 'project.md'), 'project\n', 'utf8');
-    await writeFile(path.join(root, 'projects', 'alpha', 'results', 'matrix.xlsx'), Uint8Array.from([0, 1, 255]));
+    await mkdir(path.join(root, '02_Projects', 'alpha', 'results'), { recursive: true });
+    await writeFile(path.join(root, '02_Projects', 'alpha', 'project.md'), 'project\n', 'utf8');
+    await writeFile(path.join(root, '02_Projects', 'alpha', 'results', 'matrix.xlsx'), Uint8Array.from([0, 1, 255]));
     await mkdir(path.join(root, 'node_modules', 'ignored'), { recursive: true });
     await writeFile(path.join(root, 'node_modules', 'ignored', 'package.json'), '{}', 'utf8');
     const tree = await vaultRepositoryTree();
-    expect(tree.map((item) => item.path)).toEqual(['projects/alpha/project.md', 'projects/alpha/results/matrix.xlsx', 'shared/shortcuts.md']);
-    await expect(readVaultBytes('projects/alpha/results/matrix.xlsx')).resolves.toMatchObject({ source: 'local', bytes: Uint8Array.from([0, 1, 255]) });
+    expect(tree.map((item) => item.path)).toEqual(['02_Projects/alpha/project.md', '02_Projects/alpha/results/matrix.xlsx', 'shared/shortcuts.md']);
+    await expect(readVaultBytes('02_Projects/alpha/results/matrix.xlsx')).resolves.toMatchObject({ source: 'local', bytes: Uint8Array.from([0, 1, 255]) });
   });
 
   it('requires explicit opt-in before a GitHub-backed vault can be written', async () => {

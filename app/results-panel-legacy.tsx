@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
 import { ResultChart, ResultTable } from '@/app/result-view-components';
 import { dashboardApi } from '@/lib/client-api';
-import { groupFilesByParentFolder, projectStatusLabel, stageLabel, type ResearchProject } from '@/lib/projects';
+import { groupFilesByParentFolder, isThesisProject, projectStatusLabel, stageLabel, type ResearchProject } from '@/lib/projects';
 import { emptyProjectResultInventory, projectResultInventory, type ProjectResultInventory } from '@/lib/project-results';
 import type { RepositoryItem } from '@/lib/repository';
 import type { DashboardBundle } from '@/lib/results';
@@ -29,7 +29,7 @@ export function ResultsPanel({ dashboard, loading = false, projects = [], tree =
   const inventories = useMemo(() => new Map(projects.map((project) => [project.id, projectResultInventory(project, tree)])), [projects, tree]);
   const defaultProjectId = useMemo(() => {
     const withDashboard = projects.find((project) => inventories.get(project.id)?.dashboardPath);
-    return withDashboard?.id || projects.find((project) => project.id === 'thesis')?.id || projects.find((project) => project.status === 'active')?.id || projects[0]?.id || '';
+    return withDashboard?.id || projects.find(isThesisProject)?.id || projects.find((project) => project.status === 'active')?.id || projects[0]?.id || '';
   }, [inventories, projects]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [selectedPeriod, setSelectedPeriod] = useState('');

@@ -37,7 +37,7 @@ updated: 2026-09-09
 
 describe('project manifests', () => {
   it('parses metadata and project sections', () => {
-    const project = parseProjectManifest(manifest, 'projects/thesis/project.md');
+    const project = parseProjectManifest(manifest, '02_Projects/thesis/project.md');
     expect(project.id).toBe('thesis');
     expect(project.title).toBe('석사논문 본체');
     expect(project.status).toBe('active');
@@ -52,16 +52,16 @@ describe('project manifests', () => {
 
   it('discovers only project manifests', () => {
     const tree = [
-      { path: 'projects/thesis/project.md', type: 'blob' },
-      { path: 'projects/README.md', type: 'blob' },
-      { path: 'projects/foo/notes.md', type: 'blob' },
-      { path: 'projects/bar/project.md', type: 'blob' },
+      { path: '02_Projects/thesis/project.md', type: 'blob' },
+      { path: '02_Projects/README.md', type: 'blob' },
+      { path: '02_Projects/foo/notes.md', type: 'blob' },
+      { path: '02_Projects/bar/project.md', type: 'blob' },
     ] as RepositoryItem[];
-    expect(projectManifestPaths(tree)).toEqual(['projects/bar/project.md', 'projects/thesis/project.md']);
+    expect(projectManifestPaths(tree)).toEqual(['02_Projects/bar/project.md', '02_Projects/thesis/project.md']);
   });
 
   it('matches exact and directory related paths', () => {
-    const project = parseProjectManifest(manifest, 'projects/thesis/project.md');
+    const project = parseProjectManifest(manifest, '02_Projects/thesis/project.md');
     const tree = [
       { path: 'wiki/current_status.md', type: 'blob' },
       { path: 'Calc/data/results/05.xlsx', type: 'blob' },
@@ -103,5 +103,21 @@ describe('project manifests', () => {
   it('returns no groups for an empty or tree-only selection', () => {
     expect(groupFilesByParentFolder([])).toEqual([]);
     expect(groupFilesByParentFolder([{ path: 'wiki', type: 'tree' }])).toEqual([]);
+  });
+});
+
+describe('Chocomint-Lab project.md', () => {
+  const markdown = [
+    '---', 'id: project-bbp-slack-bot-v2', 'title: "BBP Slack Bot v2"', 'status: 진행중', 'stage: 기획', '---', '',
+    '# BBP Slack Bot v2', '', '## Open questions', '- KIC 채널 목록', '',
+    '## Next / Blocked', '- [x] 끝난 일', '- [ ] 계정 보안 2FA 활성화', '- [ ] KIC·OIC 정보 수집',
+  ].join('\n');
+
+  it('uses the folder name as the project id, maps Korean status, and reads only unchecked next items', () => {
+    const project = parseProjectManifest(markdown, '02_Projects/bbp-slack-bot-v2/project.md');
+    expect(project.id).toBe('bbp-slack-bot-v2');
+    expect(project.status).toBe('active');
+    expect(project.nextTasks).toEqual(['계정 보안 2FA 활성화', 'KIC·OIC 정보 수집']);
+    expect(project.questions).toEqual(['KIC 채널 목록']);
   });
 });

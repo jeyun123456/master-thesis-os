@@ -2281,7 +2281,7 @@ html .shell .section {
   }
 }
 
-/* AI Inbox item actions: compact, Bridge-backed controls. */
+/* AI Inbox item actions: compact controls. */
 .inbox-entry-meta {
   display: flex;
   align-items: center;

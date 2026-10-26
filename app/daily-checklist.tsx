@@ -1,10 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { getMailSyncStatus, startMailSync } from '@/lib/mail-analysis-client';
-import type { MailSyncStatus } from '@/lib/mail-analysis';
-import { getPortalStatus, startPortalSync } from '@/lib/portal-notices-client';
-import type { PortalSyncStatus } from '@/lib/portal-notices-client';
 import {
   createDailyChecklist,
   dailyChecklistCompletedCount,
@@ -15,38 +11,13 @@ import {
   type DailyChecklistItemId,
   type DailyChecklistRecord,
 } from '@/lib/daily-checklist';
-import { startAndWaitForDailySync } from '@/lib/daily-checklist-actions';
-import { readBridgeToken } from '@/lib/inbox-persistence-client';
 
 type DailyChecklistProps = { todayEventCount: number; onShowToday: () => void };
-type SyncAction = 'mail' | 'portal' | null;
-
-function formatLastSync(value: string | null | undefined): string {
-  if (!value) return '오늘 실행 전';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '시간 정보 없음';
-  return `마지막 ${new Intl.DateTimeFormat('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).format(date)}`;
-}
-
-function errorText(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
-}
 
 export function DailyChecklist({ todayEventCount, onShowToday }: DailyChecklistProps) {
   const [today, setToday] = useState(() => seoulDateKey());
   const [checklist, setChecklist] = useState<DailyChecklistRecord>(() => createDailyChecklist());
   const checklistRef = useRef(checklist);
-  const [mailStatus, setMailStatus] = useState<MailSyncStatus | null>(null);
-  const [portalStatus, setPortalStatus] = useState<PortalSyncStatus | null>(null);
-  const [activeSync, setActiveSync] = useState<SyncAction>(null);
-  const [syncError, setSyncError] = useState<{ item: 'mailSync' | 'portalSync'; message: string } | null>(null);
   const [storageError, setStorageError] = useState('');
 
   useEffect(() => {
@@ -62,19 +33,6 @@ export function DailyChecklist({ todayEventCount, onShowToday }: DailyChecklistP
     setChecklist(next);
   }, [today]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const token = readBridgeToken();
-    if (!token) return () => { cancelled = true; };
-
-    void Promise.allSettled([getMailSyncStatus(token), getPortalStatus(token)]).then(([mail, portal]) => {
-      if (cancelled) return;
-      if (mail.status === 'fulfilled') setMailStatus(mail.value);
-      if (portal.status === 'fulfilled') setPortalStatus(portal.value);
-    });
-    return () => { cancelled = true; };
-  }, []);
-
   function updateItem(item: DailyChecklistItemId, checked: boolean) {
     const date = seoulDateKey();
     const current = checklistRef.current.date === date
@@ -85,38 +43,6 @@ export function DailyChecklist({ todayEventCount, onShowToday }: DailyChecklistP
     setChecklist(next);
     setToday(date);
     setStorageError(saveDailyChecklist(next) ? '' : '오늘 체크 상태를 브라우저에 저장하지 못했어요.');
-  }
-
-  async function runSync(kind: 'mail' | 'portal') {
-    if (activeSync) return;
-    const item = kind === 'mail' ? 'mailSync' : 'portalSync';
-    const token = readBridgeToken();
-    setActiveSync(kind);
-    setSyncError(null);
-    try {
-      if (kind === 'mail') {
-        const result = await startAndWaitForDailySync({
-          start: () => startMailSync(token),
-          readStatus: () => getMailSyncStatus(token),
-        });
-        setMailStatus(result);
-      } else {
-        const result = await startAndWaitForDailySync({
-          start: () => startPortalSync(token),
-          readStatus: () => getPortalStatus(token),
-        });
-        setPortalStatus(result);
-      }
-      updateItem(item, true);
-    } catch (error) {
-      updateItem(item, false);
-      setSyncError({
-        item,
-        message: errorText(error, kind === 'mail' ? '메일 동기화에 실패했어요.' : '학교 공지 동기화에 실패했어요.'),
-      });
-    } finally {
-      setActiveSync(null);
-    }
   }
 
   const completed = dailyChecklistCompletedCount(checklist);
@@ -134,24 +60,16 @@ export function DailyChecklist({ todayEventCount, onShowToday }: DailyChecklistP
       <div className="daily-checklist-row">
         <label className="daily-checklist-label">
           <input type="checkbox" checked={checklist.items.mailSync} onChange={(event) => updateItem('mailSync', event.target.checked)} />
-          <span><strong>메일 동기화</strong><small>{formatLastSync(mailStatus?.lastSyncAt)}</small></span>
+          <span><strong>메일 확인</strong><small>Gmail · Outlook</small></span>
         </label>
-        <button type="button" className="daily-checklist-action" disabled={activeSync !== null} onClick={() => void runSync('mail')}>
-          {activeSync === 'mail' ? '동기화 중…' : '동기화'}
-        </button>
       </div>
-      {syncError?.item === 'mailSync' && <p className="daily-checklist-error" role="alert">{syncError.message}</p>}
 
       <div className="daily-checklist-row">
         <label className="daily-checklist-label">
           <input type="checkbox" checked={checklist.items.portalSync} onChange={(event) => updateItem('portalSync', event.target.checked)} />
-          <span><strong>학교 공지 동기화</strong><small>{formatLastSync(portalStatus?.lastSyncAt)}</small></span>
+          <span><strong>학교 공지 확인</strong><small>연결 준비 중 · 직접 확인</small></span>
         </label>
-        <button type="button" className="daily-checklist-action" disabled={activeSync !== null} onClick={() => void runSync('portal')}>
-          {activeSync === 'portal' ? '동기화 중…' : '동기화'}
-        </button>
       </div>
-      {syncError?.item === 'portalSync' && <p className="daily-checklist-error" role="alert">{syncError.message}</p>}
 
       <div className="daily-checklist-row">
         <label className="daily-checklist-label">

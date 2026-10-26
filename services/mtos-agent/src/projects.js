@@ -37,9 +37,8 @@ export async function readChocomintProjects(root) {
     const text = await readFile(join(base, dir.name, 'project.md'), 'utf8').catch(() => null);
     if (text === null) continue;
     const meta = frontmatter(text);
-    if (!meta.id) continue;
     projects.push({
-      id: meta.id, title: meta.title ?? dir.name, status: meta.status ?? '', path: `02_Projects/${dir.name}/project.md`,
+      id: dir.name, title: meta.title ?? dir.name, status: meta.status ?? '', path: `02_Projects/${dir.name}/project.md`,
       next_actions: nextActions(text), version: createHash('sha1').update(text).digest('hex').slice(0, 16),
     });
   }

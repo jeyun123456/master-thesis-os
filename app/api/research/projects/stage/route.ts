@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { parseProjectManifest, researchPipelineStages, updateProjectStageMarkdown } from '@/lib/projects';
+import { PROJECTS_ROOT, parseProjectManifest, researchPipelineStages, updateProjectStageMarkdown } from '@/lib/projects';
 import { VaultConflictError, readVaultText, vaultConfigured, vaultWritable, writeVaultText } from '@/lib/vault-repository';
 import { requireP0Session, sameOriginMutationError } from '@/lib/p0-server';
 
@@ -17,7 +17,7 @@ export async function PATCH(request: NextRequest) {
   if (!isRecord(body) || typeof body.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(body.id) || typeof body.stage !== 'string' || !allowedStages.has(body.stage)) {
     return NextResponse.json({ error: 'A valid project id and research stage are required' }, { status: 400 });
   }
-  const projectPath = `projects/${body.id}/project.md`;
+  const projectPath = `${PROJECTS_ROOT}/${body.id}/project.md`;
   try {
     const current = await readVaultText(projectPath);
     if (typeof body.sha === 'string' && body.sha && body.sha !== current.sha) return NextResponse.json({ error: 'project.md changed. Reload the project before saving again.' }, { status: 409 });

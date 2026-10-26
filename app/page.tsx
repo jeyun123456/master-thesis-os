@@ -3,35 +3,29 @@
 import { useEffect, useMemo, useState } from 'react';
 import { GoogleDrivePanel } from '@/app/google-drive-panel';
 import { LibraryPanel } from '@/app/library-panel';
-import { PortalAttention } from '@/app/home-attention';
 import { GmailMailPanel } from '@/app/gmail-mail-panel';
-import { MailActionCandidates } from '@/app/mail-action-candidates';
-import { MailPanel } from '@/app/mail-panel';
-import { PlannerPanel } from '@/app/planner-panel';
 import { P0HomeWorkspace } from '@/app/p0-home-workspace';
 import { P0AuthGate, useP0Auth } from '@/app/p0-auth-gate';
 import { P0SessionsPanel } from '@/app/p0-sessions-panel';
-import { PortalNoticesPanel } from '@/app/portal-notices-panel';
 import { MicrosoftMailPanel } from '@/app/microsoft-mail-panel';
 import { ResearchPanel } from '@/app/research-panel';
 import { ResearchMiniTrend } from '@/app/research-mini-trend';
 import { ResultsPanel as ResultsDashboardPanel } from '@/app/results-panel';
 import { DailyChecklist } from '@/app/daily-checklist';
-import { InboxPanel, QuickCapturePanel } from '@/app/inbox-panel';
 import { RewardSlotPanel } from '@/app/reward-slot';
-import { SchoolMailPanel } from '@/app/school-mail-panel';
+import { EmptyFeature } from '@/app/empty-feature';
+import { P0TasksPanel } from '@/app/p0-tasks-panel';
 import { ShortcutList, ShortcutsPanel } from '@/app/shortcuts-panel';
+import { isSafeRepositoryPath } from '@/lib/repository';
 import { dashboardApi, type CalendarApiResponse, type RepositorySource, type ShortcutSource } from '@/lib/client-api';
 import type { CalendarEvent } from '@/lib/calendar';
 import { daysUntil, eventDateKey, groupCalendarEvents } from '@/lib/calendar-view';
 import type { GitHubCommitSummary } from '@/lib/github';
-import { projectStatusLabel, stageLabel, type ResearchProject } from '@/lib/projects';
+import { isThesisProject, projectStatusLabel, stageLabel, type ResearchProject } from '@/lib/projects';
 import type { RepositoryItem } from '@/lib/repository';
 import type { ResearchStatus } from '@/lib/research-status';
 import type { DashboardBundle } from '@/lib/results';
-import { BRIDGE_OFFLINE_MESSAGE, BRIDGE_TIMEOUT_MESSAGE, bridgeResponseMessage } from '@/lib/bridge-status';
 import { getEnabledShortcuts, getHomeShortcuts, loadShortcutState, shortcuts, type Shortcut } from '@/lib/shortcuts';
-import { useInboxWorkflow } from '@/app/use-inbox-workflow';
 import { useMtosWorkspace } from '@/app/use-mtos-workspace';
 import { AiInboxPanel, CaptureBox } from '@/app/ai-inbox';
 import { GlobalSearch, UrgentApprovals, type SearchTarget } from '@/app/global-search';
@@ -71,8 +65,8 @@ const pageMeta: Record<Page, [string, string]> = {
   shortcuts: ['바로가기', '반복해서 여는 연구 파일 · 폴더 · 웹 주소'],
   mail: ['메일', '학교 업무 · 국제과를 폴더별로 확인'],
   portal: ['학교 공지', 'RITSUMEIKAN STUDENT PORTAL의 ALL · DM 공지'],
-  planner: ['플래너', '메일에서 나온 할 일과 일정 후보를 정리'],
-  settings: ['설정', '연구 저장소 · Google Calendar · 학교 메일 · 로컬 브리지'],
+  planner: ['플래너', '서버 P0 할 일 관리 · AI가 자동으로 정리'],
+  settings: ['설정', '연구 저장소 · Google Calendar · 메일 · 세션'],
 };
 
 type NavigationItem = { id: Page; label: string; icon: string };
@@ -121,49 +115,11 @@ const mobileNavigation: MobileNavigationItem[] = [
   { id: 'more', label: '더보기', icon: '•••' },
 ];
 
-const BRIDGE_REQUEST_TIMEOUT_MS = 5000;
-type BridgeRequestInit = RequestInit & { targetAddressSpace?: 'loopback' };
+const REPOSITORY_WEB_URL = 'https://github.com/jeyun123456/Chocomint-Lab';
 
-function bridgeRequestInit(body: { path: string; token: string }, signal: AbortSignal): BridgeRequestInit {
-  const init: BridgeRequestInit = {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal,
-  };
-  // Sucrose's Chromium runtime may require an explicit loopback address space
-  // for a secure production page calling the local bridge.
-  if (typeof navigator !== 'undefined' && navigator.userAgent.startsWith('Sucrose')) {
-    init.targetAddressSpace = 'loopback';
-  }
-  return init;
-}
-
-function isBridgeAbort(error: unknown) {
-  return typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError';
-}
-
-function readBridgeToken() {
-  try {
-    return localStorage.getItem('thesisBridgeToken') || '';
-  } catch {
-    // Some embedded runtimes can deny storage access; let the bridge return
-    // its normal invalid-token response instead of making the button silent.
-    return '';
-  }
-}
-
-async function postBridge(endpoint: string, path: string, token: string) {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), BRIDGE_REQUEST_TIMEOUT_MS);
-  try {
-    const base = process.env.NEXT_PUBLIC_LOCAL_BRIDGE_URL || 'http://127.0.0.1:38471';
-    const response = await fetch(`${base}${endpoint}`, bridgeRequestInit({ path, token }, controller.signal));
-    const data = await response.json().catch(() => ({} as { error?: unknown }));
-    return { response, data };
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
+function repositoryWebUrl(kind: 'blob' | 'tree', path: string) {
+  const encoded = path.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+  return `${REPOSITORY_WEB_URL}/${kind}/HEAD${encoded ? `/${encoded}` : ''}`;
 }
 
 export default function Page() {
@@ -218,28 +174,6 @@ function AuthenticatedPage() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const {
-    inboxEntries,
-    inboxPreview,
-    inboxLoaded,
-    inboxStorageStatus,
-    inboxStorageError,
-    bridgeApiWarning,
-    bridgeTokenWarning,
-    inboxOrganizing,
-    inboxAIError,
-    inboxRouteMessage,
-    projectTaskSavingId,
-    inboxDeleteSavingId,
-    addInboxEntry,
-    organizeInbox,
-    applyInboxPreview,
-    discardInboxPreview,
-    retryInboxSave,
-    deleteInboxEntry,
-    addInboxTaskToProject,
-    bridgeTokenSaved,
-  } = useInboxWorkflow({ projects, onNotice: pop, onOpenInbox: () => setPage('inbox') });
   const workspace = useMtosWorkspace(projects, pop);
 
   useEffect(() => {
@@ -308,32 +242,14 @@ function AuthenticatedPage() {
     if (!await logout()) pop('로그아웃 요청에 실패했어. 연결을 확인한 뒤 다시 시도해줘.');
   }
 
-  async function openLocal(path: string) {
-    pop('로컬 파일을 여는 중…');
-    try {
-      const { response, data } = await postBridge('/open', path, readBridgeToken());
-      if (!response.ok) {
-        pop(bridgeResponseMessage(response.status, data.error));
-        return;
-      }
-      pop('로컬에서 열었어');
-    } catch (error) {
-      pop(isBridgeAbort(error) ? BRIDGE_TIMEOUT_MESSAGE : BRIDGE_OFFLINE_MESSAGE);
-    }
+  function openRepoFile(path: string) {
+    if (!isSafeRepositoryPath(path)) { pop('연구 저장소 안의 경로만 열 수 있어.'); return; }
+    window.open(repositoryWebUrl('blob', path), '_blank', 'noopener,noreferrer');
   }
 
-  async function openLocalFolder(path = '') {
-    pop('로컬 폴더를 여는 중…');
-    try {
-      const { response, data } = await postBridge('/open-folder', path, readBridgeToken());
-      if (!response.ok) {
-        pop(bridgeResponseMessage(response.status, data.error));
-        return;
-      }
-      pop('로컬 볼트 폴더를 열었어');
-    } catch (error) {
-      pop(isBridgeAbort(error) ? BRIDGE_TIMEOUT_MESSAGE : BRIDGE_OFFLINE_MESSAGE);
-    }
+  function openRepoFolder(path = '') {
+    if (path && !isSafeRepositoryPath(path)) { pop('연구 저장소 안의 경로만 열 수 있어.'); return; }
+    window.open(repositoryWebUrl('tree', path), '_blank', 'noopener,noreferrer');
   }
 
   async function saveShortcuts(next: Shortcut[]) {
@@ -377,7 +293,7 @@ function AuthenticatedPage() {
   }
 
   const schedule = useMemo(() => groupCalendarEvents(calendar.items), [calendar.items]);
-  const activeProject = useMemo(() => projects.find((project) => project.id === 'thesis') || projects.find((project) => project.status === 'active') || projects[0] || null, [projects]);
+  const activeProject = useMemo(() => projects.find(isThesisProject) || projects.find((project) => project.status === 'active') || projects[0] || null, [projects]);
   const homeTasks = useMemo(() => {
     const projectTasks = activeProject?.nextTasks || [];
     return projectTasks.length ? projectTasks : researchStatus?.nextActions || [];
@@ -392,7 +308,7 @@ function AuthenticatedPage() {
           {group.items.filter((item) => item.id !== 'slot' && item.id !== 'planner').map((item) => <button key={item.id} className={page === item.id ? 'active' : ''} aria-label={item.label} title={sidebarExpanded ? undefined : item.label} onClick={() => showPage(item.id)}><span>{item.icon}</span>{item.label}</button>)}
         </div>)}</nav>
         <div className="sidebar-settings"><span className="nav-group-label">SYSTEM</span><button className={page === 'settings' ? 'active' : ''} aria-label="설정" title={sidebarExpanded ? undefined : '설정'} onClick={() => setPage('settings')}><span>⚙</span>설정</button></div>
-        <div className="sidebar-source"><span>연구 기준</span><b>Obsidian Vault</b><small>projects/ + shared/ · {repositorySource === 'local' ? 'local live' : repositorySource === 'github' ? 'GitHub live' : '연결 필요'}</small></div>
+        <div className="sidebar-source"><span>연구 기준</span><b>Chocomint-Lab</b><small>02_Projects/ + shared/ · {repositorySource === 'local' ? 'local live' : repositorySource === 'github' ? 'GitHub live' : '연결 필요'}</small></div>
       </aside>
 
       <main className="main">
@@ -420,12 +336,10 @@ function AuthenticatedPage() {
             <Card title="최근 분석 결과" right={dashboard.necessaryLabour?.source.yearRange || '결과 데이터'} className="home-results-card"><ResearchMiniTrend series={dashboard.necessaryLabour?.series || []} /></Card>
           </div>
           <div className="home-attention-grid section-gap">
-            <MailActionCandidates compact />
-            <PortalAttention onOpen={() => setPage('portal')} />
             <Card title="최근 변경" right="연구 저장소 GitHub" className="home-recent-changes"><CommitList commits={commits.slice(0, 4)} /></Card>
           </div>
           <div className="section-gap">
-            <Card title="빠른 접근" right={homeShortcuts.length ? `${homeShortcuts.length}개` : '설정 필요'} className="home-quick-access"><ShortcutList shortcuts={homeShortcuts} onOpenFile={openLocal} onOpenFolder={openLocalFolder} /></Card>
+            <Card title="빠른 접근" right={homeShortcuts.length ? `${homeShortcuts.length}개` : '설정 필요'} className="home-quick-access"><ShortcutList shortcuts={homeShortcuts} onOpenFile={openRepoFile} onOpenFolder={openRepoFolder} /></Card>
           </div>
         </section>}
 
@@ -449,18 +363,18 @@ function AuthenticatedPage() {
           })}
           onProjectSelected={setResearchProjectId}
           onProjectStatusChange={(updated) => setProjects((current) => current.map((project) => project.id === updated.id ? updated : project))}
-          onOpen={openLocal}
-          onOpenFolder={openLocalFolder}
+          onOpen={openRepoFile}
+          onOpenFolder={openRepoFolder}
         /></section>}
         {page === 'results' && <section className="page active"><ResultsDashboardPanel
           dashboard={dashboard}
           loading={dashboardLoading}
           projects={projects}
           tree={tree}
-          onOpen={openLocal}
-          onOpenFolder={openLocalFolder}
+          onOpen={openRepoFile}
+          onOpenFolder={openRepoFolder}
         /></section>}
-        {page === 'library' && <section className="page active"><GoogleDrivePanel /><div className="section-gap"><LibraryPanel tree={tree} researchStatus={researchStatus} onOpen={openLocal} /></div></section>}
+        {page === 'library' && <section className="page active"><GoogleDrivePanel /><div className="section-gap"><LibraryPanel tree={tree} researchStatus={researchStatus} onOpen={openRepoFile} /></div></section>}
         {page === 'calendar' && <section className="page active"><Card title="캘린더" right={`${calendar.items.length}건 · 읽기 전용`} className="calendar-card"><CalendarAgenda calendar={calendar} /></Card></section>}
         {page === 'slot' && <section className="page active"><RewardSlotPanel tasks={activeProject?.nextTasks || researchStatus?.nextActions || []} projectTitle={activeProject ? activeProject.title : 'Wiki live'} onNotice={pop} /></section>}
         {page === 'shortcuts' && <section className="page active"><ShortcutsPanel
@@ -470,46 +384,20 @@ function AuthenticatedPage() {
           writable={shortcutWritable}
           onSave={saveShortcuts}
           onItemsChange={setShortcutItems}
-          onOpenFile={openLocal}
-          onOpenFolder={openLocalFolder}
+          onOpenFile={openRepoFile}
+          onOpenFolder={openRepoFolder}
         /></section>}
-        {page === 'mail' && <section className="page active"><GmailMailPanel /><div className="section-gap"><MailPanel /></div></section>}
-        {page === 'portal' && <section className="page active"><PortalNoticesPanel /></section>}
-        {page === 'planner' && <section className="page active"><PlannerPanel projects={projects} /></section>}
-        {page === 'inbox' && <section className="page active"><AiInboxPanel projects={projects} onTasksChanged={() => { void workspace.reloadTasks(); workspace.bumpTaskReload(); }} />
-          <details className="card section section-gap legacy-inbox"><summary>기존 로컬 인박스 (Local Bridge · 이 PC 전용)</summary>
-          <QuickCapturePanel entries={inboxEntries} loaded={inboxLoaded} busy={inboxOrganizing} storageStatus={inboxStorageStatus} storageError={inboxStorageError} bridgeApiWarning={bridgeApiWarning} bridgeTokenWarning={bridgeTokenWarning} onAdd={addInboxEntry} onOrganize={() => void organizeInbox()} onOpenInbox={() => setPage('inbox')} onRetrySave={retryInboxSave} />
-          <InboxPanel
-          entries={inboxEntries}
-          loaded={inboxLoaded}
-          busy={inboxOrganizing}
-          storageStatus={inboxStorageStatus}
-          storageError={inboxStorageError}
-          bridgeApiWarning={bridgeApiWarning}
-          bridgeTokenWarning={bridgeTokenWarning}
-          onAdd={addInboxEntry}
-          onOrganize={() => void organizeInbox()}
-          onRetrySave={retryInboxSave}
-          preview={inboxPreview}
-          error={inboxAIError}
-          onApply={() => void applyInboxPreview()}
-          onDiscardPreview={discardInboxPreview}
-          routeMessage={inboxRouteMessage}
-          projects={projects}
-          projectTaskSavingId={projectTaskSavingId}
-          deleteSavingId={inboxDeleteSavingId}
-          onAddToProject={(entryId, projectId) => void addInboxTaskToProject(entryId, projectId)}
-          onDelete={deleteInboxEntry}
-        /></details></section>}
+        {page === 'mail' && <section className="page active"><GmailMailPanel /><div className="section-gap"><MicrosoftMailPanel variant="home" /></div><div className="section-gap"><EmptyFeature title="Thunderbird 이메일" message="Thunderbird 이메일 연결 준비 중" /></div></section>}
+        {page === 'portal' && <section className="page active"><EmptyFeature title="학교 공지" message="학교 공지 연결 준비 중" /></section>}
+        {page === 'planner' && <section className="page active"><P0TasksPanel /></section>}
+        {page === 'inbox' && <section className="page active"><AiInboxPanel projects={projects} onTasksChanged={() => { void workspace.reloadTasks(); workspace.bumpTaskReload(); }} /></section>}
 
         {page === 'settings' && <section className="page active">
           <div className="grid2">
-            <Card title="연구 저장소" right={repositorySource === 'none' ? '설정 필요' : repositorySource === 'local' ? '로컬' : 'GitHub'}><div className="note">Obsidian Vault가 연구 데이터의 기준이야. 프로젝트는 <code>projects/*/project.md</code>에서 자동 발견하고, 기존 <code>wiki/ · Calc/ · 연구/</code> 경로는 manifest가 연결해.</div></Card>
-            <Card title="로컬 브리지" right="127.0.0.1 전용"><div className="note">로컬 파일·볼트 폴더 열기는 PC에서 bridge를 실행했을 때만 동작해. 토큰은 이 브라우저의 localStorage에 저장돼.</div><div className="toolbar bridge-toolbar"><button className="btn" type="button" onClick={() => openLocalFolder()}>볼트 폴더 열기</button></div><BridgeToken onSave={bridgeTokenSaved} onNotice={pop} /></Card>
+            <Card title="연구 저장소" right={repositorySource === 'none' ? '설정 필요' : repositorySource === 'local' ? '로컬' : 'GitHub'}><div className="note">GitHub <code>jeyun123456/Chocomint-Lab</code>이 연구 데이터의 기준이야. 프로젝트는 <code>02_Projects/*/project.md</code>에서 자동 발견해. 할 일은 서버 P0 SQLite가 원본이야.</div></Card>
           </div>
           <div className="grid2 section-gap">
             <Card title="Google Calendar" right={calendar.state === 'ready' || calendar.state === 'empty' ? '연결됨' : '확인 필요'}><div className="note">현재 상태: {calendarStateText(calendar)}</div></Card>
-            <SchoolMailPanel variant="settings" folder="school-work" />
           </div>
           <div className="section-gap"><MicrosoftMailPanel variant="settings" /></div>
           <div className="section-gap"><P0SessionsPanel /></div>
@@ -540,7 +428,7 @@ function CurrentResearchCard({ project, researchStatus, onOpen }: { project: Res
   const focus = project?.currentFocus || researchStatus?.currentInterpretation || '현재 문제의식이 등록되지 않았어.';
   const stage = project ? stageLabel(project.stage) : researchStatus?.currentStage || '연구 단계 확인 필요';
   const status = project ? projectStatusLabel(project.status) : '연결 필요';
-  const summary = project?.summary || researchStatus?.currentInterpretation || 'projects/와 wiki/current_status.md에서 현재 연구 상태를 읽어와.';
+  const summary = project?.summary || researchStatus?.currentInterpretation || '02_Projects와 wiki/current_status.md에서 현재 연구 상태를 읽어와.';
 
   return <Card title="현재 연구" right={status} className="home-current-research-card">
     <div className="home-current-research">
@@ -591,39 +479,6 @@ function formatCalendarTime(start: string, end: string) {
 function calendarStateText(calendar: CalendarApiResponse) { if (calendar.state === 'unconfigured') return 'Google Calendar 설정이 필요해.'; if (calendar.state === 'empty') return '오늘부터 14일 안에 일정이 없어.'; if (calendar.errorCode === 'auth_error' || calendar.errorCode === 'insufficient_permissions') return 'Calendar 서비스 계정의 읽기/쓰기 권한을 확인해야 해.'; if (calendar.errorCode === 'provider_bad_request') return 'Calendar 요청 형식 또는 날짜·시간을 확인해줘.'; if (calendar.errorCode === 'invalid_calendar') return 'Calendar ID 또는 공유 권한을 확인해줘.'; if (calendar.errorCode === 'quota_error') return 'Google Calendar API quota를 확인해줘.'; if (calendar.errorCode === 'malformed_response') return 'Calendar 응답 형식을 확인할 수 없어.'; if (calendar.state === 'error') return 'Calendar 네트워크 연결을 확인해줘.'; return '해당 일정이 없어.'; }
 function CommitList({ commits }: { commits: GitHubCommitSummary[] }) { if (!commits.length) return <div className="empty compact-empty">최근 GitHub 변경을 불러오는 중이거나 연결 정보가 없어.</div>; return <div>{commits.map((commit) => <div className="commit" key={commit.sha}><div><b>{commit.message}</b><small>{commit.author} · {relativeDate(commit.date)}</small></div><code>{commit.sha.slice(0, 7)}</code></div>)}</div>; }
 
-function BridgeToken({ onSave, onNotice }: { onSave: () => void; onNotice: (message: string) => void }) {
-  const [value, setValue] = useState('');
-  const [visible, setVisible] = useState(false);
-  useEffect(() => setValue(localStorage.getItem('thesisBridgeToken') || ''), []);
-  async function pasteToken() {
-    try {
-      if (!navigator.clipboard?.readText) throw new Error('clipboard unavailable');
-      const clipboardValue = await navigator.clipboard.readText();
-      if (!clipboardValue.trim()) {
-        onNotice('클립보드에 토큰이 없어');
-        return;
-      }
-      setValue(clipboardValue.trim());
-      onNotice('클립보드에서 토큰을 가져왔어');
-    } catch {
-      onNotice('브라우저의 클립보드 접근을 허용해줘');
-    }
-  }
-  async function copyToken() {
-    if (!value.trim()) {
-      onNotice('저장된 Bridge token이 없어');
-      return;
-    }
-    try {
-      if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
-      await navigator.clipboard.writeText(value);
-      onNotice('Bridge token을 클립보드에 복사했어');
-    } catch {
-      onNotice('브라우저의 클립보드 접근을 허용해줘');
-    }
-  }
-  return <div className="toolbar bridge-toolbar"><input className="search" type={visible ? 'text' : 'password'} autoComplete="off" spellCheck={false} placeholder="Bridge token" value={value} onChange={(event) => setValue(event.target.value)} /><button className="btn" type="button" onClick={() => setVisible((current) => !current)}>{visible ? '숨기기' : '보기'}</button><button className="btn" type="button" onClick={() => void copyToken()}>복사</button><button className="btn" type="button" onClick={() => void pasteToken()}>붙여넣기</button><button className="btn" type="button" onClick={() => { localStorage.setItem('thesisBridgeToken', value); onSave(); }}>저장</button></div>;
-}
 function errorMessage(error: unknown, fallback: string) { return error instanceof Error ? error.message : fallback; }
 function formatDate(value: string) { if (!value) return ''; try { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)); } catch { return value; } }
 function deadlineLabel(event: CalendarEvent) { const days = daysUntil(event); return days <= 0 ? '오늘' : `D-${days}`; }

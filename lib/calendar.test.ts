@@ -1,4 +1,4 @@
-import '../app/inbox-workflow-test-safety';
+import './network-test-safety';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateKeyPairSync } from 'node:crypto';
 import {
@@ -17,7 +17,7 @@ import {
   normalizePrivateKey,
   parseCalendarIds,
 } from './calendar';
-import { assertNoDeniedAttempts, deniedNetworkAttempts } from '../app/inbox-workflow-test-safety';
+import { assertNoDeniedAttempts, deniedNetworkAttempts } from './network-test-safety';
 
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const GOOGLE_API_ORIGIN = 'https://www.googleapis.com';

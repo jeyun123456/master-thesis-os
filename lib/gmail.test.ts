@@ -1,4 +1,4 @@
-import '../app/inbox-workflow-test-safety';
+import './network-test-safety';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearGmailTokenCacheForTests,

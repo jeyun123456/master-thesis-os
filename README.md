@@ -1,6 +1,6 @@
 # Master Thesis OS
 
-필요노동 석사논문 저장소를 읽는 Next.js 대시보드다. 앱 코드는 이 독립 repository에 두고, 연구 자료의 source of truth는 별도 private repository [`jeyun123456/Obsidian-Vault`](https://github.com/jeyun123456/Obsidian-Vault)로 유지한다. 앱 DB로 연구 파일을 복제하지 않는다. dashboard JSON이 없거나 검증되지 않으면 수치 대신 명확한 empty state를 표시한다.
+필요노동 석사논문 저장소를 읽는 Next.js 대시보드다. 앱 코드는 이 독립 repository에 두고, 연구 자료의 source of truth는 별도 private repository [`jeyun123456/Chocomint-Lab`](https://github.com/jeyun123456/Chocomint-Lab)로 유지한다. 앱 DB로 연구 파일을 복제하지 않는다. dashboard JSON이 없거나 검증되지 않으면 수치 대신 명확한 empty state를 표시한다.
 
 ## 제품 버전
 
@@ -11,12 +11,11 @@
 ## 구성
 
 - `app/`: 연구 대시보드 페이지 UI와 서버 API routes
-- `lib/`: GitHub·Calendar 서버 클라이언트, Thunderbird Local Bridge·로컬 메일 분석 client, Microsoft Graph 브라우저 클라이언트, project/result discovery, repository 분류, Results 데이터 계약
+- `lib/`: GitHub·Calendar 서버 클라이언트, Microsoft Graph 브라우저 클라이언트, project/result discovery, repository 분류, Results 데이터 계약
 - `schemas/`: Excel과 UI 사이의 dashboard JSON Schema
 - `exporter/`: canonical 결과 workbook을 검증된 dashboard JSON으로 변환
-- `local-bridge/`: GitHub 상대경로와 Thunderbird 로컬 메일을 읽고 SQLite·로컬 CLI 분석을 제공하는 loopback 전용 브리지
 
-이 repository는 앱 코드만 담는다. 기존 `Obsidian-Vault`의 `Calc/`, `wiki/`, `연구/` 구조와 결과 파일은 이동하거나 복제하지 않는다. 기존 Vault 안의 `master-thesis-os/` checkout은 로컬 개발용으로 계속 둘 수 있다.
+이 repository는 앱 코드만 담는다. 기존 `Chocomint-Lab`의 `Calc/`, `wiki/`, `연구/` 구조와 결과 파일은 이동하거나 복제하지 않는다. 기존 Vault 안의 `master-thesis-os/` checkout은 로컬 개발용으로 계속 둘 수 있다.
 
 ## 설치와 실행
 
@@ -35,7 +34,6 @@ pnpm dev
 pnpm lint
 pnpm build
 pnpm version:check
-pnpm test:bridge
 pnpm test:exporter
 pnpm test:web
 ```
@@ -47,7 +45,7 @@ Vercel project는 앱 code repository `jeyun123456/master-thesis-os`를 연결�
 로컬에서 별도 app repository를 clone한 경우에는 `.env.local`에 기존 연구 Vault의 절대 경로를 지정한다.
 
 ```dotenv
-LOCAL_REPOSITORY_ROOT=D:\path\to\Obsidian-Vault
+LOCAL_REPOSITORY_ROOT=D:\path\to\Chocomint-Lab
 ```
 
 이 값은 로컬 project/shortcut 읽기·쓰기와 Results의 credentials-free fallback, exporter 입력/출력 위치에 사용한다. GitHub 환경변수가 설정되면 GitHub API가 우선하며, 어느 경우에도 Files·Literature·Wiki 경로는 repository-relative path를 사용한다.
@@ -64,7 +62,7 @@ GitHub·Google·AI provider 비밀값은 `.env.local` 또는 배포 플랫폼의
 | `GITHUB_TOKEN` | private repo에서 필수 | 기본 읽기 전용 Contents 권한. GitHub 모드에서 앱 편집을 허용할 때만 Contents 읽기·쓰기 권한이 필요하며, 공개 배포에 쓰기 토큰을 넣지 않음 |
 | `GITHUB_WRITE_ENABLED` | 아니오 | 기본 `false`. 보호된 개인 배포에서만 `true`로 설정해 프로젝트 상태·바로가기 변경을 GitHub에 저장 |
 | `GITHUB_RESULTS_PATH` | 아니오 | 프로젝트별 경로가 없을 때 사용하는 전역 dashboard fallback. 기본값 `projects/thesis/코드/결과/주요결과/dashboard` |
-| `LOCAL_REPOSITORY_ROOT` | 로컬 Vault 모드·fallback/exporter 시 | 기존 `Obsidian-Vault` checkout의 절대 경로. Vercel에는 설정하지 않음 |
+| `LOCAL_REPOSITORY_ROOT` | 로컬 Vault 모드·fallback/exporter 시 | 기존 `Chocomint-Lab` checkout의 절대 경로. Vercel에는 설정하지 않음 |
 | `GOOGLE_CLIENT_ID` | OAuth Calendar 연결 시 | Google OAuth client ID. 서버 전용 |
 | `GOOGLE_CLIENT_SECRET` | OAuth Calendar 연결 시 | Google OAuth client secret. 서버 전용 |
 | `GOOGLE_REFRESH_TOKEN` | OAuth Calendar 연결 시 | Calendar read/write consent가 포함된 user refresh token. 서버 전용 |
@@ -72,17 +70,10 @@ GitHub·Google·AI provider 비밀값은 `.env.local` 또는 배포 플랫폼의
 | `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | Service Account fallback 시 | Service Account RS256 private key. Vercel에서는 `\n` escape를 허용 |
 | `GOOGLE_CALENDAR_IDS` | Calendar 연결 시 | 쉼표로 구분한 하나 이상의 Calendar ID. OAuth에서는 `primary` 사용 가능 |
 | `GOOGLE_CALENDAR_ID` | 임시 fallback | 기존 단일 Calendar ID. `GOOGLE_CALENDAR_IDS`가 우선 |
-| `MAIL_AI_PROVIDER` | AI 사용 시 | `codex-cli`이면 설치된 Codex CLI를 사용하고, 비워두면 OpenAI-compatible HTTP provider를 사용 |
-| `MAIL_AI_API_URL` | HTTP provider 사용 시 | 로컬 `local-bridge/mail_cli.py`가 호출하는 OpenAI-compatible chat JSON endpoint |
-| `MAIL_AI_API_KEY` | HTTP provider 사용 시 | 로컬 CLI 전용 AI provider key. SQLite·브라우저에 저장하지 않음 |
-| `MAIL_AI_MODEL` | AI 사용 시 | provider가 지원하는 모델 이름. Codex CLI 모드 기본값은 `gpt-5.6-luna` |
-| `MAIL_AI_CODEX_COMMAND` | Codex CLI 사용 시 선택 | `codex.exe`가 PATH에 없을 때 실행 파일 절대경로 |
-| `MAIL_ANALYSIS_DB_PATH` | 아니오 | SQLite 절대경로 override. 기본값 `local-bridge/data/mail-analysis.db` |
-| `NEXT_PUBLIC_LOCAL_BRIDGE_URL` | 아니오 | 기본값 `http://127.0.0.1:38471` |
 | `NEXT_PUBLIC_MICROSOFT_CLIENT_ID` | Microsoft 연결 시 | Entra SPA App Registration의 Application (client) ID. secret 아님 |
 | `NEXT_PUBLIC_MICROSOFT_AUTHORITY` | 아니오 | 기본값 `https://login.microsoftonline.com/organizations` |
 
-데이터 remote는 `Obsidian-Vault`이며 `https://github.com/jeyun123456/Obsidian-Vault.git`을 가리킨다. 따라서 앱의 데이터 설정은 계속 `GITHUB_OWNER=jeyun123456`, `GITHUB_REPO=Obsidian-Vault`, `GITHUB_BRANCH=master`다. 이것은 앱 code repository와 별개다. private repo token은 직접 설정해야 하며 서버는 토큰이나 Google 인증 오류 응답 본문을 브라우저에 노출하지 않는다.
+데이터 remote는 `Chocomint-Lab`이며 `https://github.com/jeyun123456/Chocomint-Lab.git`을 가리킨다. 따라서 앱의 데이터 설정은 계속 `GITHUB_OWNER=jeyun123456`, `GITHUB_REPO=Chocomint-Lab`, `GITHUB_BRANCH=master`다. 이것은 앱 code repository와 별개다. private repo token은 직접 설정해야 하며 서버는 토큰이나 Google 인증 오류 응답 본문을 브라우저에 노출하지 않는다.
 
 ## GitHub 자동 분류
 
@@ -123,7 +114,7 @@ shared/shortcuts.md
 }
 ```
 
-`web`은 HTTP/HTTPS 링크, `uri`는 허용된 외부 앱 URI(`steam://`, `steamlink:`), `shell`은 제한된 Windows Shell 항목(`shell:RecycleBinFolder` 등)으로 열고, `file`은 기존 Local Bridge의 `/open`, `folder`는 `/open-folder`로 전달한다. `app`은 실행 파일과 인자를, `command`는 명령어를 사용한다. `enabled: false`는 모든 화면에서 숨기며, Home에는 `enabled: true`와 `pinnedToHome: true`인 항목만 표시한다. 파일·폴더 target은 연구 repository root 기준 안전한 상대경로여야 하고, 잘못된 항목은 무시된다. 외부 URI와 Windows Shell 항목은 명령어로 실행하지 않고 OS Shell에 직접 전달한다. 파일·폴더와 외부 대상 실행을 사용하려면 로컬 PC에서 bridge를 실행하고 Settings에 같은 token을 저장해야 한다.
+`web`은 HTTP/HTTPS 링크, `uri`는 허용된 외부 앱 URI(`steam://`, `steamlink:`), `shell`은 제한된 Windows Shell 항목(`shell:RecycleBinFolder` 등)으로 열고, `file`은 기존 Local Bridge의 `/open`, `folder`는 `/open-folder`로 전달한다. `app`은 실행 파일과 인자를, `command`는 명령어를 사용한다. `enabled: false`는 모든 화면에서 숨기며, Home에는 `enabled: true`와 `pinnedToHome: true`인 항목만 표시한다. 파일·폴더 target은 연구 repository root 기준 안전한 상대경로여야 하고, 잘못된 항목은 무시된다. 외부 URI와 Windows Shell 항목은 명령어로 실행하지 않고 OS Shell에 직접 전달한다. 파일·폴더와 외부 대상 실행을 사용하려면 로컬 PC에서 bridge를 실행하고 Settings에 같은 token을 저장해야 한다. **서버 전환 후에는 `web` 링크와 저장소 경로 바로가기만 열린다(개인 PC 앱·파일·shell 항목은 지원하지 않음).**
 
 예를 들어 `shared/shortcuts.md`의 마커 안에 다음처럼 등록할 수 있다.
 
@@ -144,7 +135,7 @@ shared/shortcuts.md
 
 ## 프로젝트 작업공간
 
-연구 탭은 `projects/<project-id>/project.md`를 자동 발견한다. Home 상단에는 `writing` 또는 `active` 상태인 프로젝트를 표시하고, 연구 탭의 상태 선택기는 해당 manifest의 frontmatter `status`만 수정한다. 제목·질문·결과 경로 등 나머지 Markdown은 그대로 보존한다. 상태 저장에도 파일 SHA를 사용하므로 다른 편집이 먼저 반영된 경우 덮어쓰지 않는다. 프로젝트가 표준 결과를 가지면 분석 결과 탭에서 기존 dashboard fallback과 함께 선택할 수 있다.
+연구 탭은 Chocomint-Lab의 `02_Projects/<폴더>/project.md`를 자동 발견한다(폴더명이 프로젝트 id). Home 상단에는 `writing` 또는 `active` 상태인 프로젝트를 표시하고, 연구 탭의 상태 선택기는 해당 manifest의 frontmatter `status`만 수정한다. 제목·질문·결과 경로 등 나머지 Markdown은 그대로 보존한다. 상태 저장에도 파일 SHA를 사용하므로 다른 편집이 먼저 반영된 경우 덮어쓰지 않는다. 프로젝트가 표준 결과를 가지면 분석 결과 탭에서 기존 dashboard fallback과 함께 선택할 수 있다.
 
 ## Google Calendar
 
@@ -224,19 +215,6 @@ OAuth live 검증이 끝나기 전까지 Service Account 변수를 남겨도 된
 
 기준 문서는 Google OAuth 2.0, OAuth refresh token, Calendar API, Gmail API, Drive API reference다. 자료실의 Google Drive 카드는 `drive.readonly` 범위에서 최근 수정 파일 metadata를 조회하고 원본 수정·삭제는 하지 않는다. 선택한 Google Docs·Slides는 plain text, Google Sheets는 첫 시트를 CSV, `text/*`·JSON/XML/JavaScript 파일은 원문 텍스트로 읽어 최대 200,000자까지 미리보기·내부 검색에 사용한다. 통합 연구자료 검색은 Drive API의 `fullText contains`/`name contains` 인덱스로 후보를 찾은 뒤 읽을 수 있는 상위 문서의 실제 본문에서 최대 3개 문맥 스니펫을 만든다. PDF와 기타 binary 파일은 Drive 인덱스 검색 결과에는 포함될 수 있지만 본문 텍스트 추출은 하지 않는다.
 
-## Drive 연구 Q&A 모델 라우팅
-
-자료실의 Drive 통합 검색 결과는 Local Bridge의 Codex CLI로 넘겨 근거 기반 연구 Q&A에 사용할 수 있다. Google OAuth credential이나 Drive 원문 전체를 Local Bridge에 직접 전달하지 않고, 웹에서 검색된 최대 8개 자료의 제한된 문맥 스니펫만 전달한다.
-
-- **Luna 답변**: 기본 경로. `gpt-6-luna`를 사용한다. 일반적인 자료 찾기, 요약, 비교, 간단한 해석에 사용한다.
-- **Sol 정밀 분석**: 사용자가 명시적으로 선택할 때만 `gpt-6.1-sol`을 사용한다. 복잡한 논증 비교, 비판, 이론적 함의 검토용이다.
-- 두 모델 모두 Codex CLI의 기본 reasoning 설정을 사용한다.
-- 답변기는 제공된 Drive 근거만 사용하도록 프롬프트가 고정되어 있고, 근거가 부족하면 부족하다고 표시한다.
-- PDF처럼 Drive 인덱스에서만 검색된 자료는 `indexedOnly`로 전달되어 내용 근거로 추정하지 않는다.
-- 연구 Q&A 응답에는 사용 모델, 근거 source ID, 근거 부족 여부를 함께 반환한다.
-
-이 기능은 Local Bridge API v8의 `POST /research/answer`를 사용한다. 따라서 Local Bridge를 v8 코드로 업데이트하고 재시작해야 한다. Codex CLI에서 해당 모델에 대한 계정 접근 권한이 없으면 그 모드만 실패하며 다른 모델로 자동 강등하지 않는다.
-
 ## Microsoft 365 학교 메일 Graph 연결(선택)
 
 학교 메일은 IMAP이나 서버 저장소를 사용하지 않고, 브라우저의 `@azure/msal-browser`가 Microsoft Entra ID Authorization Code Flow + PKCE로 delegated token을 받은 뒤 Microsoft Graph를 직접 호출한다. MSAL cache는 현재 브라우저 탭/session에 한정된 `sessionStorage`를 사용하며 앱 서버·DB·Vercel 환경변수에 token을 저장하지 않는다. 현재 요청하는 Graph delegated permission은 `User.Read`와 `Mail.ReadBasic`뿐이다. 메일 본문·preview·첨부파일·메일 변경 API는 요청하지 않는다.
@@ -254,157 +232,13 @@ OAuth live 검증이 끝나기 전까지 Service Account 변수를 남겨도 된
 
 설정의 **Microsoft Graph 연결(선택)**은 위 경로를 보조하는 기존 PoC다. 학교 tenant 정책이 `AADSTS65001`, `AADSTS90094` 또는 Graph 403으로 consent/admin approval을 요구하면 앱은 raw provider 오류 대신 접근 승인 필요 메시지를 표시한다.
 
-## Thunderbird Local 학교 메일
+## 학교 공지와 Thunderbird 이메일
 
-현재 기본 학교 메일 소스는 Thunderbird Local이다. Thunderbird가 OAuth 또는 IMAP/Graph로 이미 동기화한 로컬 profile의 받은편지함 mbox/maildir에서 Local Bridge가 헤더 메타데이터를 읽고, AI 분석을 요청한 메일에 한해 본문 텍스트만 read-only로 읽는다. Microsoft Graph access token, Thunderbird OAuth token·password·cookie, `logins.json`, `key4.db`, 첨부파일은 읽지 않는다. `global-messages-db.sqlite`와 `.msf` 파일도 canonical source로 사용하지 않는다.
+두 기능은 진입점과 빈 화면(`학교 공지 연결 준비 중`, `Thunderbird 이메일 연결 준비 중`)만 남아 있다. 개인 PC Local Bridge와 로컬 수집기는 제거했고, 서버 기반 연결은 별도 작업으로 구축한다.
 
-기존 `local-bridge/config.json`은 그대로 동작한다. 자동 탐지가 애매할 때만 다음 선택 설정을 추가한다. 실제 이메일 주소나 profile 절대 경로는 repository에 넣지 않는다.
+## AI YOLO 할 일 관리
 
-```json
-{
-  "thunderbird": {
-    "account": "school-account@example.edu",
-    "profile_path": "C:\\Users\\your-name\\AppData\\Roaming\\Thunderbird\\Profiles\\profile.default"
-  }
-}
-```
-
-`account`와 `profile_path`가 비어 있으면 `%APPDATA%\\Thunderbird\\profiles.ini`의 우선 profile과 `prefs.js`를 자동 탐색한다. 기존 scanner는 mbox의 확장자 없는 mailbox와 maildir의 `cur/new/tmp`를 읽는다. 새 메일 분석 동기화는 **학교 업무**와 **국제과** 두 폴더만 각각 최대 100개까지 스캔하고, 본문 텍스트(최대 60,000자, 첨부파일 제외)를 SQLite에 저장한다. mbox가 변경되면 mtime/size 기반의 메타데이터 cache를 무효화한다. Thunderbird profile에는 어떤 write도 수행하지 않는다.
-
-Home의 **학교 메일** 카드와 메일 탭은 모두 SQLite 저장 결과만 읽는다. 저장된 metadata 중 최근 최대 20개를 기존 규칙 기반 classifier로 평가해 긴급·중요 메일을 최대 5개 우선 표시한다. 메일 탭은 제목·발신자 검색, 미읽음·중요·긴급 필터, 최신순·중요도순 정렬, 20개 단위 더 보기를 제공한다. 메일 탭 상단의 **메일 분석 동기화**를 눌렀을 때만 Local Bridge가 두 Thunderbird 폴더를 스캔하고, 미분석 메일을 로컬 CLI로 분석한다. 메일 탭을 여는 것과 새로고침은 SQLite 조회만 수행하며 AI catch-up을 시작하지 않는다. 각 행의 **AI 분석 보기**를 펼치면 저장된 2~3문장 요약, 해야 할 일, 일정 후보를 확인할 수 있고, 후보의 제목·날짜·시간을 수정한 뒤에만 Calendar에 추가할 수 있다. 일정 후보는 event/deadline별로 `pending`·`added`·`ignored` 상태를 SQLite에 저장한다. 별도 **플래너** 탭은 AI action을 `mail_tasks`로 관리하며 완료·나중에·숨기기 상태를 SQLite에 저장하고, 같은 일정 후보를 메일별로 모아 확인할 수 있다. AI provider 미설정·호출 실패·JSON 파싱 실패는 해당 메일을 `failed`로 기록하며 임의 요약이나 Calendar 후보를 만들지 않는다. 메일 행을 클릭하면 인증된 `/mail/open`을 통해 해당 헤더의 `Message-ID`를 `mid:` URI로 전달해 Thunderbird에서 메시지를 직접 연다. `Message-ID`가 없는 경우에는 Thunderbird 프로그램만 열며, 브리지는 파일 경로나 token을 로그에 남기지 않는다.
-
-## localhost bridge
-
-```powershell
-Set-Location local-bridge
-Copy-Item config.example.json config.json
-# config.json의 master_path, token 수정
-python bridge.py
-```
-
-Bridge launcher와 tray는 다음 공용 설정을 우선 사용한다. 폴더 이름의 `Wallpaper`는 기존 사용자 데이터 위치를 유지하기 위한 호환 경로이며 Companion 의존성이 아니다.
-`%LOCALAPPDATA%\MasterThesisOSWallpaper\bridge\config.json`이 없으면 기존 `local-bridge\config.json`을 fallback으로 사용한다. 공용 config가 존재하면 유효성 오류가 있어도 다른 config로 조용히 fallback하지 않는다. 다른 위치를 사용해야 하면 `MTO_BRIDGE_CONFIG` 환경변수로 config 경로를 지정할 수 있으며, override가 설정되면 해당 경로만 사용한다.
-
-`token`은 32자 이상의 임의 문자열이어야 한다. Bridge launcher와 tray는 선택된 동일 config를 사용하며, token은 공백을 임의로 제거하지 않는다. 설정 파일을 변경한 뒤에는 실행 중인 Bridge와 tray를 다시 시작한다.
-
-```powershell
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-```
-
-브리지는 `127.0.0.1` bind, 명시된 localhost와 `https://master-thesis-os.vercel.app` origin allowlist, token 상수시간 비교, 16 KiB 요청 한도, `Path.resolve()` 후 Master Path 내부의 실제 파일·디렉터리만 허용, health 응답의 경로 비공개를 강제한다. 웹 Settings에 같은 token을 저장하면 `{master_path}/{GitHub 상대경로}`를 기본 앱으로 열고, **볼트 폴더 열기**는 `/open-folder`로 master path 또는 지정 파일의 안전한 부모 폴더를 연다. 새 메일 분석 UI는 `GET /mail/sync-status`, `GET /mail/analysis`, `GET /mail/analysis/<mail-id>`, `GET /mail/planning`, `POST /mail/sync`, `POST /mail/analysis/<mail-id>/reanalyze`, `POST /mail/analysis/candidate`, `POST /mail/task`를 사용한다. `/mail/sync`는 background job으로 `mail_cli.py`를 실행하고, 상태는 `mail-analysis.db`에서 polling한다. 기존 `POST /mail/recent`, `/mail/message`, `/mail/open`은 Thunderbird 열기·호환용으로 남아 있지만 새 동기화 UI의 수집 경로가 아니다. 메일 endpoint는 경로·본문·제목·발신자·token을 로그에 남기지 않는다. Settings의 token은 `보기/숨기기`와 `복사`로 관리할 수 있고, Local Bridge tray의 **Bridge token 보기/복사**에서도 로컬 config 값을 확인·복사할 수 있다. token을 HTTP endpoint나 원격 페이지에 자동 노출하지는 않는다. 실제 `config.json`은 git에서 제외된다.
-
-## RITSUMEIKAN 학교 공지
-
-학교 공지 PoC는 사용자가 직접 로그인한 RITSUMEIKAN STUDENT PORTAL 세션만 재사용한다. Playwright persistent profile은 Windows에서 `%LOCALAPPDATA%\MasterThesisOSWallpaper\data\ritsumei-browser-profile\`에 두며, 저장소와 release 폴더 밖에서만 유지한다. 학교 ID·비밀번호는 코드·DB·로그에 저장하지 않는다. 목록은 포털의 Salesforce Aura JSON/XHR 응답에서 읽고, 상세 본문과 첨부파일 metadata는 상세 DOM에서 읽는다. 첨부파일 자체는 다운로드하지 않는다.
-
-Orca 내부 브라우저의 로그인 profile과 이 Local Bridge의 Playwright profile은 브라우저 저장소가 서로 다르므로 cookie를 복사하지 않는다. Orca는 포털 구조·live 동작 확인에 사용하고, 실제 Local Bridge 수집은 위 persistent profile에서 명시적 `login` 후 실행한다.
-
-처음 한 번 Playwright를 설치하면 Windows에서는 OS 기본 Chromium 브라우저(예: Edge)를 전용 persistent profile로 사용하고, 확인할 수 없으면 Chrome channel로 fallback한다. `RITSUMEI_BROWSER_CHANNEL=chrome|msedge|chromium`으로 이를 명시할 수도 있다. `RITSUMEI_BROWSER_PROFILE_DIR`를 지정하면 동기화용 persistent profile 위치를 명시적으로 바꿀 수 있다. 학교 공지의 **동기화용 로그인**은 이 전용 profile을 headed로 열고, 원문·첨부파일 및 **학교 포털 열기**는 OS 기본 브라우저의 일반 세션으로 연다.
-
-```powershell
-python -m pip install -r local-bridge/requirements.txt
-python -m playwright install chromium
-python local-bridge/portal_cli.py login
-python local-bridge/portal_cli.py sync
-python local-bridge/portal_cli.py status
-python local-bridge/portal_cli.py notices --type ALL
-python local-bridge/portal_cli.py notices --type DM
-npm run test:portal:e2e
-```
-
-CLI의 `login` 명령과 웹 UI의 **동기화용 로그인**은 같은 Playwright persistent profile을 headed로 열고, 일반 `sync` 수집은 그 profile을 headless로 재사용한다. 웹 UI의 **학교 포털 열기**와 원문·첨부파일 열기는 `POST /portal/open-url`을 통해 OS 기본 브라우저의 일반 세션을 연다. 두 profile은 cookie를 공유하지 않으므로 기본 브라우저에서 로그인한 상태만으로는 공지 동기화가 인증되지 않는다. 로그인 창과 sync가 같은 profile을 동시에 사용하지 않도록 Bridge job lock으로 직렬화한다. 세션이 없거나 만료되면 `sync`는 `login_required`/`session_expired`를 저장하고 창을 반복해서 열지 않는다. 학교 SQLite는 기존 메일 DB와 분리된 `local-bridge/data/portal-notices.db`이며 `portal_notices`, `portal_notice_attachments`, `portal_notice_ai`, `portal_notice_calendar_candidates`, `portal_sync_state`, `portal_sync_runs` 테이블을 사용한다. 웹의 **학교 공지** 탭은 저장된 결과만 읽고, **공지 동기화**를 눌렀을 때만 `POST /portal/sync`를 호출한다. 관련 Bridge endpoint는 `GET /portal/status`, `GET /portal/notices`, `GET /portal/notices/<notice-id>`, `POST /portal/sync`, `POST /portal/login`, `POST /portal/open-url`, `POST /portal/notices/<notice-id>/analyze`, `POST /portal/notices/<notice-id>/candidate`다. `/portal/status`에는 최근 동기화 실행 10건의 결과와 오류 코드가 함께 포함된다.
-
-`npm run test:portal:e2e`는 현재 production UI와 실행 중인 Local Bridge를 대상으로 학교 공지 목록, 중복 notice ID, 동기화 이력, 제목 검색, 본문 검색을 확인한다. 첫 공지를 클릭하지 않으므로 읽음 상태는 변경하지 않는다. 이 smoke test는 로컬 Bridge token만 사용하며 학교 ID·비밀번호나 포털 session cookie를 읽지 않는다.
-
-학교 공지의 사용자 상태는 `portal_notice_user_state`에 원문과 분리해 저장한다. 화면에서는 포털의 `担当部課`를 `발신처·담당부서` 기준으로 집계·필터링하고, 상위 담당부서별 ALL/DM·미읽음·중요 수를 요약해 보여준다. 제목·본문·담당부서·카테고리·공지 ID를 검색할 수 있으며 최신 게시순·마감 임박순·제목순 정렬과 미읽음·중요·보관·마감 있음·기한 종료 필터를 제공한다. 데스크톱에서는 목록 오른쪽 상세 패널에 공지를 표시하고, 모바일에서는 목록과 상세를 전환한다. 공지를 열면 읽음 처리하며 중요·보관 상태를 로컬에서 관리한다. `POST /portal/notices/<notice-id>/state`가 상태 변경 endpoint다. 목록·상세 조회는 자동 동기화하지 않는다.
-
-공지 metadata hash가 달라지면 해당 상세를 즉시 다시 읽고, 본문만 바뀌는 경우는 7일 주기 상세 재검증에서 content hash로 감지한다. 즉시 전체 상세를 다시 확인하려면 `python local-bridge/portal_cli.py sync --refresh-details`를 사용한다. `/portal/status`와 UI에는 최근 동기화의 신규·수정·상세 실패 건수가 표시된다. CLI 중단이나 Bridge 재시작으로 SQLite에 `running`만 남으면 다음 상태 조회 또는 동기화에서 `sync_interrupted`로 정리하고 재시도할 수 있다.
-
-공지 상세의 **AI 분석**은 자동 동기화에 포함되지 않으며 사용자가 상세 패널의 버튼을 눌렀을 때만 실행된다. 기존 `MAIL_AI_*` provider 경계를 재사용해 한국어 요약·본문 번역·일정 후보를 `portal_notice_ai`와 `portal_notice_calendar_candidates`에 저장한다. 후보는 `pending` 상태로 남고, 사용자가 제목·날짜·시간을 확인한 뒤 **캘린더 추가**를 눌러야 `/api/calendar/events`가 실행된다. 분석 실패는 해당 공지에만 `failed`와 오류 코드를 남기며, 학교 계정·비밀번호·브라우저 cookie·AI key는 SQLite에 저장하지 않는다.
-
-## 학교 메일 AI 분석
-
-Codex CLI를 Luna Max로 사용할 때는 먼저 Codex CLI 인증을 완료한다.
-
-```powershell
-codex login
-```
-
-그 다음 `.env.local`에 다음을 설정한다. 메일 CLI가 각 분석마다 `codex exec --model gpt-5.6-luna`를 실행하며 Codex CLI의 기존 인증을 사용한다. API key를 SQLite나 브라우저에 저장하지 않는다.
-
-```dotenv
-MAIL_AI_PROVIDER=codex-cli
-MAIL_AI_MODEL=gpt-5.6-luna
-```
-
-Codex CLI가 PATH에 없으면 다음 선택 설정을 추가한다.
-
-```dotenv
-MAIL_AI_CODEX_COMMAND=C:/Users/<사용자>/AppData/Local/Programs/OpenAI/Codex/bin/codex.exe
-```
-
-LM Studio를 로컬 provider로 사용할 때는 모델을 먼저 로드하고 loopback API를 시작한다.
-
-```powershell
-lms load qwen/qwen3.5-9b --yes
-lms server start --port 1234 --bind 127.0.0.1
-```
-
-그 다음 `.env.local`에 `MAIL_AI_PROVIDER`를 비우고 `MAIL_AI_API_URL=http://127.0.0.1:1234/v1/chat/completions`, `MAIL_AI_API_KEY=lm-studio-local`, `MAIL_AI_MODEL=qwen/qwen3.5-9b`를 설정한다. 로컬 Qwen 요청은 JSON-only 프롬프트와 CLI의 엄격한 결과 검증을 사용하며, 원격 provider는 JSON schema 응답을 요청한다. 분석 provider가 없거나 응답을 검증하지 못하면 해당 메일만 `failed`로 남고 자동 Calendar 등록은 하지 않는다.
-
-메일 탭 상단에서 **메일 분석 동기화**를 눌러야 Thunderbird의 `학교 업무`·`국제과` 폴더를 읽는다. 흐름은 `Thunderbird → mail_cli.py sync → local-bridge/data/mail-analysis.db → Bridge API → 웹 UI`이며, PC가 꺼져 있던 동안의 미처리 메일도 다음 명시적 동기화에서 catch-up한다. DB에는 메일 metadata/body, AI 상태(`queued`·`processing`·`completed`·`failed`), 요약·action·모델·prompt version, Calendar 후보 상태, action에서 만든 할 일(`mail_tasks`)과 `pending`·`done`·`snoozed`·`dismissed` 상태를 저장한다. 기본 SQLite 경로는 `local-bridge/data/mail-analysis.db`이고 `MAIL_ANALYSIS_DB_PATH`로 바꿀 수 있다. `MAIL_AI_PROVIDER`, `MAIL_AI_API_URL`, `MAIL_AI_API_KEY`, `MAIL_AI_MODEL`, `MAIL_AI_CODEX_COMMAND`는 로컬 CLI 프로세스만 읽으며 API key는 DB나 브라우저에 저장하지 않는다. Codex CLI 모드에서는 메일 내용이 선택한 Luna 모델로 전송되므로, Codex 로그인 계정의 데이터 정책을 확인해야 한다.
-
-로컬 CLI는 다음 명령을 제공한다.
-
-```powershell
-python local-bridge/mail_cli.py sync
-python local-bridge/mail_cli.py status
-python local-bridge/mail_cli.py analyze --new
-python local-bridge/mail_cli.py reanalyze <mail-id>
-```
-
-AI provider에는 JSON structured output을 요구한다. `summary`, `action`, 일정 후보의 제목·사유는 한국어로 생성하고, 날짜·시간은 Calendar 호환 ISO 형식으로 유지한다. 응답이 잘못되거나 provider가 설정되지 않으면 해당 메일만 `failed`로 저장하고 재분석할 수 있으며, 임의 Calendar 후보는 만들지 않는다. 브라우저는 AI API를 직접 호출하지 않는다. 기존 `master-thesis-os:mail-analysis` localStorage 분석 데이터는 새 SQLite로 자동 migration하지 않고 읽지 않는다.
-
-Calendar 후보는 사용자가 제목·날짜·시간을 확인·수정한 뒤 **캘린더 추가**를 눌러야 `POST /api/calendar/events`가 실행된다. 메일 ID와 candidate ID에서 만든 결정적 Google event ID, private extended property, SQLite의 `added` 상태를 함께 사용하므로 재시도·앱 재시작 시 중복 등록을 피한다. **무시**는 SQLite에 `ignored`로 저장한다.
-
-### 브리지 상시 실행
-
-Windows에서 `local-bridge/start_bridge.bat`을 실행하면 설정을 확인한 뒤 브리지를 계속 실행한다. 브리지가 일시적인 오류로 종료되면 3초 후 자동으로 재시작하지만, `config.json` 영구 설정 오류는 exit code 78로 식별해 재시작하지 않는다. 콘솔 없이 실행하려면 `start_bridge_hidden.vbs`를 사용한다. 시스템 트레이 아이콘과 상태 확인·종료 메뉴를 쓰려면 `start_bridge_tray.vbs`를 사용한다. Local Bridge tray의 **Bridge token 복사**를 누른 뒤 Production Settings의 **붙여넣기**와 **저장**을 누르면 토큰을 설정할 수 있다. 브라우저 보안상 트레이가 웹페이지에 token을 자동 주입하지는 않는다. 트레이에서 상태 확인을 누르면 공용 또는 override config의 `port`를 사용하며, 생략 시 `38471`을 사용한다. 잘못된 port는 트레이에 설정 오류로 표시된다. 설정 오류 balloon이 표시되면 `config.json`을 수정한 뒤 트레이 실행기를 다시 시작한다. Windows 로그인 때마다 트레이 실행기를 자동 시작하려면 해당 VBS 파일의 바로가기를 `Win+R` → `shell:startup` 폴더에 넣는다. 일반 브라우저 개발 시에는 `start_bridge.bat`을 사용하고, 중지는 콘솔 창에서 `Ctrl+C` 또는 창 닫기로 수행한다.
-
-Windows에서 상시 실행할 때는 `local-bridge/Install-StandaloneBridge.ps1`로 브리지를 `%LOCALAPPDATA%\MasterThesisOS\bridge-runtime`에 복사하고 Startup 바로가기를 그 위치로 연결한다. 설치본은 복사 시점의 사본이므로 브리지 모듈을 바꾼 뒤에는 스크립트를 다시 실행하고 tray를 재시작해야 한다. 런타임 `data\`의 기존 DB는 덮어쓰지 않는다. `/health`가 응답하더라도 구버전 사본이면 새 endpoint가 404가 될 수 있다.
-
-## Sucrose 설정
-
-Sucrose에서는 별도 전용 경로 대신 일반 대시보드 `https://master-thesis-os.vercel.app/`를 사용한다. 일반 대시보드의 기존 레이아웃과 데이터 로딩을 그대로 사용한다.
-
-일반 대시보드의 **로컬 파일 열기**와 **볼트 폴더 열기**는 클릭했을 때만 loopback bridge를 호출한다. 먼저 Settings에서 같은 bridge token을 저장하고, 로컬 PC에서 bridge를 실행해야 한다. 브리지의 `config.json`에는 `https://master-thesis-os.vercel.app`를 명시적으로 허용하고 wildcard는 사용하지 않는다.
-
-### Sucrose WebViewLive에서 Local Bridge가 차단될 때
-
-정상적인 Production 페이지 context는 다음과 같다.
-
-```text
-location.href   = https://master-thesis-os.vercel.app/
-location.origin = https://master-thesis-os.vercel.app
-window.isSecureContext = true
-```
-
-`GET http://127.0.0.1:38471/health`가 `200 {"ok":true}`인데 자료실의 **열기** 또는 설정의 **볼트 폴더 열기**에서 다음 메시지가 나오면 Sucrose의 browser argument를 확인한다.
-
-```text
-Origin blocked: bridge allowed_origins에 Vercel 주소를 추가해줘.
-```
-
-Sucrose DevTools Network에서 `/open` 또는 `/open-folder` 요청을 확인한다.
-
-- 문제 상태: 요청은 bridge에 도달하지만 `Origin` header가 없고 `403 {"error":"origin not allowed"}`가 반환됨
-- 정상 상태: `Origin: https://master-thesis-os.vercel.app`가 포함되고 `200 OK`가 반환됨
-
-원인은 Sucrose `WebArguments`의 `--disable-web-security`가 WebViewLive의 cross-site localhost 요청에서 `Origin` header를 누락시킬 수 있기 때문이다. 해결하려면 Sucrose를 완전히 종료한 뒤 `Engine.json`의 `WebArguments`에서 **`--disable-web-security`만 제거**하고 Sucrose를 다시 시작한다. 다른 browser argument는 현재 동작에 필요할 수 있으므로 임의로 초기화하지 않는다. `DeveloperMode`는 진단 중에만 켤 수 있고, 확인 후에는 꺼도 된다.
-
-이 문제를 해결하기 위해 bridge 보안을 완화하지 않는다. `Access-Control-Allow-Origin: *`, 모든 Origin, `null` 또는 Origin 없는 요청, Sucrose User-Agent만을 허용하지 않는다. bridge는 계속 `127.0.0.1`에만 bind하고, exact production/localhost allowlist, token 검증, 요청 크기 제한, Vault 내부 path containment를 적용한다. 거부 로그에는 원인 확인을 위해 origin만 남기며 token, request body, local path, secret/config 값은 기록하지 않는다.
-
-앱의 Sucrose UA 감지 시 `targetAddressSpace: 'loopback'`을 지정하는 로직은 유지한다. 이는 현재 WebViewLive에서 `/health`와 bridge 요청의 loopback/LNA 호환성을 위한 보조 설정이며, Origin 검증을 대체하지 않는다.
+할 일의 단일 원본은 서버 P0 SQLite다. 서버의 MTOS Agent worker가 `gpt-6-luna`(Codex CLI)에 구조화된 결과를 요청하고, 검증을 통과한 변경만 P0 task API(서비스 토큰, actor `ai`)로 반영한다. 설정은 `.env.example`의 `MTOS_YOLO_*`·`P0_SERVICE_TOKEN`, 변경 이력과 되돌리기는 `/agent/api/yolo/runs`를 본다. 기본값은 꺼져 있다(`MTOS_YOLO_ENABLED=0`).
 
 ## 프로젝트별 결과 구조
 
@@ -447,7 +281,7 @@ projects/<project-id>/results/
 
 `result.json`은 `scalar.csv`와 `matrix.xlsx`의 dataset ID, kind(`metrics`, `table`, `chart`), XLSX sheet 이름을 연결한다. `view.json`은 표시 순서와 항목별 dataset 참조를 정의한다. chart의 `chartType`은 `line`, `bar`, `scatter` 중 하나이고 `transpose`는 표에서는 행/열, 차트에서는 category/series 방향 전환으로 해석한다. chart의 선택적 `xMin`, `xMax`, `yMin`, `yMax`는 숫자 축 범위이며 생략하면 자동 범위를 사용한다. 원자료는 수정하지 않고 표시 설정만 `view.json`에 둔다. XLSX는 서버의 표준 결과 loader가 sheet별 dataset으로 읽어 화면에 전달한다.
 
-표준 bundle을 읽지 못하거나 해당 프로젝트에 bundle이 없으면 기존 dashboard JSON 또는 결과 파일 목록 fallback을 사용한다. 표준 계약의 예시는 별도 `Obsidian-Vault` repository의 `projects/<project-id>/results/` 아래에서 확인한다.
+표준 bundle을 읽지 못하거나 해당 프로젝트에 bundle이 없으면 기존 dashboard JSON 또는 결과 파일 목록 fallback을 사용한다. 표준 계약의 예시는 별도 `Chocomint-Lab` repository의 `projects/<project-id>/results/` 아래에서 확인한다.
 
 legacy dashboard 경로에서는 별도 Python exporter가 연구 Vault의 canonical workbook을 read-only로 열어 선택한 프로젝트의 dashboard 폴더에 다음 JSON을 생성한다. 현재 필요노동 dashboard의 canonical 경로는 `projects/thesis/코드/결과/주요결과/dashboard/`다.
 
@@ -459,10 +293,10 @@ legacy dashboard 경로에서는 별도 Python exporter가 연구 Vault의 canon
 
 ```powershell
 # Standalone app checkout: the output is written into the existing data repository.
-python exporter/export_results.py --repository-root "D:\path\to\Obsidian-Vault"
+python exporter/export_results.py --repository-root "D:\path\to\Chocomint-Lab"
 
-# In the Obsidian-Vault checkout, commit the generated data there.
-Set-Location "D:\path\to\Obsidian-Vault"
+# In the Chocomint-Lab checkout, commit the generated data there.
+Set-Location "D:\path\to\Chocomint-Lab"
 git add "projects/thesis/코드/결과/주요결과/dashboard"
 git commit -m "data(results): refresh dashboard export"
 git push origin master
@@ -496,13 +330,10 @@ Calc result workbook
 
 - [x] Results exporter JSON을 `/api/results`와 Results UI에서 실제 값으로 로딩
 - [x] Google Calendar live 응답과 Home의 Today, Upcoming, Next Deadline 표시
-- [x] GitHub live data: `jeyun123456/Obsidian-Vault`의 `master`를 read-only fine-grained token으로 확인. `/api/github/tree`는 `configured: true`와 실제 tree 항목을 반환하고, Results JSON은 GitHub source에서 로드됨
-- [x] Open Local: PDF, XLSX, PPTX, Markdown, TypeScript 파일을 repository 상대경로로 bridge에 전달
-- [x] Open Local 보안: origin/token, Master Path escape, 없는 파일, 디렉터리 요청 거부
+- [x] GitHub live data: `jeyun123456/Chocomint-Lab`의 `master`를 read-only fine-grained token으로 확인. `/api/github/tree`는 `configured: true`와 실제 tree 항목을 반환하고, Results JSON은 GitHub source에서 로드됨
 - [x] Calendar, Results, GitHub 미설정·빈 결과·오류 상태 처리
-- [x] `.env.local`과 `local-bridge/config.json`이 Git에서 제외되고 client bundle에 server secret을 넣지 않음
+- [x] `.env.local`이 Git에서 제외되고 client bundle에 server secret을 넣지 않음
 - [x] production build와 자동 테스트 통과
 - [ ] Calendar OAuth live data: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `GOOGLE_CALENDAR_IDS`를 Vercel에 설정한 뒤 `/api/calendar/events?days=14`가 `ready` 또는 `empty`를 반환하는지 확인
-- [x] bridge startup: `local-bridge/config.json` 설정 후 `python bridge.py`, `/health` 확인
 
-Release 직전에는 `git status`, `/api/results`, `/api/calendar/events?days=14`, `/api/github/tree`, `http://127.0.0.1:38471/health`를 다시 확인한다. GitHub와 로컬 파일의 공통 식별자는 repository root 기준 `/` 구분 상대경로다.
+Release 직전에는 `git status`, `/api/results`, `/api/calendar/events?days=14`, `/api/github/tree`를 다시 확인한다. GitHub와 로컬 파일의 공통 식별자는 repository root 기준 `/` 구분 상대경로다.

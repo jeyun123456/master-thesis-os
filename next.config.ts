@@ -5,7 +5,6 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: process.cwd(),
   outputFileTracingExcludes: {
     '/*': [
-      './local-bridge/**/*',
       './exporter/**/*',
       './schemas/**/*',
       './**/*.test.ts',

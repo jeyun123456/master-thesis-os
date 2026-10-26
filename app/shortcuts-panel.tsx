@@ -12,7 +12,6 @@ import {
   type ShortcutType,
 } from '@/lib/shortcuts';
 import type { ShortcutSource } from '@/lib/client-api';
-import { getSteamShortcutIcon, launchExternalShortcut } from '@/lib/native-shortcut';
 
 type OpenLocal = (path: string) => void;
 type EditSource = Shortcut | 'new' | null;
@@ -353,23 +352,8 @@ function ShortcutEditDialog({ source, nextOrder, onSave, onClose, onNotice }: {
 function ShortcutIcon({ shortcut, compact = false }: { shortcut: Shortcut; compact?: boolean }) {
   const custom = shortcut.icon?.trim();
   const image = Boolean(custom && /^(?:https?:|data:image\/)/i.test(custom));
-  const [resolvedIcon, setResolvedIcon] = useState<string | null>(null);
-  useEffect(() => {
-    setResolvedIcon(null);
-    if (custom) {
-      return;
-    }
-    let cancelled = false;
-    if (shortcut.type === 'uri') {
-      void getSteamShortcutIcon(shortcut.target).then((icon) => {
-        if (!cancelled) setResolvedIcon(icon);
-      });
-    }
-    return () => { cancelled = true; };
-  }, [custom, shortcut.type, shortcut.target]);
-
   const automatic = !custom ? automaticShortcutIcon(shortcut) : null;
-  const source = image ? custom : resolvedIcon || automatic;
+  const source = image ? custom : automatic;
   return <span className={compact ? 'shortcut-icon' : 'shortcut-tile-icon'} aria-hidden="true">
     {image ? typeIcon(shortcut.type) : custom || typeIcon(shortcut.type)}
     {source && <img src={source} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} />}
@@ -377,17 +361,16 @@ function ShortcutIcon({ shortcut, compact = false }: { shortcut: Shortcut; compa
 }
 
 async function openShortcut(shortcut: Shortcut, onOpenFile: OpenLocal, onOpenFolder: OpenLocal) {
-  if (shortcut.type === 'web' || shortcut.type === 'uri' || shortcut.type === 'shell') {
-    const result = await launchExternalShortcut(shortcut);
-    return result.ok ? '' : result.message;
+  if (shortcut.type === 'web') {
+    window.open(shortcut.target, '_blank', 'noopener,noreferrer');
+    return '';
   }
   if (isRepositoryShortcut(shortcut)) {
     if (shortcut.type === 'file') onOpenFile(shortcut.target);
     else onOpenFolder(shortcut.target);
     return '';
   }
-  const result = await launchExternalShortcut(shortcut);
-  return result.message;
+  return '개인 PC의 앱·파일 바로가기는 서버 전환 후 지원하지 않아요. 웹 주소나 연구 저장소 경로를 사용해줘.';
 }
 
 function faviconUrl(target: string) {

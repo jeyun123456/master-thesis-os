@@ -8,16 +8,14 @@ import type { DashboardBundle } from '@/lib/results';
 import { emptyProjectResultInventory, projectResultInventory } from '@/lib/project-results';
 import type { RepositoryItem } from '@/lib/repository';
 import {
-  parseProjectManifest,
+  PROJECTS_ROOT,
+  isThesisProject,
   pipelineStageValue,
   projectStatusLabel,
   projectStatusOptions,
   researchPipelineStages,
   type ResearchProject,
 } from '@/lib/projects';
-import { getProjectWorkspace, ProjectWorkspaceError, updateProjectMetadata, type ProjectWorkspace, type ProjectWorkspaceItem, type RecentProjectFile } from '@/lib/project-workspace-client';
-import { loadCachedPlannerTasks, filterDeletedPlannerTasks, saveCachedPlannerTasks, type PlannerTask } from '@/lib/planner-tasks';
-import { syncInboxPlannerTasks } from '@/lib/planner-tasks-client';
 import type { Milestone, TaskMeta } from '@/lib/mtos-planning';
 import type { P0Task } from '@/lib/p0-tasks-client';
 import { ResearchKanban, type KanbanViewState } from '@/app/research-kanban';
@@ -58,83 +56,27 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
 }) {
   const projects = Array.isArray(projectsInput) ? projectsInput.flatMap(normalizeProject) : [];
   const tree = Array.isArray(treeInput) ? treeInput : [];
-  const defaultId = projects.find((project) => project.id === 'thesis')?.id || projects.find((project) => project.status === 'active')?.id || projects[0]?.id || '';
+  const defaultId = projects.find(isThesisProject)?.id || projects.find((project) => project.status === 'active')?.id || projects[0]?.id || '';
   const selectedId = selectedProjectId && projects.some((project) => project.id === selectedProjectId) ? selectedProjectId : defaultId;
   const [statusSaving, setStatusSaving] = useState(false);
   const [stageSaving, setStageSaving] = useState(false);
   const [favoriteSaving, setFavoriteSaving] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState('');
-  const [workspace, setWorkspace] = useState<ProjectWorkspace | null>(null);
-  const [workspaceState, setWorkspaceState] = useState<'idle' | 'loading' | 'ready' | 'offline' | 'unknown' | 'outdated' | 'auth' | 'error'>('idle');
-  const [workspaceMessage, setWorkspaceMessage] = useState('');
   const [resultChoice, setResultChoice] = useState('');
-  const [plannerTasks, setPlannerTasks] = useState<PlannerTask[]>([]);
-  const [plannerTasksLoading, setPlannerTasksLoading] = useState(false);
-  const [plannerTasksError, setPlannerTasksError] = useState('');
   const selectedBase = projects.find((project) => project.id === selectedId) || null;
-  const localManifest = selectedBase && workspace && workspace.projectId === selectedBase.id && workspace.manifestText
-    ? parseProjectManifest(workspace.manifestText, selectedBase.sourcePath)
-    : null;
-  const selected = selectedBase && localManifest ? { ...selectedBase, ...localManifest, sourceSha: selectedBase.sourceSha } : selectedBase;
-  const fallbackFiles = useMemo(() => selected ? tree.filter((item) => item.type === 'blob' && item.path.startsWith(`projects/${selected.id}/`)) : [], [selected, tree]);
-  const hasWorkspace = Boolean(selected && workspace && workspace.projectId === selected.id);
-  const files = useMemo<RepositoryItem[]>(() => {
-    const source = selected && workspace && workspace.projectId === selected.id ? workspace.items : workspaceState === 'offline' ? fallbackFiles : [];
-    return source.map((item) => ({ path: item.path, type: 'blob', ...(item.size !== undefined ? { size: item.size } : {}) }));
-  }, [fallbackFiles, hasWorkspace, workspace, workspaceState]);
-  const recentFiles = selected && workspace && workspace.projectId === selected.id ? workspace.recentFiles : [];
+  const selected = selectedBase;
+  const fallbackFiles = useMemo(() => selected ? tree.filter((item) => item.type === 'blob' && item.path.startsWith(`${PROJECTS_ROOT}/${selected.id}/`)) : [], [selected, tree]);
+  const files = useMemo<RepositoryItem[]>(() => fallbackFiles.map((item) => ({ path: item.path, type: 'blob', ...(item.size !== undefined ? { size: item.size } : {}) })), [fallbackFiles]);
   const inventory = useMemo(() => selected ? projectResultInventory(selected, files) : emptyProjectResultInventory(), [files, selected]);
   const choices = useMemo(() => resultChoices(inventory), [inventory]);
   const chosen = choices.find((choice) => choice.key === resultChoice) || null;
 
-  useEffect(() => {
-    setResultChoice('');
-    setWorkspace(null);
-    setWorkspaceMessage('');
-    setWorkspaceState(selected ? 'loading' : 'idle');
-    if (!selected) return;
-    let active = true;
-    void getProjectWorkspace(selected.id).then((next) => {
-      if (active) {
-        setWorkspace(next);
-        setWorkspaceState('ready');
-      }
-    }).catch((error) => {
-      if (active) {
-        setWorkspaceMessage(error instanceof Error ? error.message : 'Local Bridge 작업 폴더를 읽지 못했어.');
-        setWorkspaceState(error instanceof ProjectWorkspaceError ? error.state : 'error');
-      }
-    });
-    return () => { active = false; };
-  }, [selectedBase?.id]);
-
-  useEffect(() => {
-    if (!selectedBase) {
-      setPlannerTasks([]);
-      return;
-    }
-    let active = true;
-    setPlannerTasks(loadCachedPlannerTasks().filter((task) => task.projectId === selectedBase.id));
-    setPlannerTasksLoading(true);
-    setPlannerTasksError('');
-    void syncInboxPlannerTasks().then((store) => {
-      if (!active) return;
-      const tasks = filterDeletedPlannerTasks(store.tasks, store.deletedTaskIds);
-      saveCachedPlannerTasks(tasks);
-      setPlannerTasks(tasks.filter((task) => task.projectId === selectedBase.id));
-      setPlannerTasksLoading(false);
-    }).catch((error) => {
-      if (!active) return;
-      setPlannerTasksError(error instanceof Error ? error.message : 'Planner 작업을 읽지 못했어.');
-      setPlannerTasksLoading(false);
-    });
-    return () => { active = false; };
-  }, [selectedBase?.id]);
+  useEffect(() => { setResultChoice(''); }, [selectedBase?.id]);
 
   if (!projects.length) {
     if (projectsLoading) return <div className="card empty project-empty" role="status">연구 프로젝트를 불러오는 중…</div>;
     if (projectsError) return <div className="card error project-empty" role="alert">연구 프로젝트를 불러오지 못했어. {projectsError}</div>;
-    return <div className="card empty project-empty"><code>projects/*/project.md</code>가 생기면 프로젝트별 연구 화면이 자동으로 구성돼.</div>;
+    return <div className="card empty project-empty"><code>02_Projects/*/project.md</code>가 생기면 프로젝트별 연구 화면이 자동으로 구성돼.</div>;
   }
 
   function selectProject(id: string) {
@@ -142,21 +84,13 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
     setStatusMessage('');
   }
 
-  function acceptManifestUpdate(manifestText: string, manifestSha: string) {
-    if (!selected) return;
-    setWorkspace((current) => current?.projectId === selected.id ? { ...current, manifestText, manifestSha } : current);
-    const updated = parseProjectManifest(manifestText, selected.sourcePath);
-    onProjectStatusChange?.({ ...selected, ...updated, sourceSha: selected.sourceSha });
-  }
-
   async function updateStatus(status: string) {
     if (!selected || status === selected.status || statusSaving) return;
     setStatusSaving(true);
     setStatusMessage('저장 중…');
     try {
-      if (!workspace?.manifestSha) throw new Error('Local Bridge에서 프로젝트 파일을 읽은 뒤 상태를 저장할 수 있어.');
-      const result = await updateProjectMetadata(selected.id, 'status', status, workspace.manifestSha);
-      acceptManifestUpdate(result.manifestText, result.manifestSha);
+      const result = await dashboardApi.updateProjectStatus(selected.id, status, selected.sourceSha);
+      onProjectStatusChange?.({ ...result.project, sourceSha: result.sha });
       setStatusMessage('저장했어.');
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : '상태 저장에 실패했어.');
@@ -170,9 +104,8 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
     setStageSaving(true);
     setStatusMessage('단계를 저장 중…');
     try {
-      if (!workspace?.manifestSha) throw new Error('Local Bridge에서 프로젝트 파일을 읽은 뒤 단계를 저장할 수 있어.');
-      const result = await updateProjectMetadata(selected.id, 'stage', stage, workspace.manifestSha);
-      acceptManifestUpdate(result.manifestText, result.manifestSha);
+      const result = await dashboardApi.updateProjectStage(selected.id, stage, selected.sourceSha);
+      onProjectStatusChange?.({ ...result.project, sourceSha: result.sha });
       setStatusMessage('연구 단계를 저장했어.');
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : '연구 단계 저장에 실패했어.');
@@ -181,25 +114,10 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
     }
   }
 
-  const workingFolders = hasWorkspace && workspace ? workspace.folders : workspaceState === 'offline' ? inferFolders(files.map((file) => file.path)) : [];
-  const keyFilePaths = selected ? selected.keyFiles.map((path) => path.startsWith('projects/') ? path : `projects/${selected.id}/${path}`) : [];
+  const workingFolders = inferFolders(files.map((file) => file.path));
+  const keyFilePaths = selected ? selected.keyFiles.map((path) => path.startsWith(`${PROJECTS_ROOT}/`) ? path : `${PROJECTS_ROOT}/${selected.id}/${path}`) : [];
   const keyFiles = files.filter((file) => keyFilePaths.includes(file.path));
 
-  async function toggleFavorite(path: string) {
-    if (!selected || !workspace?.manifestSha || favoriteSaving) return;
-    const isFavorite = keyFilePaths.includes(path);
-    setFavoriteSaving(path);
-    setStatusMessage(isFavorite ? '주요 파일에서 제거 중…' : '주요 파일에 추가 중…');
-    try {
-      const result = await updateProjectMetadata(selected.id, isFavorite ? 'favorite_remove' : 'favorite_add', path, workspace.manifestSha);
-      acceptManifestUpdate(result.manifestText, result.manifestSha);
-      setStatusMessage(isFavorite ? '주요 파일에서 제거했어.' : '주요 파일에 추가했어.');
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : '주요 파일 저장에 실패했어.');
-    } finally {
-      setFavoriteSaving(null);
-    }
-  }
   if (view === 'board' && workspaceData && kanbanState && onKanbanStateChange) {
     return <ResearchKanban projects={projects} tasks={workspaceData.tasks} tasksState={workspaceData.tasksState} meta={workspaceData.meta} milestones={workspaceData.milestones}
       view={kanbanState} onViewChange={onKanbanStateChange} onSelect={(id, state) => { onKanbanStateChange(state); selectProject(id); onViewChange?.('detail'); }} />;
@@ -215,7 +133,7 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
         <div className="project-hero-top">
           <div><span className="project-eyebrow">{projectStatusLabel(selected.status)} · 우선순위 {priorityLabel(selected.priority)}</span><h3>{selected.title}</h3><p>{selected.summary}</p></div>
           <div className="project-hero-actions">
-            <label className="project-status-editor">상태<select value={selected.status} disabled={statusSaving || workspaceState !== 'ready' || !workspace?.manifestSha} onChange={(event) => void updateStatus(event.target.value)}>
+            <label className="project-status-editor">상태<select value={selected.status} disabled={statusSaving || !selected.sourceSha} onChange={(event) => void updateStatus(event.target.value)}>
               {!projectStatusOptions.some((option) => option.value === selected.status) && <option value={selected.status}>{projectStatusLabel(selected.status)} · 기존 값</option>}
               {projectStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select></label>
@@ -227,7 +145,7 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
       </section>
 
       <section className="card section project-pipeline-section">
-        <div className="head"><h3>연구 파이프라인</h3><label className="project-stage-editor">현재 단계<select value={pipelineStageValue(selected.stage)} disabled={stageSaving || workspaceState !== 'ready' || !workspace?.manifestSha} onChange={(event) => void updateStage(event.target.value)}>
+        <div className="head"><h3>연구 파이프라인</h3><label className="project-stage-editor">현재 단계<select value={pipelineStageValue(selected.stage)} disabled={stageSaving || !selected.sourceSha} onChange={(event) => void updateStage(event.target.value)}>
           {researchPipelineStages.map((stage) => <option key={stage.value} value={stage.value}>{stage.label}</option>)}
         </select></label></div>
         <div className="research-pipeline-compact" aria-label="6단계 연구 파이프라인">
@@ -248,21 +166,8 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
         <div className="head"><h3>주요 파일 · 원본</h3><span>즐겨찾기 {keyFiles.length}개</span></div>
         {keyFiles.length ? <ul>{keyFiles.map((file) => <li key={file.path}>
           <button type="button" className="research-favorite-open" title={file.path} onClick={() => onOpen(file.path)}>▧ {file.path.split('/').pop()}</button>
-          <button className="mini" type="button" disabled={!workspace?.manifestSha || favoriteSaving === file.path} aria-label={`${file.path} 주요 파일에서 제거`} onClick={() => void toggleFavorite(file.path)}>제거</button>
-        </li>)}</ul> : <div className="empty compact-empty">작업 폴더에서 ☆를 누르면 이 프로젝트의 주요 파일로 저장돼.</div>}
+        </li>)}</ul> : <div className="empty compact-empty">project.md의 ‘주요 파일’에 적은 파일이 여기에 표시돼.</div>}
       </section>
-
-      <div className="research-recent-files section-gap">
-        <div className="research-section-heading"><h3>최근 작업 파일</h3><span>Local Bridge 실제 수정 시각</span></div>
-        <div className="research-recent-list">{latestRecentFiles(recentFiles).map(({ id, label, file }) => <div className="research-recent-row" key={id}>
-          <span className="research-file-type">{label}</span>
-          <div>
-            <b>{file?.name ?? (workspaceState === 'loading' ? '불러오는 중…' : '없음')}</b>
-            <small title={file?.path}>{file ? `${file.path} · ${formatModifiedAt(file.modifiedAt)}` : workspaceState === 'offline' ? 'Local Bridge를 사용할 수 없습니다' : '해당 유형의 파일이 없습니다.'}</small>
-          </div>
-          {file ? <button className="mini" type="button" onClick={() => onOpen(file.path)}>열기</button> : <span aria-hidden="true" />}
-        </div>)}</div>
-      </div>
 
       <section className="card section section-gap">
         <div className="head"><h3>분석 결과</h3><span>{choices.length}개 선택 가능</span></div>
@@ -278,21 +183,10 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
       </section>
 
       <section className="card section section-gap research-folder-section">
-        <div className="head"><h3>작업 폴더</h3><button className="mini" type="button" onClick={() => onOpenFolder(`projects/${selected.id}`)}>프로젝트 폴더 열기</button></div>
-        {workspaceState === 'offline' && <small className="muted">Local Bridge 사용 불가 · 저장소 파일 목록을 표시 중</small>}
-        {workspaceMessage && workspaceState !== 'offline' && <small className="muted">{workspaceMessage}</small>}
-        {workspaceState === 'loading' ? <div className="empty compact-empty">프로젝트 작업 폴더를 불러오는 중…</div> : <ProjectFolderTree root={`projects/${selected.id}`} files={files} folders={workingFolders} expandedFolders={expandedFolders} keyFilePaths={keyFilePaths} favoriteSaving={favoriteSaving} canSaveMetadata={Boolean(workspace?.manifestSha)} onToggleExpanded={onToggleProjectFolder} onToggleFavorite={toggleFavorite} onOpen={onOpen} onOpenFolder={onOpenFolder} />}
+        <div className="head"><h3>작업 폴더</h3><button className="mini" type="button" onClick={() => onOpenFolder(`${PROJECTS_ROOT}/${selected.id}`)}>프로젝트 폴더 열기</button></div>
+        <ProjectFolderTree root={`${PROJECTS_ROOT}/${selected.id}`} files={files} folders={workingFolders} expandedFolders={expandedFolders} keyFilePaths={keyFilePaths} favoriteSaving={null} canSaveMetadata={false} onToggleExpanded={onToggleProjectFolder} onToggleFavorite={() => undefined} onOpen={onOpen} onOpenFolder={onOpenFolder} />
       </section>
 
-      <details className="card section section-gap legacy-planner-tasks">
-        <summary>기존 Planner 할 일 (레거시 · 읽기 전용) {plannerTasks.length ? `${plannerTasks.length}개` : ''}</summary>
-        {plannerTasksError && <div className="muted" role="status">Planner 연결을 확인할 수 없어. {plannerTasksError}</div>}
-        {plannerTasksLoading && !plannerTasks.length ? <div className="empty compact-empty">Planner 작업을 불러오는 중…</div>
-          : plannerTasks.length ? <div className="project-task-list">{[...plannerTasks].sort((a, b) => Number(a.status === 'done') - Number(b.status === 'done') || Date.parse(b.createdAt) - Date.parse(a.createdAt)).map((task) => <div className={`project-task-row${task.status === 'done' ? ' done' : ''}`} key={task.id}>
-            <span className="project-task-check" aria-label={task.status === 'done' ? '완료' : '미완료'}>{task.status === 'done' ? '✓' : '○'}</span>
-            <div><b>{task.status === 'done' ? <s>{task.title}</s> : task.title}</b>{task.description && <small>{task.description}</small>}</div>
-          </div>)}</div> : <div className="empty compact-empty">이 프로젝트를 지정한 기존 Planner 할 일이 없어.</div>}
-      </details>
     </>}
   </div>;
 }
@@ -428,7 +322,7 @@ function normalizeProject(value: unknown): ResearchProject[] {
     priority: text(project.priority, 'medium'),
     stage: text(project.stage, 'unknown'),
     updated: text(project.updated),
-    sourcePath: text(project.sourcePath, `projects/${project.id}/project.md`),
+    sourcePath: text(project.sourcePath, `${PROJECTS_ROOT}/${project.id}/project.md`),
     ...(typeof project.sourceSha === 'string' ? { sourceSha: project.sourceSha } : {}),
     summary: text(project.summary),
     currentFocus: text(project.currentFocus),
@@ -441,34 +335,8 @@ function normalizeProject(value: unknown): ResearchProject[] {
   }];
 }
 
-function latestRecentFiles(files: RecentProjectFile[]) {
-  const groups = [
-    { id: 'markdown', fallbackLabel: 'MD', extensions: new Set(['.md']) },
-    { id: 'powerpoint', fallbackLabel: 'PPTX', extensions: new Set(['.ppt', '.pptx']) },
-    { id: 'word', fallbackLabel: 'DOCX', extensions: new Set(['.doc', '.docx']) },
-  ];
 
-  return groups.map(({ id, fallbackLabel, extensions }) => {
-    const file = files
-      .filter((candidate) => extensions.has(candidate.extension.toLowerCase()))
-      .sort((a, b) => modifiedTimestamp(b.modifiedAt) - modifiedTimestamp(a.modifiedAt))[0];
-    return {
-      id,
-      label: file ? file.extension.replace(/^\./, '').toUpperCase() : fallbackLabel,
-      file,
-    };
-  });
-}
 
-function modifiedTimestamp(value?: string) {
-  const timestamp = Date.parse(value || '');
-  return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
-}
-
-function formatModifiedAt(value?: string) {
-  if (!value || Number.isNaN(Date.parse(value))) return '수정 시각 없음';
-  return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
-}
 
 function ProjectSection({ title, items, empty, numbered, onOpen }: { title: string; items: string[]; empty: string; numbered: boolean; onOpen?: (path: string) => void }) {
   return <section className="card section"><div className="head"><h3>{title}</h3><span>{items.length ? `${items.length}개` : '없음'}</span></div>{items.length ? <div className="project-text-list">{items.map((item, index) => <div key={`${item}-${index}`} className="project-text-row">{numbered && <span>{index + 1}</span>}{onOpen ? <button type="button" onClick={() => onOpen(item)}>{item}</button> : <p>{item}</p>}</div>)}</div> : <div className="empty compact-empty">{empty}</div>}</section>;

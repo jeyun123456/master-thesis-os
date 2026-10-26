@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getFile, getTextFileWithSha, getTree, githubConfigured, githubWritable, putTextFile, type GitHubApiError } from './github';
-import { projectManifestPaths } from './projects';
+import { PROJECTS_ROOT, projectManifestPaths } from './projects';
 import { isSafeRepositoryPath, type RepositoryItem } from './repository';
 
 export type VaultSource = 'github' | 'local';
@@ -145,7 +145,7 @@ export async function vaultProjectManifestPaths(): Promise<string[]> {
   if (githubConfigured()) return projectManifestPaths(await getTree());
   const root = localRepositoryRoot();
   if (!root) return [];
-  const projectsRoot = path.join(root, 'projects');
+  const projectsRoot = path.join(root, PROJECTS_ROOT);
   let entries;
   try {
     entries = await readdir(projectsRoot, { withFileTypes: true });
@@ -159,7 +159,7 @@ export async function vaultProjectManifestPaths(): Promise<string[]> {
     const manifestPath = path.join(projectsRoot, entry.name, 'project.md');
     try {
       await stat(manifestPath);
-      paths.push(`projects/${entry.name}/project.md`);
+      paths.push(`${PROJECTS_ROOT}/${entry.name}/project.md`);
     } catch (error) {
       if (!isFileNotFound(error)) throw error;
     }

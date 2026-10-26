@@ -1,4 +1,4 @@
-import '../app/inbox-workflow-test-safety';
+import './network-test-safety';
 import { describe, expect, it } from 'vitest';
 import { parseResearchStatus } from './research-status';
 

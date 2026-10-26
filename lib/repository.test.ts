@@ -10,9 +10,9 @@ describe('repository path classification', () => {
     ['연구/문헌/価値に関する15の命題原文.pdf', 'literature'],
     ['연구/선행연구/日本語 자료.md', 'literature'],
     ['Calc/data/results/dashboard/necessary_labour.json', 'results'],
-    ['projects/thesis/코드/결과/주요결과/dashboard/necessary_labour.json', 'results'],
-    ['projects/korea-japan-value-profit/코드/결과/jk_internal_2016_2022/2022/sector_indicators.csv', 'results'],
-    ['projects/1997-crisis-surplus-profit/원고/산출물/thesis_main.pdf', 'results'],
+    ['02_Projects/thesis/코드/결과/주요결과/dashboard/necessary_labour.json', 'results'],
+    ['02_Projects/korea-japan-value-profit/코드/결과/jk_internal_2016_2022/2022/sector_indicators.csv', 'results'],
+    ['02_Projects/1997-crisis-surplus-profit/원고/산출물/thesis_main.pdf', 'results'],
     ['연구/발표·세미나/中間報告用_v6.pptx', 'research'],
     ['master-thesis-os/lib/calendar.ts', 'other'],
   ] as const)('classifies %s as %s', (path, expected) => {

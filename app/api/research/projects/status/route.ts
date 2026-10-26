@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { projectStatusValues, parseProjectManifest, updateProjectStatusMarkdown } from '@/lib/projects';
+import { PROJECTS_ROOT, projectStatusValues, parseProjectManifest, updateProjectStatusMarkdown } from '@/lib/projects';
 import { VaultConflictError, readVaultText, vaultConfigured, vaultWritable, writeVaultText } from '@/lib/vault-repository';
 import { requireP0Session, sameOriginMutationError } from '@/lib/p0-server';
 
@@ -27,7 +27,7 @@ export async function PATCH(request: NextRequest) {
   if (typeof body.status !== 'string' || !allowedStatuses.has(body.status)) {
     return NextResponse.json({ error: 'Unsupported project status' }, { status: 400 });
   }
-  const projectPath = `projects/${body.id}/project.md`;
+  const projectPath = `${PROJECTS_ROOT}/${body.id}/project.md`;
   const requestedSha = typeof body.sha === 'string' && body.sha ? body.sha : undefined;
 
   try {

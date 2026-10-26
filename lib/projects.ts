@@ -1,5 +1,8 @@
 import type { RepositoryItem } from './repository';
 
+/** Chocomint-Lab research projects live in `02_Projects/<folder>/project.md`; the folder name is the project id. */
+export const PROJECTS_ROOT = '02_Projects';
+
 export type ProjectStatus = 'writing' | 'active' | 'paused' | 'waiting' | 'blocked' | 'complete' | string;
 
 export const projectStatusOptions = [
@@ -11,10 +14,14 @@ export const projectStatusOptions = [
   { value: 'complete', label: '완료' },
 ] as const;
 
+export const isThesisProject = (project: Pick<ResearchProject, 'id' | 'frontmatterId'>) => project.id === 'thesis' || project.frontmatterId === 'project-thesis';
+
 export const projectStatusValues = projectStatusOptions.map((option) => option.value);
 
 export type ResearchProject = {
   id: string;
+  /** `id:` in project.md frontmatter (e.g. project-thesis); `id` above is the folder name. */
+  frontmatterId?: string;
   title: string;
   status: ProjectStatus;
   priority: string;
@@ -43,6 +50,9 @@ const sectionAliases: Record<string, keyof Pick<ResearchProject, 'currentFocus' 
   '연구 질문': 'questions',
   '주요 파일': 'keyFiles',
   '다음 작업': 'nextTasks',
+  'Next / Blocked': 'nextTasks',
+  'Open questions': 'questions',
+  'Current state': 'currentFocus',
   '막힌 부분': 'blocked',
   '관련 경로': 'relatedPaths',
   '결과 경로': 'resultPaths',
@@ -54,9 +64,10 @@ export function parseProjectManifest(markdown: string, sourcePath: string): Rese
   const title = frontmatter.title || headingOne(markdown) || frontmatter.id || sourcePath;
 
   return {
-    id: frontmatter.id || projectIdFromPath(sourcePath),
+    id: projectIdFromPath(sourcePath),
+    ...(frontmatter.id ? { frontmatterId: frontmatter.id } : {}),
     title,
-    status: frontmatter.status || 'waiting',
+    status: normalizeProjectStatus(frontmatter.status),
     priority: frontmatter.priority || 'medium',
     stage: frontmatter.stage || 'unknown',
     updated: frontmatter.updated || '',
@@ -77,7 +88,7 @@ export function parseProjectManifest(markdown: string, sourcePath: string): Rese
 
 export function projectManifestPaths(tree: RepositoryItem[]): string[] {
   return tree
-    .filter((item) => item.type === 'blob' && /^projects\/[^/]+\/project\.md$/i.test(item.path))
+    .filter((item) => item.type === 'blob' && /^02_Projects\/[^/]+\/project\.md$/i.test(item.path))
     .map((item) => item.path)
     .sort();
 }
@@ -92,9 +103,9 @@ export function projectRelatedFiles(project: ResearchProject, tree: RepositoryIt
 }
 
 function relatedPathMatches(project: ResearchProject, itemPath: string, relatedPath: string) {
-  const candidates = relatedPath.startsWith('projects/')
+  const candidates = relatedPath.startsWith(`${PROJECTS_ROOT}/`)
     ? [relatedPath]
-    : [relatedPath, `projects/${project.id}/${relatedPath}`];
+    : [relatedPath, `${PROJECTS_ROOT}/${project.id}/${relatedPath}`];
   return candidates.some((path) => path.endsWith('/') ? itemPath.startsWith(path) : itemPath === path);
 }
 
@@ -263,9 +274,13 @@ function parseSections(markdown: string) {
       const paragraph = body.split(/\n\s*\n/).map((value) => cleanInline(value)).find(Boolean);
       if (paragraph) result.currentFocus.push(paragraph);
     } else {
+      // Chocomint-Lab checklists: only unchecked `- [ ]` items are open work.
+      const openOnly = heading === 'Next / Blocked';
       result[key] = body
         .split(/\r?\n/)
         .map((line) => line.match(/^\s*(?:[-*]|\d+\.)\s+(.+)$/)?.[1] || '')
+        .filter((item) => !openOnly || item.startsWith('[ ] '))
+        .map((item) => (openOnly ? item.slice(4) : item))
         .map(cleanInline)
         .filter(Boolean);
     }
@@ -293,6 +308,13 @@ function firstBodyParagraph(markdown: string): string {
     buffer.push(line.trim());
   }
   return cleanInline(buffer.join(' '));
+}
+
+/** Korean/English status words used in Chocomint-Lab project.md frontmatter. */
+function normalizeProjectStatus(value: string | undefined): ProjectStatus {
+  const status = (value ?? '').trim();
+  const mapped: Record<string, ProjectStatus> = { 진행중: 'active', '진행 중': 'active', 대기: 'waiting', 보류: 'paused', 완료: 'complete', 작성중: 'writing', 막힘: 'blocked' };
+  return mapped[status] ?? (status || 'waiting');
 }
 
 function projectIdFromPath(path: string): string {

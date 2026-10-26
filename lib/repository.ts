@@ -15,7 +15,7 @@ export type RepositoryCategory =
 const WIKI_ROOTS = ['wiki/'];
 const LITERATURE_ROOTS = ['연구/문헌/', '연구/선행연구/', 'wiki/literature/'];
 const RESULTS_ROOTS = [
-  'projects/thesis/코드/결과/주요결과/',
+  '02_Projects/thesis/코드/결과/주요결과/',
   'calc/data/results/',
   'wiki/findings/',
 ];
@@ -41,7 +41,7 @@ export function classifyRepositoryPath(path: string): RepositoryCategory {
 
 function isProjectResultPath(path: string) {
   const segments = path.split('/');
-  return segments[0] === 'projects' && segments.length > 2 && segments.slice(2).some((segment) => PROJECT_RESULT_SEGMENTS.has(segment));
+  return segments[0] === '02_projects' && segments.length > 2 && segments.slice(2).some((segment) => PROJECT_RESULT_SEGMENTS.has(segment));
 }
 
 export function classifyRepositoryItems(items: RepositoryItem[]) {

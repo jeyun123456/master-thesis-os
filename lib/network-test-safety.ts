@@ -7,7 +7,7 @@ export const deniedNetworkAttempts: string[] = [];
 export const storageAccesses: string[] = [];
 export const fakeStorageValues = new Map<string, string>();
 const restoreSafetyGuards: Array<() => void> = [];
-const allowedStorageKeys = new Set(['chocomintLab.inbox.v1', 'thesisBridgeToken']);
+const allowedStorageKeys = new Set(['chocomintLab.inbox.v1']);
 let failInboxStorageWrites = false;
 
 export const fakeStorage = {
