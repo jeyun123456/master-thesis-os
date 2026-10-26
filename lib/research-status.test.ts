@@ -40,4 +40,42 @@ describe('parseResearchStatus', () => {
     expect(status.decisions[0].path).toBe('wiki/decisions/D003_constant_price_main.md');
     expect(status.importantFiles[0].path).toBe('projects/thesis/코드/결과/주요결과/06_decomposition.xlsx');
   });
+
+  it('reads the real Chocomint-Lab project.md without inventing missing fields', () => {
+    const path = '02_Projects/Master_필요노동과_노동력재생산/project.md';
+    const markdown = `---
+type: project
+stage: 분석
+updated: 2026-10-19
+---
+# 제목
+
+## 연구 질문
+
+1. 필요노동은 어느 수준인가? <!-- RQ-ID: RQ-01 -->
+2. 두 번째 질문 <!-- RQ-ID: RQ-02 -->
+
+## 현재 해석 기준
+
+- 증감을 후생으로 해석하지 않는다.
+자세한 기준은 [D007](decisions/D007_x.md)를 따른다.
+
+## 다음 작업
+
+### 현재 범위
+- **본문:** 서술형 항목
+
+## 막힌 부분
+
+- 간극 설명이 필요하다.
+`;
+    const status = parseResearchStatus(markdown, path);
+    expect(status.currentStage).toBe('분석');
+    expect(status.auditedAt).toBe('2026-10-19');
+    expect(status.researchQuestion).toBe('필요노동은 어느 수준인가?');
+    expect(status.currentInterpretation).toBe('증감을 후생으로 해석하지 않는다.');
+    expect(status.unresolved).toEqual(['간극 설명이 필요하다.']);
+    expect(status.nextActions).toEqual([]);
+    expect(status.decisions[0].path).toBe('02_Projects/Master_필요노동과_노동력재생산/decisions/D007_x.md');
+  });
 });

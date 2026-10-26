@@ -72,7 +72,51 @@ function links(markdown: string, sourcePath: string, predicate: (path: string) =
   return found;
 }
 
-export function parseResearchStatus(markdown: string, sourcePath = DEFAULT_SOURCE_PATH): ResearchStatus {
+function frontmatterValue(markdown: string, key: string) {
+  const block = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? '';
+  return block.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))?.[1]?.replace(/^["']|["']$/g, '').trim() || '';
+}
+
+function bulletItems(value: string) {
+  return value
+    .split('\n')
+    .map((line) => line.match(/^\s*-\s+(?!\[[ xX]\])(.+)$/)?.[1])
+    .filter((item): item is string => Boolean(item))
+    .map(cleanInline);
+}
+
+function openCheckboxItems(value: string) {
+  return value
+    .split('\n')
+    .map((line) => line.match(/^\s*-\s+\[ \]\s+(.+)$/)?.[1])
+    .filter((item): item is string => Boolean(item))
+    .map(cleanInline);
+}
+
+const withoutComments = (value: string) => value.replace(/<!--[\s\S]*?-->/g, '');
+
+/**
+ * Chocomint-Lab project.md layout: frontmatter (`stage`, `updated`), `## 연구 질문`,
+ * `## 현재 해석 기준`, `## 막힌 부분`, open `- [ ]` items under `## 다음 작업`.
+ * Only what the file states is used; anything absent stays empty.
+ */
+function parseProjectMd(markdown: string, sourcePath: string): ResearchStatus {
+  return {
+    sourcePath,
+    auditedAt: frontmatterValue(markdown, 'updated').match(/^\d{4}-\d{2}-\d{2}/)?.[0],
+    currentStage: frontmatterValue(markdown, 'stage') || '연구 진행',
+    researchQuestion: numberedItems(withoutComments(section(markdown, '연구 질문')))[0] ?? '',
+    currentInterpretation: bulletItems(section(markdown, '현재 해석 기준'))[0] ?? '',
+    unresolved: bulletItems(section(markdown, '막힌 부분')),
+    nextActions: openCheckboxItems(section(markdown, '다음 작업')),
+    decisions: links(markdown, sourcePath, (path) => path.toLocaleLowerCase().includes('/decisions/')),
+    importantFiles: links(markdown, sourcePath, (path) => /^02_Projects\/[^/]+\/(?:코드\/)?(?:결과|results)\//.test(path)),
+  };
+}
+
+export function parseResearchStatus(rawMarkdown: string, sourcePath = DEFAULT_SOURCE_PATH): ResearchStatus {
+  const markdown = rawMarkdown.replace(/\r\n?/g, '\n');
+  if (/^---\r?\n[\s\S]*?\btype:\s*project\b[\s\S]*?\r?\n---/.test(markdown)) return parseProjectMd(markdown, sourcePath);
   const researchQuestion = firstParagraph(section(markdown, '연구 주제와 문제의식'));
   const currentInterpretation = firstParagraph(section(markdown, '최근 결과와 현재 해석'));
   const unresolved = numberedItems(section(markdown, '미해결 문제'));
