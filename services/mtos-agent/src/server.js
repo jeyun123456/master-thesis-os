@@ -240,7 +240,7 @@ function main() {
     ? createYolo({ db, store: createStore(db), ai: { model: env.MTOS_AI_MODEL || 'gpt-6-luna' }, p0: createP0Client({ baseUrl: env.MTOS_P0_URL ?? 'http://127.0.0.1:8787', token: env.P0_SERVICE_TOKEN }), labRoot: env.CHOCOMINT_LAB_ROOT ?? 'C:/work/chocomint-lab' })
     : null;
   const app = createAgentApp({ db, yolo, verifySession: createSessionVerifier({ p0Url: env.MTOS_P0_URL ?? 'http://127.0.0.1:8787' }) });
-  const port = Number(env.MTOS_AGENT_PORT ?? 8788);
+  const port = Number(env.MTOS_AGENT_PORT ?? 8789);
   // Loopback only; reachable from Vercel through the P0 Cloudflare tunnel path rule.
   createServer(app).listen(port, '127.0.0.1', () => console.log(`mtos-agent listening on 127.0.0.1:${port}`));
 }

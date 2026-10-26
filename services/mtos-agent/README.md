@@ -7,7 +7,7 @@ P1/P2 backend for Master Thesis OS: research memos, milestones, the AI inbox, ap
 - **P0 owns tasks and sessions.** The agent never writes the P0 SQLite file and holds no P0 credentials. It accepts a request only when P0 accepts the same bearer token (`GET /api/sessions` on loopback, cached 60 s).
 - **Separate DB, separate processes.** `mtos-agent.db` is its own SQLite file. The API (`src/server.js`) and the worker (`src/worker.js`) are separate processes, so a stuck Codex run or a worker crash cannot stop P0 task reads or writes.
 - **AI proposes, people approve.** The worker never writes P0, the Vault, or Calendar. Clear inbox tasks are marked `auto_pending`, and the web app creates them with the user's session (idempotent `op_id`, shown as new, undoable). Deadline, stage, milestone, Obsidian, duplicate and conflict changes go through approvals.
-- **Loopback only.** The API listens on `127.0.0.1:8788`. Vercel reaches it through the existing P0 Cloudflare tunnel and Access policy using a path rule (see below).
+- **Loopback only.** The API listens on `127.0.0.1:8789` (8788 is taken by the Hermes owntracks receiver on the server PC). Vercel reaches it through the existing P0 Cloudflare tunnel and Access policy using a path rule (see below).
 
 ## Worker
 
@@ -23,7 +23,7 @@ P1/P2 backend for Master Thesis OS: research memos, milestones, the AI inbox, ap
 
    ```dotenv
    MTOS_P0_URL=http://127.0.0.1:8787
-   MTOS_AGENT_PORT=8788
+   MTOS_AGENT_PORT=8789
    MTOS_AI_MODEL=gpt-5.6-luna
    # Optional: Gmail collection (needs gmail.readonly consent on the refresh token)
    GOOGLE_CLIENT_ID=
@@ -41,7 +41,7 @@ P1/P2 backend for Master Thesis OS: research memos, milestones, the AI inbox, ap
    ingress:
      - hostname: p0-api.chocomintudon.com
        path: ^/agent/
-       service: http://127.0.0.1:8788
+       service: http://127.0.0.1:8789
      - hostname: p0-api.chocomintudon.com
        service: http://127.0.0.1:8787
    ```

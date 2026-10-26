@@ -1,5 +1,6 @@
 'use client';
 
+import { MailErrorNotice } from './mail-error-notice';
 import { useCallback, useEffect, useState } from 'react';
 import {
   acquireMicrosoftGraphToken,
@@ -157,7 +158,7 @@ function MicrosoftSettingsCard({
     {account && <div className="microsoft-account"><b>{account.name || account.username}</b><small>{account.username}</small></div>}
     {status === 'checking' && <div className="microsoft-mail-state">연결 상태를 확인하는 중이야…</div>}
     {status === 'connecting' && <div className="microsoft-mail-state">로그인 중이야… 학교 MFA 또는 consent 화면이 열릴 수 있어.</div>}
-    {status === 'unconfigured' && <div className="empty compact-empty">NEXT_PUBLIC_MICROSOFT_CLIENT_ID 설정이 필요해.</div>}
+    {status === 'unconfigured' && <div className="empty compact-empty">Microsoft 365 연결 정보가 아직 등록되지 않았어.<details className="mail-error-details"><summary>진단 정보</summary>NEXT_PUBLIC_MICROSOFT_CLIENT_ID 설정이 필요해.</details></div>}
     {status === 'signed_out' && <div className="microsoft-mail-state">현재 연결된 Microsoft 365 계정이 없어.</div>}
     {status === 'error' && <MailErrorState errorCode={errorCode} onRetry={onRetry} />}
     <div className="toolbar microsoft-settings-actions">
@@ -170,10 +171,7 @@ function MicrosoftSettingsCard({
 }
 
 function MailErrorState({ errorCode, onRetry }: { errorCode: MicrosoftMailErrorCode | null; onRetry: () => void }) {
-  return <div className="microsoft-mail-error-wrap">
-    <div className="error microsoft-mail-error">{errorMessage(errorCode)}</div>
-    <button className="mini" onClick={onRetry} type="button">다시 시도</button>
-  </div>;
+  return <MailErrorNotice message={errorMessage(errorCode)} code={errorCode} onRetry={onRetry} />;
 }
 
 function MailRow({ item }: { item: OutlookMail }) {

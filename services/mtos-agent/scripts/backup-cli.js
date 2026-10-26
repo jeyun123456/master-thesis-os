@@ -16,7 +16,7 @@ function absoluteEnv(name) {
 }
 
 async function assertAgentStopped() {
-  const port = Number(process.env.MTOS_AGENT_PORT || 8788);
+  const port = Number(process.env.MTOS_AGENT_PORT || 8789);
   await new Promise((done, fail) => {
     const socket = connect({ host: '127.0.0.1', port });
     socket.setTimeout(1000, () => { socket.destroy(); fail(new Error('could not confirm the agent is stopped')); });

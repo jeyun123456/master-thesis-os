@@ -22,14 +22,14 @@ export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: Repositor
   const [query, setQuery] = useState('');
   const [isComposing, setIsComposing] = useState(false);
   const [papers, setPapers] = useState<LibraryPaper[]>([]);
-  const [paperSourcePath, setPaperSourcePath] = useState('연구/문헌/논문 리스트.md');
+  const [paperSourcePath, setPaperSourcePath] = useState('03_Knowledge/sources/literature/논문 리스트.md');
   const [paperError, setPaperError] = useState('');
 
   useEffect(() => {
     dashboardApi.papers()
       .then((response) => {
         setPapers(response.items || []);
-        setPaperSourcePath(response.sourcePath || '연구/문헌/논문 리스트.md');
+        setPaperSourcePath(response.sourcePath || '03_Knowledge/sources/literature/논문 리스트.md');
         setPaperError(response.error || '');
       })
       .catch((error) => setPaperError(error instanceof Error ? error.message : '문헌 인덱스를 불러오지 못했어.'));
@@ -67,9 +67,9 @@ export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: Repositor
 
   const keyResources = useMemo(() => {
     const candidates: KeyResource[] = [
-      { label: '현재 연구 상태', path: researchStatus?.sourcePath || 'wiki/current_status.md', category: '현재 상태' },
-      { label: '연구 Wiki 안내', path: 'wiki/README.md', category: '연구 기준' },
-      { label: '벤치마크 결과', path: 'wiki/findings/benchmark_results.md', category: '결과 기준' },
+      { label: '현재 연구 상태', path: researchStatus?.sourcePath || '02_Projects/thesis/project.md', category: '현재 상태' },
+      { label: '연구 Wiki 안내', path: '01_Areas/Research/README.md', category: '연구 기준' },
+      { label: '벤치마크 결과', path: '02_Projects/thesis/findings/benchmark_results.md', category: '결과 기준' },
       { label: '대표 논문 목록', path: paperSourcePath, category: '문헌 인덱스' },
       ...(researchStatus?.decisions || []).map((item) => ({ ...item, category: '연구 결정' })),
       ...(researchStatus?.importantFiles || []).map((item) => ({ ...item, category: '계산 결과' })),
@@ -94,16 +94,16 @@ export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: Repositor
   return (
     <div className="library-shell">
       <div className="library-stats">
-        <Stat label="주요 자료" value={keyResources.length} />
-        <Stat label="대표 논문" value={papers.length} />
-        <Stat label="연구 Wiki" value={groups.wiki.filter((item) => /\.md$/i.test(item.path)).length} />
+        <Stat label="주요 자료" value={tree.length ? keyResources.length : null} />
+        <Stat label="대표 논문" value={paperError ? null : papers.length} />
+        <Stat label="연구 Wiki" value={tree.length ? groups.wiki.filter((item) => /\.md$/i.test(item.path)).length : null} />
       </div>
 
       <div className="library-toolbar">
-        <div className="tabs library-tabs">
-          <button className={tab === 'key' ? 'active' : ''} onClick={() => setTab('key')}>주요 자료</button>
-          <button className={tab === 'literature' ? 'active' : ''} onClick={() => setTab('literature')}>문헌</button>
-          <button className={tab === 'wiki' ? 'active' : ''} onClick={() => setTab('wiki')}>연구 Wiki</button>
+        <div className="tabs library-tabs" role="group" aria-label="자료 종류">
+          <button type="button" className={tab === 'key' ? 'active' : ''} aria-pressed={tab === 'key'} onClick={() => setTab('key')}>주요 자료</button>
+          <button type="button" className={tab === 'literature' ? 'active' : ''} aria-pressed={tab === 'literature'} onClick={() => setTab('literature')}>문헌</button>
+          <button type="button" className={tab === 'wiki' ? 'active' : ''} aria-pressed={tab === 'wiki'} onClick={() => setTab('wiki')}>연구 Wiki</button>
         </div>
         <input
           className="search"
@@ -113,6 +113,7 @@ export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: Repositor
           onCompositionEnd={() => setIsComposing(false)}
           onKeyDown={(event) => handleSearchKey(event, isComposing, setQuery)}
           placeholder={placeholder}
+          aria-label={placeholder}
         />
       </div>
 
@@ -124,7 +125,7 @@ export function LibraryPanel({ tree, researchStatus, onOpen }: { tree: Repositor
           </div>
           <div className="library-list">
             {keyResources.map((item) => <ResourceRow key={item.path} item={item} onOpen={onOpen} />)}
-            {keyResources.length === 0 && <div className="library-empty">조건에 맞는 주요 자료가 없어.</div>}
+            {keyResources.length === 0 && <div className="library-empty">{tree.length === 0 ? '저장소 파일 목록을 아직 불러오지 못했어. 0개라는 뜻이 아니야.' : '조건에 맞는 주요 자료가 없어.'}</div>}
           </div>
         </>
       )}
@@ -178,8 +179,9 @@ function handleSearchKey(event: KeyboardEvent<HTMLInputElement>, composing: bool
   }
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return <div className="card library-stat"><span>{label}</span><b>{value.toLocaleString('ko-KR')}</b></div>;
+function Stat({ label, value }: { label: string; value: number | null }) {
+  // null means not loaded yet, which must not read as a real zero.
+  return <div className="card library-stat"><span>{label}</span><b>{value === null ? '확인 전' : value.toLocaleString('ko-KR')}</b></div>;
 }
 
 function ResourceRow({ item, onOpen }: { item: KeyResource; onOpen: (path: string) => void }) {

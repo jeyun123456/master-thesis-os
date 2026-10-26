@@ -98,8 +98,8 @@ function ResultProjectList({ projects, inventories, selectedId, onSelect }: {
     <div className="project-list-head"><b>프로젝트별 결과</b><span>{projects.length}개</span></div>
     {projects.map((project) => {
       const inventory = inventories.get(project.id);
-      const mode = inventory?.standardPath ? '표준' : inventory?.dashboardPath ? 'dashboard' : '파일';
-      return <button type="button" key={project.id} className={selectedId === project.id ? 'active' : ''} onClick={() => onSelect(project.id)}>
+      const mode = inventory?.standardPath ? '표준 결과' : inventory?.dashboardPath ? '대시보드' : '파일만';
+      return <button type="button" key={project.id} className={selectedId === project.id ? 'active' : ''} aria-pressed={selectedId === project.id} onClick={() => onSelect(project.id)}>
         <div><b>{project.title}</b><small>{stageLabel(project.stage)} · {mode} · 결과 {inventory?.totalFiles || 0}개</small></div>
         <span className={`project-status ${project.status}`}>{projectStatusLabel(project.status)}</span>
       </button>;

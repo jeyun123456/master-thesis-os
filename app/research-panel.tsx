@@ -18,6 +18,8 @@ import {
 } from '@/lib/projects';
 import type { Milestone, TaskMeta } from '@/lib/mtos-planning';
 import type { P0Task } from '@/lib/p0-tasks-client';
+import { ResearchOverview } from '@/app/research-overview';
+import type { ResearchStatus } from '@/lib/research-status';
 import { ResearchKanban, type KanbanViewState } from '@/app/research-kanban';
 import { BlockersSection, MemosSection, MilestonesSection, ProjectTasksSection } from '@/app/project-sections';
 
@@ -35,8 +37,9 @@ export type ResearchWorkspaceData = {
 
 type ResearchResultsChoice = { key: string; label: string; path: string; type: 'standard' | 'dashboard' };
 
-export function ResearchPanel({ projects: projectsInput, tree: treeInput, projectsLoading = false, projectsError = '', selectedProjectId, expandedFolders = new Set<string>(), onToggleProjectFolder, onProjectSelected, onProjectStatusChange, onOpen, onOpenFolder, workspaceData, view = 'detail', onViewChange, kanbanState, onKanbanStateChange, onOpenTask }: {
+export function ResearchPanel({ projects: projectsInput, tree: treeInput, projectsLoading = false, projectsError = '', selectedProjectId, expandedFolders = new Set<string>(), onToggleProjectFolder, onProjectSelected, onProjectStatusChange, onOpen, onOpenFolder, workspaceData, view = 'detail', onViewChange, kanbanState, onKanbanStateChange, onOpenTask, researchStatus }: {
   workspaceData?: ResearchWorkspaceData;
+  researchStatus?: ResearchStatus | null;
   view?: 'board' | 'detail';
   onViewChange?: (view: 'board' | 'detail') => void;
   kanbanState?: KanbanViewState;
@@ -126,12 +129,41 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
   return <div className="project-detail project-detail-full">
     {onViewChange && <button type="button" className="mini project-back" onClick={() => onViewChange('board')}>← 연구 프로젝트 보드</button>}
     {selected && <>
+      <ResearchOverview project={selected} status={researchStatus} onOpen={onOpen} />
+      <div id="research-tasks" tabIndex={-1}>
       {workspaceData && <ProjectTasksSection projectId={selected.id} tasks={workspaceData.tasks} tasksState={workspaceData.tasksState} tasksError={workspaceData.tasksError} meta={workspaceData.meta}
         onChanged={workspaceData.reloadTasks} onOpenTask={(taskId) => onOpenTask?.(taskId)} />}
 
+      </div>
+      <section id="research-evidence" tabIndex={-1} className="card section section-gap research-favorites">
+        <div className="head"><h3>주요 파일 · 원본</h3><span>즐겨찾기 {keyFiles.length}개</span></div>
+        {keyFiles.length ? <ul>{keyFiles.map((file) => <li key={file.path}>
+          <button type="button" className="research-favorite-open" title={file.path} onClick={() => onOpen(file.path)}>▧ {file.path.split('/').pop()}</button>
+        </li>)}</ul> : <div className="empty compact-empty">project.md의 ‘주요 파일’에 적은 파일이 여기에 표시돼.</div>}
+      </section>
+
+      <section id="research-results" tabIndex={-1} className="card section section-gap">
+        <div className="head"><h3>분석 결과</h3><span>{choices.length}개 선택 가능</span></div>
+        <label className="research-result-picker">결과 선택
+          <select value={resultChoice} onChange={(event) => setResultChoice(event.target.value)}>
+            <option value="">분석 결과를 선택해주세요</option>
+            {choices.map((choice) => <option key={choice.key} value={choice.key}>{choice.label}</option>)}
+          </select>
+        </label>
+        {!chosen ? <div className="empty compact-empty">분석 결과를 선택해주세요</div>
+          : chosen.type === 'standard' ? <StandardResultsView resultPath={chosen.path} />
+            : <DashboardResultView path={chosen.path} onOpen={onOpen} onOpenFolder={onOpenFolder} />}
+      </section>
+
+      {workspaceData && <div className="section-gap"><MilestonesSection projectId={selected.id} milestones={workspaceData.milestones} agentState={workspaceData.agentState} agentError={workspaceData.agentError} onChanged={workspaceData.reloadAgent} /></div>}
+      {workspaceData && <div className="section-gap"><BlockersSection projectId={selected.id} manifestBlocked={selected.blocked} tasks={workspaceData.tasks} meta={workspaceData.meta} /></div>}
+
+      <div className="section-gap"><MemosSection projectId={selected.id} /></div>
+      <details className="research-management section-gap">
+        <summary>프로젝트 설정 · 진행 단계 관리</summary>
       <section className="card project-hero section-gap">
         <div className="project-hero-top">
-          <div><span className="project-eyebrow">{projectStatusLabel(selected.status)} · 우선순위 {priorityLabel(selected.priority)}</span><h3>{selected.title}</h3><p>{selected.summary}</p></div>
+          <div><h3>프로젝트 관리</h3><p>{projectStatusLabel(selected.status)} · 우선순위 {priorityLabel(selected.priority)}</p></div>
           <div className="project-hero-actions">
             <label className="project-status-editor">상태<select value={selected.status} disabled={statusSaving || !selected.sourceSha} onChange={(event) => void updateStatus(event.target.value)}>
               {!projectStatusOptions.some((option) => option.value === selected.status) && <option value={selected.status}>{projectStatusLabel(selected.status)} · 기존 값</option>}
@@ -141,7 +173,6 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
           </div>
         </div>
         {statusMessage && <div className={statusMessage.includes('저장') ? 'project-status-message' : 'error project-status-message'} role="status">{statusMessage}</div>}
-        <div className="project-focus"><span>연구 목적 / 핵심 문제의식</span><b>{selected.currentFocus || selected.summary || '프로젝트 설명을 project.md에 추가해줘.'}</b></div>
       </section>
 
       <section className="card section project-pipeline-section">
@@ -155,33 +186,7 @@ export function ResearchPanel({ projects: projectsInput, tree: treeInput, projec
         </div>
       </section>
 
-      {workspaceData && <div className="section-gap"><MilestonesSection projectId={selected.id} milestones={workspaceData.milestones} agentState={workspaceData.agentState} agentError={workspaceData.agentError} onChanged={workspaceData.reloadAgent} /></div>}
-      {workspaceData && <div className="section-gap"><BlockersSection projectId={selected.id} manifestBlocked={selected.blocked} tasks={workspaceData.tasks} meta={workspaceData.meta} /></div>}
-
-      <div className="grid2 section-gap">
-        <ProjectSection title="연구 질문" items={selected.questions} empty="등록된 연구 질문이 없어." numbered={false} />
-        <MemosSection projectId={selected.id} />
-      </div>
-      <section className="card section section-gap research-favorites">
-        <div className="head"><h3>주요 파일 · 원본</h3><span>즐겨찾기 {keyFiles.length}개</span></div>
-        {keyFiles.length ? <ul>{keyFiles.map((file) => <li key={file.path}>
-          <button type="button" className="research-favorite-open" title={file.path} onClick={() => onOpen(file.path)}>▧ {file.path.split('/').pop()}</button>
-        </li>)}</ul> : <div className="empty compact-empty">project.md의 ‘주요 파일’에 적은 파일이 여기에 표시돼.</div>}
-      </section>
-
-      <section className="card section section-gap">
-        <div className="head"><h3>분석 결과</h3><span>{choices.length}개 선택 가능</span></div>
-        <label className="research-result-picker">결과 선택
-          <select value={resultChoice} onChange={(event) => setResultChoice(event.target.value)}>
-            <option value="">분석 결과를 선택해주세요</option>
-            {choices.map((choice) => <option key={choice.key} value={choice.key}>{choice.label}</option>)}
-          </select>
-        </label>
-        {!chosen ? <div className="empty compact-empty">분석 결과를 선택해주세요</div>
-          : chosen.type === 'standard' ? <StandardResultsView resultPath={chosen.path} />
-            : <DashboardResultView path={chosen.path} onOpen={onOpen} onOpenFolder={onOpenFolder} />}
-      </section>
-
+      </details>
       <section className="card section section-gap research-folder-section">
         <div className="head"><h3>작업 폴더</h3><button className="mini" type="button" onClick={() => onOpenFolder(`${PROJECTS_ROOT}/${selected.id}`)}>프로젝트 폴더 열기</button></div>
         <ProjectFolderTree root={`${PROJECTS_ROOT}/${selected.id}`} files={files} folders={workingFolders} expandedFolders={expandedFolders} keyFilePaths={keyFilePaths} favoriteSaving={null} canSaveMetadata={false} onToggleExpanded={onToggleProjectFolder} onToggleFavorite={() => undefined} onOpen={onOpen} onOpenFolder={onOpenFolder} />
@@ -337,9 +342,5 @@ function normalizeProject(value: unknown): ResearchProject[] {
 
 
 
-
-function ProjectSection({ title, items, empty, numbered, onOpen }: { title: string; items: string[]; empty: string; numbered: boolean; onOpen?: (path: string) => void }) {
-  return <section className="card section"><div className="head"><h3>{title}</h3><span>{items.length ? `${items.length}개` : '없음'}</span></div>{items.length ? <div className="project-text-list">{items.map((item, index) => <div key={`${item}-${index}`} className="project-text-row">{numbered && <span>{index + 1}</span>}{onOpen ? <button type="button" onClick={() => onOpen(item)}>{item}</button> : <p>{item}</p>}</div>)}</div> : <div className="empty compact-empty">{empty}</div>}</section>;
-}
 
 function priorityLabel(priority: string) { return priority === 'high' ? '높음' : priority === 'medium' ? '보통' : priority === 'low' ? '낮음' : priority; }

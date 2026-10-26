@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { GoogleDrivePanel } from '@/app/google-drive-panel';
 import { LibraryPanel } from '@/app/library-panel';
 import { GmailMailPanel } from '@/app/gmail-mail-panel';
@@ -9,6 +9,8 @@ import { P0AuthGate, useP0Auth } from '@/app/p0-auth-gate';
 import { P0SessionsPanel } from '@/app/p0-sessions-panel';
 import { MicrosoftMailPanel } from '@/app/microsoft-mail-panel';
 import { ResearchPanel } from '@/app/research-panel';
+import { researchText } from '@/lib/research-text';
+import homeStyles from './home-layout.module.css';
 import { ResearchMiniTrend } from '@/app/research-mini-trend';
 import { ResultsPanel as ResultsDashboardPanel } from '@/app/results-panel';
 import { DailyChecklist } from '@/app/daily-checklist';
@@ -19,7 +21,8 @@ import { ShortcutList, ShortcutsPanel } from '@/app/shortcuts-panel';
 import { isSafeRepositoryPath } from '@/lib/repository';
 import { dashboardApi, type CalendarApiResponse, type RepositorySource, type ShortcutSource } from '@/lib/client-api';
 import type { CalendarEvent } from '@/lib/calendar';
-import { daysUntil, eventDateKey, groupCalendarEvents } from '@/lib/calendar-view';
+import { CalendarAgenda } from '@/app/calendar-agenda';
+import { daysUntil, groupCalendarEvents } from '@/lib/calendar-view';
 import type { GitHubCommitSummary } from '@/lib/github';
 import { isThesisProject, projectStatusLabel, stageLabel, type ResearchProject } from '@/lib/projects';
 import type { RepositoryItem } from '@/lib/repository';
@@ -130,6 +133,7 @@ function AuthenticatedPage() {
   const { authBusy, logout } = useP0Auth();
   const [page, setPage] = useState<Page>('home');
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const urlSynced = useRef(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [focusCreateRequest, setFocusCreateRequest] = useState(0);
   const [tree, setTree] = useState<RepositoryItem[]>([]);
@@ -285,6 +289,27 @@ function AuthenticatedPage() {
     else setPage('inbox');
   }
 
+  // The visible screen lives in ?p= so reload and the back button restore it.
+  useEffect(() => {
+    const restore = () => {
+      const requested = new URLSearchParams(window.location.search).get('p') ?? 'home';
+      if (requested in pageMeta) setPage(requested as Page);
+    };
+    restore();
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, []);
+
+  useEffect(() => {
+    // The first run still holds the default page; writing it would erase the URL being restored.
+    if (!urlSynced.current) { urlSynced.current = true; return; }
+    const url = new URL(window.location.href);
+    if ((url.searchParams.get('p') ?? 'home') === page) return;
+    if (page === 'home') url.searchParams.delete('p');
+    else url.searchParams.set('p', page);
+    window.history.pushState(null, '', url);
+  }, [page]);
+
   function showPage(next: Page) {
     // Returning to the research menu shows the board; tasks may have changed elsewhere.
     if (next === 'research') { setResearchView('board'); void workspace.reload(); }
@@ -314,37 +339,41 @@ function AuthenticatedPage() {
       <main className="main">
         <header className={`top${page === 'home' ? ' top-home' : ''}`}>
           <div>{page === 'home' ? <><h2>Chocomint Lab</h2><p>{todayLabel || '오늘'} · 떠오른 생각을 기록하고 다음 행동을 시작하세요</p></> : <><h2>{pageMeta[page][0]}</h2><p>{pageMeta[page][1]}</p></>}</div>
-          <div className="badges"><GlobalSearch tasks={workspace.tasks} projects={projects} onNavigate={navigateToSearchResult} /><div className="badge">Vault {repositorySource === 'local' ? '● 로컬' : repositorySource === 'github' ? '● GitHub' : '○ 설정 필요'}</div><div className="badge">Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '● 연결됨' : '○ 확인 필요'}</div><div className="badge">v{APP_VERSION}</div><button className="mini" type="button" disabled={authBusy} onClick={() => void signOut()}>로그아웃</button></div>
+          <div className="badges"><GlobalSearch tasks={workspace.tasks} projects={projects} onNavigate={navigateToSearchResult} /><details className={homeStyles.connections}><summary>연결 상태</summary><div><span>Vault {repositorySource === 'local' ? '로컬' : repositorySource === 'github' ? 'GitHub' : '설정 필요'}</span><span>Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '연결됨' : '확인 필요'}</span><span>v{APP_VERSION}</span></div></details><button className="mini" type="button" disabled={authBusy} onClick={() => void signOut()}>로그아웃</button></div>
         </header>
 
         {errors.length > 0 && <div className="error page-error">{errors[0]}</div>}
 
         {page === 'home' && <section className="page active home-page">
           <UrgentApprovals today={p0TodayInTokyo()} onOpenInbox={() => showPage('inbox')} />
+          <section className={homeStyles.agenda} aria-label="다가오는 일정과 마감">
+            <HomeStatusCard id="today-schedule-card" label="오늘 일정" value={schedule.today.length ? `${schedule.today.length}건` : calendar.state === 'ready' || calendar.state === 'empty' ? '없음' : '확인 필요'} detail={schedule.today[0]?.title || calendarStateText(calendar)} />
+            <HomeStatusCard label="다음 마감" value={schedule.nextDeadline ? deadlineLabel(schedule.nextDeadline) : calendar.state === 'ready' || calendar.state === 'empty' ? '없음' : '확인 필요'} detail={schedule.nextDeadline?.title || calendarStateText(calendar)} />
+          </section>
           <div className="section-gap"><P0HomeWorkspace projects={projects} onOpenPlanner={() => setPage('planner')} focusCreateRequest={focusCreateRequest}
             meta={workspace.meta} onMetaChanged={() => void workspace.reloadAgent()} calendarEvents={calendar.items} selectTaskRequest={selectTaskRequest} reloadSignal={workspace.taskReloadSignal} /></div>
-          <div className="home-workspace-grid">
+          <div className={homeStyles.workspace}>
             <Card title="빠른 입력" right="AI 인박스" className="home-capture-card"><CaptureBox compact onSaved={() => void workspace.reloadAgent()} /><button className="mini" type="button" onClick={() => showPage('inbox')}>AI 인박스 열기</button></Card>
-            <DailyChecklist todayEventCount={schedule.today.length} onShowToday={focusTodaySchedule} />
-          </div>
-          <div className="home-status-grid">
-            <HomeStatusCard id="today-schedule-card" label="오늘 일정" value={schedule.today.length ? `${schedule.today.length}건` : '없음'} detail={schedule.today[0]?.title || calendarStateText(calendar)} tone="blue" />
-            <HomeStatusCard label="다음 마감" value={schedule.nextDeadline ? deadlineLabel(schedule.nextDeadline) : '없음'} detail={schedule.nextDeadline?.title || '등록된 마감이 없어.'} tone="orange" />
-          </div>
-          <div className="home-lower-grid section-gap">
             <CurrentResearchCard project={activeProject} researchStatus={researchStatus} onOpen={openResearchProject} />
-            <Card title="최근 분석 결과" right={dashboard.necessaryLabour?.source.yearRange || (dashboard.source === 'empty' ? '미연결' : '결과 데이터')} className="home-results-card"><ResearchMiniTrend series={dashboard.necessaryLabour?.series || []} /></Card>
           </div>
-          <div className="home-attention-grid section-gap">
-            <Card title="최근 변경" right="연구 저장소 GitHub" className="home-recent-changes"><CommitList commits={commits.slice(0, 4)} /></Card>
+          <div className="section-gap">
+            <Card title="최근 분석 결과" right={dashboard.necessaryLabour?.source.yearRange || (dashboard.source === 'empty' ? '미연결' : '결과 데이터')} className="home-results-card"><ResearchMiniTrend series={dashboard.necessaryLabour?.series || []} /></Card>
           </div>
           <div className="section-gap">
             <Card title="빠른 접근" right={homeShortcuts.length ? `${homeShortcuts.length}개` : '설정 필요'} className="home-quick-access"><ShortcutList shortcuts={homeShortcuts} onOpenFile={openRepoFile} onOpenFolder={openRepoFolder} /></Card>
           </div>
+          <details className={homeStyles.operations}>
+            <summary>일상 점검 · 메일·공지 연결 · 최근 변경</summary>
+            <DailyChecklist todayEventCount={schedule.today.length} onShowToday={focusTodaySchedule} />
+            <div className="home-attention-grid section-gap">
+              <Card title="최근 변경" right="연구 저장소 GitHub" className="home-recent-changes"><CommitList commits={commits.slice(0, 4)} /></Card>
+            </div>
+          </details>
         </section>}
 
         {page === 'research' && <section className="page active"><ResearchPanel
           workspaceData={workspace}
+          researchStatus={researchStatus}
           view={researchView}
           onViewChange={setResearchView}
           kanbanState={kanbanState}
@@ -375,7 +404,7 @@ function AuthenticatedPage() {
           onOpenFolder={openRepoFolder}
         /></section>}
         {page === 'library' && <section className="page active"><GoogleDrivePanel /><div className="section-gap"><LibraryPanel tree={tree} researchStatus={researchStatus} onOpen={openRepoFile} /></div></section>}
-        {page === 'calendar' && <section className="page active"><Card title="캘린더" right={`${calendar.items.length}건 · 읽기 전용`} className="calendar-card"><CalendarAgenda calendar={calendar} /></Card></section>}
+        {page === 'calendar' && <section className="page active"><Card title="캘린더" right={calendar.state === 'error' || calendar.state === 'unconfigured' ? '확인 실패' : `${calendar.items.length}건 · 읽기 전용`} className="calendar-card"><CalendarAgenda calendar={calendar} stateText={calendarStateText(calendar)} /></Card></section>}
         {page === 'slot' && <section className="page active"><RewardSlotPanel tasks={activeProject?.nextTasks || researchStatus?.nextActions || []} projectTitle={activeProject ? activeProject.title : 'Wiki live'} onNotice={pop} /></section>}
         {page === 'shortcuts' && <section className="page active"><ShortcutsPanel
           shortcuts={shortcutItems}
@@ -392,16 +421,26 @@ function AuthenticatedPage() {
         {page === 'planner' && <section className="page active"><P0TasksPanel /></section>}
         {page === 'inbox' && <section className="page active"><AiInboxPanel projects={projects} onTasksChanged={() => { void workspace.reloadTasks(); workspace.bumpTaskReload(); }} /></section>}
 
-        {page === 'settings' && <section className="page active">
-          <div className="grid2">
-            <Card title="연구 저장소" right={repositorySource === 'none' ? '설정 필요' : repositorySource === 'local' ? '로컬' : 'GitHub'}><div className="note">GitHub <code>jeyun123456/Chocomint-Lab</code>이 연구 데이터의 기준이야. 프로젝트는 <code>02_Projects/*/project.md</code>에서 자동 발견해. 할 일은 서버 P0 SQLite가 원본이야.</div></Card>
-          </div>
-          <div className="grid2 section-gap">
-            <Card title="Google Calendar" right={calendar.state === 'ready' || calendar.state === 'empty' ? '연결됨' : '확인 필요'}><div className="note">현재 상태: {calendarStateText(calendar)}</div></Card>
-          </div>
-          <div className="section-gap"><MicrosoftMailPanel variant="settings" /></div>
-          <div className="section-gap"><P0SessionsPanel /></div>
-          <div className="section-gap"><Card title="버전" right={`v${APP_VERSION}`}><div className="note">프로젝트 기반 연구탭 · repo project manifest · 한국어 UI · 큐레이션 자료실 · 모바일 내비게이션.</div></Card></div>
+        {page === 'settings' && <section className="page active settings-page">
+          <section className="settings-group" aria-labelledby="settings-connections">
+            <h3 id="settings-connections">연결 상태</h3>
+            <p>연구 자료와 일정, 메일이 어디에서 오는지 확인해요.</p>
+            <div className="grid2">
+              <Card title="연구 저장소" right={repositorySource === 'none' ? '설정 필요' : repositorySource === 'local' ? '로컬' : 'GitHub'}><div className="note">GitHub <code>jeyun123456/Chocomint-Lab</code>이 연구 데이터의 기준이야. 프로젝트는 <code>02_Projects/*/project.md</code>에서 자동 발견해. 할 일은 서버 P0 SQLite가 원본이야.</div></Card>
+              <Card title="Google Calendar" right={calendar.state === 'ready' || calendar.state === 'empty' ? '연결됨' : '확인 필요'}><div className="note">현재 상태: {calendarStateText(calendar)}</div></Card>
+            </div>
+          </section>
+          <section className="settings-group" aria-labelledby="settings-account">
+            <h3 id="settings-account">계정과 보안</h3>
+            <p>로그인한 기기와 세션을 관리해요.</p>
+            <P0SessionsPanel />
+          </section>
+          <details className="card section settings-advanced">
+            <summary>고급 · 진단</summary>
+            <p>평소에는 건드릴 필요가 없어요. 선택 연결과 버전 정보가 들어 있어요.</p>
+            <div className="section-gap"><MicrosoftMailPanel variant="settings" /></div>
+            <div className="section-gap"><Card title="버전" right={`v${APP_VERSION}`}><div className="note">프로젝트 기반 연구탭 · repo project manifest · 한국어 UI · 큐레이션 자료실 · 모바일 내비게이션.</div></Card></div>
+          </details>
         </section>}
       </main>
 
@@ -425,57 +464,32 @@ function AuthenticatedPage() {
 }
 
 function CurrentResearchCard({ project, researchStatus, onOpen }: { project: ResearchProject | null; researchStatus: ResearchStatus | null; onOpen: (projectId: string) => void }) {
-  const focus = project?.currentFocus || researchStatus?.currentInterpretation || '현재 문제의식이 등록되지 않았어.';
-  const stage = project ? stageLabel(project.stage) : researchStatus?.currentStage || '연구 단계 확인 필요';
+  const current = researchStatus?.sourcePath === project?.sourcePath ? researchStatus : null;
+  const question = project?.questions[0] || current?.researchQuestion || '등록된 연구 질문이 없습니다.';
+  const focus = current?.currentInterpretation || project?.currentFocus || '현재 집중 내용이 등록되지 않았습니다.';
+  const stage = project ? stageLabel(project.stage) : '연구 단계 확인 필요';
   const status = project ? projectStatusLabel(project.status) : '연결 필요';
-  const summary = project?.summary || researchStatus?.currentInterpretation || '02_Projects와 wiki/current_status.md에서 현재 연구 상태를 읽어와.';
 
-  return <Card title="현재 연구" right={status} className="home-current-research-card">
-    <div className="home-current-research">
-      <span className="home-eyebrow">ACTIVE PROJECT</span>
-      <h4>{project?.title || '현재 연구 프로젝트'}</h4>
-      <div className="home-current-focus"><b>핵심 문제의식 / 해석</b><p>{focus}</p></div>
-      <p className="home-current-summary">{summary}</p>
-      <div className="home-current-meta"><span>현재 단계</span><strong>{stage}</strong><span>진행 상태</span><strong>{status}</strong></div>
-      {project && <button className="mini" type="button" onClick={() => onOpen(project.id)}>연구 열기 <span aria-hidden="true">↗</span></button>}
+  return <Card title="현재 연구" className="home-current-research-card">
+    <div className={homeStyles.research}>
+      <h4>{researchText(project?.title || '현재 연구 프로젝트')}</h4>
+      <b>연구 질문</b><p>{researchText(question)}</p>
+      <b>{current?.currentInterpretation ? '현재 판단' : '현재 집중'}</b><p>{researchText(focus)}</p>
+      <div className={homeStyles.meta}><span>{stage}</span><span>{status}</span></div>
+      {project && <button className="mini" type="button" onClick={() => onOpen(project.id)}>연구 질문·근거·다음 행동 보기</button>}
     </div>
   </Card>;
 }
 
-function HomeStatusCard({ id, label, value, detail, tone }: { id?: string; label: string; value: string; detail: string; tone: 'blue' | 'orange' | 'green' | 'slate' }) {
-  return <div id={id} tabIndex={-1} className={`card home-status-card ${tone}`}>
-    <span className="home-status-label">{label}</span>
+function HomeStatusCard({ id, label, value, detail }: { id?: string; label: string; value: string; detail: string }) {
+  return <div id={id} tabIndex={-1} className={homeStyles.status}>
+    <span>{label}</span>
     <strong>{value}</strong>
     <small title={detail}>{detail}</small>
   </div>;
 }
 
 function Card({ title, right, children, className = '' }: { title: string; right?: string; children: React.ReactNode; className?: string }) { return <div className={`card section${className ? ` ${className}` : ''}`}><div className="head"><h3>{title}</h3><span>{right}</span></div>{children}</div>; }
-function CalendarAgenda({ calendar }: { calendar: CalendarApiResponse }) {
-  const grouped = new Map<string, CalendarEvent[]>();
-  for (const event of calendar.items) {
-    const date = eventDateKey(event);
-    grouped.set(date, [...(grouped.get(date) ?? []), event]);
-  }
-  if (!calendar.items.length) return <div className="calendar-agenda-empty">{calendarStateText(calendar)}</div>;
-  return <div className="calendar-agenda">
-    {[...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([date, events]) => <section className="calendar-agenda-day" key={date}>
-      <h4>{formatCalendarDay(date)}</h4>
-      <div className="calendar-events">{events.map((event) => <article className="event calendar-agenda-event" key={event.id}>
-        <span className="calendar-agenda-time">{event.allDay ? '종일' : formatCalendarTime(event.start, event.end)}</span>
-        <div className="calendar-agenda-copy"><b>{event.title}</b><small>{event.category}{event.location ? ` · ${event.location}` : ''}</small></div>
-      </article>)}</div>
-    </section>)}
-  </div>;
-}
-function formatCalendarDay(value: string) {
-  const date = new Date(`${value}T12:00:00+09:00`);
-  return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(date);
-}
-function formatCalendarTime(start: string, end: string) {
-  const formatter = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-  return `${formatter.format(new Date(start))}–${formatter.format(new Date(end))}`;
-}
 function calendarStateText(calendar: CalendarApiResponse) { if (calendar.state === 'unconfigured') return 'Google Calendar 설정이 필요해.'; if (calendar.state === 'empty') return '오늘부터 14일 안에 일정이 없어.'; if (calendar.errorCode === 'auth_error' || calendar.errorCode === 'insufficient_permissions') return 'Calendar 서비스 계정의 읽기/쓰기 권한을 확인해야 해.'; if (calendar.errorCode === 'provider_bad_request') return 'Calendar 요청 형식 또는 날짜·시간을 확인해줘.'; if (calendar.errorCode === 'invalid_calendar') return 'Calendar ID 또는 공유 권한을 확인해줘.'; if (calendar.errorCode === 'quota_error') return 'Google Calendar API quota를 확인해줘.'; if (calendar.errorCode === 'malformed_response') return 'Calendar 응답 형식을 확인할 수 없어.'; if (calendar.state === 'error') return 'Calendar 네트워크 연결을 확인해줘.'; return '해당 일정이 없어.'; }
 function CommitList({ commits }: { commits: GitHubCommitSummary[] }) { if (!commits.length) return <div className="empty compact-empty">최근 GitHub 변경을 불러오는 중이거나 연결 정보가 없어.</div>; return <div>{commits.map((commit) => <div className="commit" key={commit.sha}><div><b>{commit.message}</b><small>{commit.author} · {relativeDate(commit.date)}</small></div><code>{commit.sha.slice(0, 7)}</code></div>)}</div>; }
 

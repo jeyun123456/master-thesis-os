@@ -11,7 +11,7 @@
 | Cloudflare Tunnel/Access | 서버 PC, `config-p0.yml`, `p0-api.chocomintudon.com` | 변경하지 않음 |
 | Local Bridge | 메인 PC `yun`, `%LOCALAPPDATA%\MasterThesisOS\bridge-runtime`, `127.0.0.1:38471` | Wallpaper에서 분리(아래) |
 | Codex CLI | 메인 PC 0.163.0, 서버 PC 0.164.0, ChatGPT 로그인 | 메인 PC에서 실제 1회 호출 성공(아래) |
-| 신규 mtos-agent | `services/mtos-agent` → 서버 PC `127.0.0.1:8788`에 배포 예정 | 아직 서버에 설치하지 않음 |
+| 신규 mtos-agent | `services/mtos-agent` → 서버 PC `127.0.0.1:8789` | 2026-10-25 서버 설치 완료(8788은 Hermes owntracks 수신기가 사용 중이라 8789) |
 
 ## 2. 요구사항 분류
 
@@ -65,7 +65,7 @@
 1. 이 브랜치를 서버 PC에 받아 `services/mtos-agent`만 사용한다(Next 배포와 별개).
 2. `codex login status` 확인 후 `services/mtos-agent/README.md`의 `agent.env` 작성.
 3. `scripts\register-tasks.ps1` 실행 → `MTOS_Agent_API`, `MTOS_Agent_Worker`, `MTOS_Agent_Backup`.
-4. `config-p0.yml`에 `^/agent/` → `127.0.0.1:8788` 경로 규칙을 P0 규칙 위에 추가하고 tunnel 작업 재시작.
+4. `config-p0.yml`에 `^/agent/` → `127.0.0.1:8789` 경로 규칙을 P0 규칙 위에 추가하고 tunnel 작업 재시작.
 5. Vercel Preview에 `MTOS_AGENT_URL=https://p0-api.chocomintudon.com` 설정 → Preview에서 확인 → 승인 후 main 병합.
 6. Gmail 수집이 필요하면 gmail.readonly 동의가 포함된 refresh token을 `agent.env`에 넣고 AI 인박스 → 발신자 목록을 저장.
 

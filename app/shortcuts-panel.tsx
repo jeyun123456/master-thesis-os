@@ -318,8 +318,27 @@ function ShortcutEditDialog({ source, nextOrder, onSave, onClose, onNotice }: {
 
   const showLaunchOptions = type === 'app' || type === 'command';
 
+  // Return focus to the control that opened the dialog when it closes.
+  // Captured during the first render, before autoFocus moves focus into the form.
+  const opener = useRef<HTMLElement | null>(typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  useEffect(() => {
+    const element = opener.current;
+    return () => element?.focus();
+  }, []);
+
+  function trapDialogKeys(event: React.KeyboardEvent<HTMLFormElement>) {
+    if (event.key === 'Escape') { event.stopPropagation(); onClose(); return; }
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), summary'));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  }
+
   return <div className="shortcut-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
-    <form className="shortcut-dialog" onSubmit={submit}>
+    <form className="shortcut-dialog" role="dialog" aria-modal="true" aria-label={source ? '바로가기 수정' : '바로가기 추가'} onSubmit={submit} onKeyDown={trapDialogKeys}>
       <div className="shortcut-dialog-preview"><ShortcutIcon shortcut={preview} /><b>{preview.title}</b><small>{typeLabel(type)}</small></div>
       <div className="shortcut-form-row">
         <label>유형<select value={mode} onChange={(event) => setMode(event.target.value as ShortcutType | 'auto')}>

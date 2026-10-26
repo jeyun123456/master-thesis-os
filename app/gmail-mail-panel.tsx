@@ -5,6 +5,7 @@ import { getRecentGmail, GmailClientError } from '../lib/gmail-client';
 import type { GmailMessage } from '../lib/gmail';
 import { filterAndSortMailItems, DEFAULT_MAIL_LIST_PREFERENCES } from '../lib/mail-list';
 import { prioritizeMail, type PrioritizedMail } from '../lib/mail-priority';
+import { MailErrorNotice } from './mail-error-notice';
 import { SchoolMailRow, schoolMailRowKey } from './school-mail-panel';
 
 type GmailPanelStatus = 'loading' | 'ready' | 'empty' | 'unconfigured' | 'error';
@@ -61,14 +62,10 @@ export function GmailMailPanel() {
           isOpening={openingId === item.id}
           key={schoolMailRowKey(item, index)}
           onOpen={openMail}
-          showNormalPriorityLabel
         />)}</div>
       : <div className="empty compact-empty">최근 Gmail 메일이 없어.</div>)}
     {status === 'unconfigured' && <div className="note">Google OAuth 설정이 필요해.</div>}
-    {status === 'error' && <div className="microsoft-mail-error-wrap">
-      <div className="error microsoft-mail-error">{errorMessage(errorCode)}</div>
-      <button className="mini" onClick={() => void load()} type="button">다시 시도</button>
-    </div>}
+    {status === 'error' && <MailErrorNotice message={errorMessage(errorCode)} code={errorCode} onRetry={() => void load()} />}
     <div className="toolbar school-mail-actions">
       <button className="mini" onClick={() => void load()} type="button">새로고침</button>
     </div>
