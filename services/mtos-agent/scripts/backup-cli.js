@@ -6,7 +6,7 @@
 // Env: absolute MTOS_AGENT_DB_PATH and MTOS_BACKUP_DIR, and MTOS_BACKUP_KEY (the P0 key).
 import { connect } from 'node:net';
 import { isAbsolute, resolve } from 'node:path';
-import { createAgentBackup, openAgentBackup, parseKey, restoreAgentFull } from '../src/backup.js';
+import { createAgentBackup, openAgentBackup, parseKey, restoreAgentFull, syncSourceFiles } from '../src/backup.js';
 import { openAgentDb } from '../src/db.js';
 
 function absoluteEnv(name) {
@@ -33,6 +33,8 @@ const dbPath = absoluteEnv('MTOS_AGENT_DB_PATH');
 if (command === 'backup') {
   const db = openAgentDb(dbPath);
   try { console.log(await createAgentBackup(db, { outDir: backupDir, key })); } finally { db.close(); }
+  // Originals of collected school mail/notices live outside the DB; mirror them next to the backups.
+  if (process.env.MTOS_SOURCE_FILES_DIR) console.log(`source files copied: ${syncSourceFiles(absoluteEnv('MTOS_SOURCE_FILES_DIR'), resolve(backupDir, 'sources'))}`);
 } else if (command === 'verify' && file && isAbsolute(file)) {
   const { path, cleanup } = openAgentBackup(file, key);
   cleanup();

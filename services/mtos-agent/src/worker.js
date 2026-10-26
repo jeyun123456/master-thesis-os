@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { AiAuthError, AiRateLimitError, createCodexRunner } from './codex.js';
 import { nowIso, openAgentDb } from './db.js';
 import { createGmailCollector, MailConfigError } from './gmail.js';
+import { createSchoolMailCollector } from './school-mail.js';
+import { createSchoolNoticeCollector } from './school-notices.js';
 import { createJobHandlers, PermanentJobError } from './jobs.js';
 import { createQueue } from './queue.js';
 import { latestCollectSlot, slotDue, tokyoDate } from './schedule.js';
@@ -18,10 +20,10 @@ const AUTH_RECHECK_MS = 10 * 60_000;
  * One worker tick: recover dead leases, enqueue the due mail slot, then run at
  * most one job. Exposed for tests; `startWorker` loops it.
  */
-export function createWorker({ db, ai, collectMail, yolo = null, yoloConfig = {}, owner = `${hostname()}:${process.pid}`, concurrency = 1, now = () => Date.now(), log = () => {} }) {
+export function createWorker({ db, ai, collectMail, collectSchoolMail = null, collectSchoolNotices = null, schoolConfig = {}, yolo = null, yoloConfig = {}, owner = `${hostname()}:${process.pid}`, concurrency = 1, now = () => Date.now(), log = () => {} }) {
   const store = createStore(db);
   const queue = createQueue(db, { now });
-  const handlers = createJobHandlers({ store, queue, ai, collectMail, yolo, now });
+  const handlers = createJobHandlers({ store, queue, ai, collectMail, collectSchoolMail, collectSchoolNotices, yolo, now });
   const yoloEveryMs = Math.max(5, Number(yoloConfig.collectMinutes) || 30) * 60_000;
   const reevalHour = Number.isInteger(yoloConfig.reevalHourJst) ? yoloConfig.reevalHourJst : 4;
   let lastAuthCheck = 0;
@@ -40,6 +42,20 @@ export function createWorker({ db, ai, collectMail, yolo = null, yoloConfig = {}
     const jstHour = new Date(now() + 9 * 3600_000).getUTCHours();
     if (jstHour >= reevalHour) {
       queue.enqueue({ type: 'yolo_manage', input: { mode: 'reevaluate' }, source: 'scheduled', dedupeKey: `yolo:reeval:${tokyoDate(now())}`, maxAttempts: 2 });
+    }
+  }
+
+  /**
+   * School mail (default every 120 s) and portal notices (300 s). A new run is only queued when
+   * none of that type is still waiting or running, so a slow run never stacks up overlapping jobs.
+   */
+  function scheduleSchool() {
+    const busy = db.prepare("SELECT 1 FROM jobs WHERE type = ? AND state IN ('queued','running','retry_wait') LIMIT 1");
+    const plan = [['collect_school_mail', collectSchoolMail, schoolConfig.mailSeconds ?? 120], ['collect_school_notices', collectSchoolNotices, schoolConfig.noticeSeconds ?? 300]];
+    for (const [type, collector, seconds] of plan) {
+      if (!collector || busy.get(type)) continue;
+      const slot = Math.floor(now() / (Math.max(30, Number(seconds) || 120) * 1000));
+      queue.enqueue({ type, source: 'scheduled', dedupeKey: `${type}:${slot}`, maxAttempts: 2 });
     }
   }
 
@@ -88,6 +104,7 @@ export function createWorker({ db, ai, collectMail, yolo = null, yoloConfig = {}
       log(`recovered ${recovered} job(s) left running by a stopped worker`);
     }
     if (yolo) scheduleYolo(); else scheduleCollect();
+    scheduleSchool();
     await maybeResume();
     db.prepare("INSERT INTO meta (key, value) VALUES ('worker_heartbeat', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
       .run(JSON.stringify({ at: nowIso(), owner, codex_model: ai.model ?? null }));
@@ -106,13 +123,16 @@ export async function startWorker(env = process.env) {
   const store = createStore(db);
   const ai = createCodexRunner({ env });
   const collectMail = createGmailCollector({ store, env });
+  const collectSchoolMail = env.MTOS_SCHOOL_MAIL_ENABLED === '1' ? createSchoolMailCollector({ db, store, env }) : null;
+  const collectSchoolNotices = env.MTOS_SCHOOL_NOTICES_ENABLED === '1' ? createSchoolNoticeCollector({ db, store, env }) : null;
+  const schoolConfig = { mailSeconds: Number(env.MTOS_SCHOOL_MAIL_INTERVAL_SECONDS) || 120, noticeSeconds: Number(env.MTOS_SCHOOL_NOTICES_INTERVAL_SECONDS) || 300 };
   const concurrency = Math.max(1, Math.min(2, Number(env.MTOS_WORKER_CONCURRENCY ?? 1) || 1));
   // YOLO needs an explicit opt-in and the P0 service token; otherwise the approval-based inbox flow stays as it was.
   const yolo = env.MTOS_YOLO_ENABLED === '1' && env.P0_SERVICE_TOKEN
     ? createYolo({ db, store, ai, p0: createP0Client({ baseUrl: env.MTOS_P0_URL ?? 'http://127.0.0.1:8787', token: env.P0_SERVICE_TOKEN }), labRoot: env.CHOCOMINT_LAB_ROOT ?? 'C:/work/chocomint-lab' })
     : null;
   const yoloConfig = { collectMinutes: env.MTOS_YOLO_COLLECT_MINUTES, reevalHourJst: env.MTOS_YOLO_REEVAL_HOUR_JST === undefined ? undefined : Number(env.MTOS_YOLO_REEVAL_HOUR_JST) };
-  const worker = createWorker({ db, ai, collectMail, yolo, yoloConfig, concurrency, log: (m) => console.log(`[mtos-worker] ${new Date().toISOString()} ${m}`) });
+  const worker = createWorker({ db, ai, collectMail, collectSchoolMail, collectSchoolNotices, schoolConfig, yolo, yoloConfig, concurrency, log: (m) => console.log(`[mtos-worker] ${new Date().toISOString()} ${m}`) });
   let stopping = false;
   const stop = () => { stopping = true; };
   process.on('SIGINT', stop);

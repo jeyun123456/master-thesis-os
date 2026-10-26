@@ -170,7 +170,7 @@ export function createStore(db) {
       const now = nowIso();
       db.prepare(`INSERT INTO inbox_items (id, dedupe_key, source_kind, source_ref, source_url, raw_text, received_at, created_at, updated_at)
         VALUES (?,?,?,?,?,?,?,?,?)`).run(
-        itemId, dedupeKey, oneOf(sourceKind, 'source_kind', ['manual', 'gmail', 'portal', 'link']),
+        itemId, dedupeKey, oneOf(sourceKind, 'source_kind', ['manual', 'gmail', 'portal', 'link', 'school_mail']),
         text(body.source_ref, 'source_ref', { max: 500, required: false }), url(body.source_url),
         raw, typeof body.received_at === 'string' && !Number.isNaN(Date.parse(body.received_at)) ? new Date(body.received_at).toISOString() : now, now, now,
       );

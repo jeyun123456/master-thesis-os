@@ -33,6 +33,13 @@ describe('proxyToAgent', () => {
     expect(new Headers(init.headers).get('authorization')).toBe('Bearer session-token');
   });
 
+  it('forwards school mail/notice reads with paging query keys and still needs a session', async () => {
+    const ok = await proxyToAgent(request('school/mails?limit=20&offset=0&evil=1'), ['school', 'mails']);
+    expect(ok.status).toBe(200);
+    expect(String(fetchMock.mock.calls[0][0])).toBe('http://127.0.0.1:8789/agent/api/school/mails?limit=20&offset=0');
+    expect((await proxyToAgent(request('school/mails', { cookie: null }), ['school', 'mails'])).status).toBe(401);
+  });
+
   it('rejects unknown resources and deep paths', async () => {
     expect((await proxyToAgent(request('admin'), ['admin'])).status).toBe(404);
     expect((await proxyToAgent(request('memos/a/b/c'), ['memos', 'a', 'b', 'c'])).status).toBe(404);

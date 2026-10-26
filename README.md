@@ -240,6 +240,10 @@ OAuth live 검증이 끝나기 전까지 Service Account 변수를 남겨도 된
 
 할 일의 단일 원본은 서버 P0 SQLite다. 서버의 MTOS Agent worker가 `gpt-6-luna`(Codex CLI)에 구조화된 결과를 요청하고, 검증을 통과한 변경만 P0 task API(서비스 토큰, actor `ai`)로 반영한다. 설정은 `.env.example`의 `MTOS_YOLO_*`·`P0_SERVICE_TOKEN`, 변경 이력과 되돌리기는 `/agent/api/yolo/runs`를 본다. 기본값은 꺼져 있다(`MTOS_YOLO_ENABLED=0`).
 
+### 학교 메일·공지 서버 수집
+
+학교 Outlook 메일은 서버 PC의 Thunderbird 프로필(`mail.server.*` 중 학교 도메인 계정)의 mbox 파일을 **읽기 전용**으로 읽어 Agent SQLite(`school_mails`)에 저장한다(2분 간격, 최초 90일). Gmail 계정은 수집 대상이 아니고, 메일을 읽음 처리·이동·삭제·발송하지 않는다. 학교 공지는 서버 전용 브라우저 프로필의 로그인 세션으로 수집한다(5분 간격, `school_notices`). 최초 로그인과 세션 만료 후 재로그인은 서버에서 `node scripts/portal-login.js`로 직접 한다(MFA 포함, 비밀번호 저장·자동 로그인 없음). 세션이 만료되면 수집을 멈추고 화면에 "학교 포털 재로그인 필요"를 표시한다. 원본 EML·첨부파일은 `MTOS_SOURCE_FILES_DIR`에 보존되고, 신규·변경 항목만 기존 YOLO(`gpt-6-luna`)로 전달된다. 켜는 설정은 `.env.example`의 `MTOS_SCHOOL_*`, 포털 수집에는 `pip install -r services/mtos-agent/portal/requirements.txt`가 필요하다.
+
 ## 프로젝트별 결과 구조
 
 분석 결과 탭은 연구 탭과 마찬가지로 `projects/*/project.md`를 기준으로 프로젝트 목록을 만들고, 선택한 프로젝트의 결과 파일을 Vault tree에서 자동 발견한다. 계산 원자료나 결과 파일을 앱 repository에 복제하지 않는다.

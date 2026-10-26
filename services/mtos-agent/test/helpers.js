@@ -22,7 +22,9 @@ export function fakeAi(...responses) {
       calls.push(request);
       const next = responses.shift();
       if (next instanceof Error) throw next;
-      return { output: next, runner: 'fake', model: 'fake-model' };
+      // YOLO outputs always carry source_notes; keep older fixtures valid.
+      const output = next && Array.isArray(next.ops) && !('source_notes' in next) ? { ...next, source_notes: [] } : next;
+      return { output, runner: 'fake', model: 'fake-model' };
     },
     async loginOk() { return this.loginOkValue; },
   };

@@ -18,7 +18,7 @@ export type Classification = {
   duplicate_of_task_id: string | null; reason: string; model?: string;
 };
 export type InboxItem = {
-  id: string; dedupe_key: string; source_kind: 'manual' | 'gmail' | 'portal' | 'link'; source_ref: string | null; source_url: string | null; raw_text: string;
+  id: string; dedupe_key: string; source_kind: 'manual' | 'gmail' | 'portal' | 'link' | 'school_mail'; source_ref: string | null; source_url: string | null; raw_text: string;
   received_at: string; state: 'new' | 'classifying' | 'classified' | 'auto_pending' | 'applied' | 'undone' | 'duplicate' | 'dismissed' | 'failed';
   classification: Classification | null; created_task_id: string | null; duplicate_of_task_id: string | null; error: string | null;
 };
@@ -38,6 +38,14 @@ export type AgentStatus = {
   worker: { paused: { reason: string; message: string; at: string } | null; heartbeat: { at: string; owner: string; codex_model: string | null } | null; codex_found: boolean };
   queue: Record<string, number>; gmail: { last_checked_at: string | null; last_success_at: string | null; last_error: string | null }; mail_senders: number; context_updated_at: string | null;
 };
+export type SchoolAnalysis = { summary: string; importance: 'high' | 'normal' | 'low'; requires_action: boolean; suggested_task: string | null; deadline: string | null; project_id: string | null; reason: string | null; model: string | null; analyzed_at: string };
+export type SchoolAttachment = { id: string; filename: string; mime: string | null; size: number | null; stored: boolean; url: string | null };
+export type SchoolMailSummary = { id: string; folder_id: string; subject: string; from_addr: string; to_addr: string; received_at: string | null; sent_at: string | null; read_state: boolean; collected_at: string; attachment_count: number; analysis: SchoolAnalysis | null };
+export type SchoolMailDetail = Omit<SchoolMailSummary, 'attachment_count'> & { account_id: string; cc_addr: string; body_text: string; attachments: SchoolAttachment[] };
+export type SchoolNoticeSummary = { notice_id: string; notice_type: string; category: string; department: string; title: string; importance: string; published_at: string | null; deadline: string | null; expires_at: string | null; source_url: string | null; collected_at: string; changed_at: string; attachment_count: number; analysis: SchoolAnalysis | null };
+export type SchoolNoticeDetail = Omit<SchoolNoticeSummary, 'attachment_count'> & { body_text: string; attachments: SchoolAttachment[]; history: Array<{ field: string; old_value: string | null; new_value: string | null; changed_at: string }> };
+export type SchoolSourceStatus = { last_checked_at: string | null; last_success_at: string | null; last_error: string | null; connected: boolean; session: string | null; pending: number };
+export type SchoolStatus = { mail: SchoolSourceStatus & { accounts: string[] }; notices: SchoolSourceStatus & { needs_login: boolean } };
 export type AgentSearch = { memos: Memo[]; milestones: Milestone[]; inbox: InboxItem[] };
 
 async function agent<T>(path: string, init: { method?: string; body?: unknown; query?: Record<string, string | undefined> } = {}): Promise<T> {
@@ -69,6 +77,11 @@ export function agentErrorText(error: unknown, fallback: string) {
 
 export const mtosApi = {
   status: () => agent<AgentStatus>('status'),
+  schoolStatus: () => agent<SchoolStatus>('school/status'),
+  schoolMails: (limit = 50) => agent<{ mails: SchoolMailSummary[]; total: number }>('school/mails', { query: { limit: String(limit) } }),
+  schoolMail: (id: string) => agent<{ mail: SchoolMailDetail }>(`school/mails/${id}`),
+  schoolNotices: (type?: 'ALL' | 'DM', limit = 100) => agent<{ notices: SchoolNoticeSummary[] }>('school/notices', { query: { type, limit: String(limit) } }),
+  schoolNotice: (id: string) => agent<{ notice: SchoolNoticeDetail }>(`school/notices/${id}`),
   resumeWorker: () => agent<{ paused: null }>('worker/resume', { method: 'POST', body: {} }),
   jobs: (state?: string) => agent<{ jobs: AgentJob[] }>('jobs', { query: { state } }),
   job: (id: string) => agent<{ job: AgentJob }>(`jobs/${id}`),

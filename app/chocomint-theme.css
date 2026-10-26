@@ -2808,3 +2808,10 @@ html .shell .section {
   .mail-panel .mail-list-controls { grid-template-columns: minmax(0, 1fr); }
   .mail-panel .mail-filter-control { overflow-x: auto; }
 }
+
+/* Server-collected school mail / notices */
+.school-detail { margin-top: 12px; padding: 12px; border: 1px solid var(--line, rgba(0, 0, 0, 0.12)); border-radius: 10px; }
+.school-detail h4 { margin: 0 0 4px; }
+.school-body { white-space: pre-wrap; word-break: break-word; font: inherit; max-height: 360px; overflow: auto; margin: 8px 0; }
+.school-attachments { margin: 6px 0 0; padding-left: 18px; }
+.school-ai-box { margin: 8px 0; }

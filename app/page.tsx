@@ -15,7 +15,7 @@ import { ResearchMiniTrend } from '@/app/research-mini-trend';
 import { ResultsPanel as ResultsDashboardPanel } from '@/app/results-panel';
 import { DailyChecklist } from '@/app/daily-checklist';
 import { RewardSlotPanel } from '@/app/reward-slot';
-import { EmptyFeature } from '@/app/empty-feature';
+import { SchoolNoticesPanel, ThunderbirdMailPanel } from '@/app/school-server-panels';
 import { P0TasksPanel } from '@/app/p0-tasks-panel';
 import { ShortcutList, ShortcutsPanel } from '@/app/shortcuts-panel';
 import { isSafeRepositoryPath } from '@/lib/repository';
@@ -416,8 +416,8 @@ function AuthenticatedPage() {
           onOpenFile={openRepoFile}
           onOpenFolder={openRepoFolder}
         /></section>}
-        {page === 'mail' && <section className="page active"><GmailMailPanel /><div className="section-gap"><MicrosoftMailPanel variant="home" /></div><div className="section-gap"><EmptyFeature title="Thunderbird 이메일" message="Thunderbird 이메일 연결 준비 중" /></div></section>}
-        {page === 'portal' && <section className="page active"><EmptyFeature title="학교 공지" message="학교 공지 연결 준비 중" /></section>}
+        {page === 'mail' && <section className="page active"><GmailMailPanel /><div className="section-gap"><ThunderbirdMailPanel /></div></section>}
+        {page === 'portal' && <section className="page active"><SchoolNoticesPanel /></section>}
         {page === 'planner' && <section className="page active"><P0TasksPanel /></section>}
         {page === 'inbox' && <section className="page active"><AiInboxPanel projects={projects} onTasksChanged={() => { void workspace.reloadTasks(); workspace.bumpTaskReload(); }} /></section>}
 

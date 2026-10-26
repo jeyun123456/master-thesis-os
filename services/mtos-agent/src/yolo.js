@@ -7,8 +7,19 @@ import { schemaErrors } from './validate.js';
 
 const nullableString = (maxLength) => ({ type: ['string', 'null'], maxLength });
 export const YOLO_SCHEMA = {
-  type: 'object', additionalProperties: false, required: ['ops'],
+  type: 'object', additionalProperties: false, required: ['ops', 'source_notes'],
   properties: {
+    // One short note per new source (mail/notice): feeds the school screens, not the task ops.
+    source_notes: {
+      type: 'array', maxItems: 30,
+      items: {
+        type: 'object', additionalProperties: false, required: ['source_type', 'source_id', 'summary', 'importance', 'requires_action'],
+        properties: {
+          source_type: nullableString(40), source_id: { type: 'string', maxLength: 300 }, summary: { type: 'string', maxLength: 400 },
+          importance: { type: 'string', enum: ['high', 'normal', 'low'] }, requires_action: { type: 'boolean' },
+        },
+      },
+    },
     ops: {
       type: 'array', maxItems: 30,
       items: {
@@ -74,11 +85,30 @@ export function createYolo({ db, store, p0, ai, labRoot, now = () => Date.now() 
       `오늘(Asia/Tokyo): ${tokyoDate(now())}. 모드: ${mode === 'incoming' ? '새 정보 반영' : '기존 할 일 재평가(새 정보 없음, create·complete 금지)'}`,
       'op: create=새 할 일(source_type·source_id는 아래 새 정보 중 하나), update=설명·우선순위·마감·프로젝트·분류 수정(task_id 필수), complete=완료 근거(evidence)가 새 정보에 있을 때만, archive=불필요하거나 중복(duplicate_of에 남길 할 일 id).',
       '값이 없으면 null. due_date는 YYYY-MM-DD이고 원문에 근거가 있을 때만. priority는 high|normal|low. category는 research|school|personal|unclassified. project_id는 아래 프로젝트 id만.',
+      '오늘보다 이전에 마감이 끝난 정보로는 create하지 마. source_notes에는 새 정보 각각에 대해 한국어 요약(1~2문장)·importance·requires_action(내가 해야 할 일이 있는가)을 적어.',
       '이미 있는 할 일과 같은 일이면 create 대신 update. 사용자가 만든 할 일은 함부로 archive하지 마. 확실하지 않으면 ops에 넣지 마. 변경할 게 없으면 ops는 빈 배열.',
       `프로젝트: ${JSON.stringify(projects.map(({ id, title, status }) => ({ id, title, status })))}`,
       `열린 할 일: ${JSON.stringify(openTasks.slice(0, 200).map((t) => ({ id: t.id, title: t.title, due_date: t.due_date, priority: t.priority, project_id: t.project_id, category: t.category })))}`,
       '[새 정보 시작]', JSON.stringify(sources.map(({ type, id, url, updated_at, text }) => ({ source_type: type, source_id: id, source_url: url, updated_at, text }))), '[새 정보 끝]',
     ].join('\n');
+  }
+
+  const upsertAnalysis = db.prepare(`INSERT INTO source_ai_analysis (inbox_item_id, source_type, source_id, summary, importance, requires_action, suggested_task, deadline, project_id, reason, model, analyzed_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(inbox_item_id) DO UPDATE SET summary = excluded.summary, importance = excluded.importance, requires_action = excluded.requires_action,
+    suggested_task = excluded.suggested_task, deadline = excluded.deadline, project_id = excluded.project_id, reason = excluded.reason, model = excluded.model, analyzed_at = excluded.analyzed_at`);
+
+  /** Keeps the AI's per-source summary and what it did about it, for the school mail/notice screens. */
+  function recordSchoolAnalysis({ items, notes, runId, createdFromItem, byId }) {
+    const changes = db.prepare("SELECT source_id, task_id, action, reason FROM yolo_changes WHERE run_id = ? AND status = 'applied'").all(runId);
+    for (const item of items) {
+      const ref = /^(school_mail|portal):(.+)$/.exec(item.source_ref ?? '');
+      if (!ref) continue;
+      const note = (notes ?? []).find((n) => n.source_id === item.id);
+      const change = changes.find((c) => c.source_id === item.id);
+      const task = byId.get(createdFromItem.get(item.id) ?? change?.task_id);
+      upsertAnalysis.run(item.id, ref[1] === 'portal' ? 'school_notice' : 'school_mail', ref[2], note?.summary ?? '', note?.importance ?? 'normal',
+        note ? Number(note.requires_action) : Number(Boolean(change)), task?.title ?? null, task?.due_date ?? null, task?.project_id ?? null, change?.reason ?? null, ai.model ?? null, nowIso());
+    }
   }
 
   async function run({ mode = 'incoming', trigger = 'scheduled' } = {}) {
@@ -178,6 +208,7 @@ export function createYolo({ db, store, p0, ai, labRoot, now = () => Date.now() 
         }
       }
 
+      recordSchoolAnalysis({ items, notes: result.output.source_notes, runId, createdFromItem, byId });
       const mark = db.prepare(`INSERT INTO yolo_sources (source_type, source_id, version, processed_at) VALUES (?,?,?,?)
         ON CONFLICT(source_type, source_id) DO UPDATE SET version = excluded.version, processed_at = excluded.processed_at`);
       for (const s of sources) mark.run(s.type === 'github' ? 'github' : 'inbox', s.id, s.version, nowIso());

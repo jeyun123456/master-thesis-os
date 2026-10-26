@@ -7,6 +7,7 @@ import { openAgentDb } from './db.js';
 import { createP0Client } from './p0-client.js';
 import { createQueue } from './queue.js';
 import { tokyoDate } from './schedule.js';
+import { handleSchoolRoute } from './school-api.js';
 import { createStore } from './store.js';
 import { createYolo } from './yolo.js';
 import { ConflictError, NotFoundError, ValidationError, date, id, isRecord, oneOf, text } from './validate.js';
@@ -14,7 +15,7 @@ import { ConflictError, NotFoundError, ValidationError, date, id, isRecord, oneO
 const PREFIX = '/agent/api';
 const MAX_BODY = 512 * 1024;
 // Job types the web app may request directly; collect/classify also run on schedule.
-const USER_JOB_TYPES = ['recommend_focus', 'decompose_task', 'unblock_task', 'obsidian_merge', 'collect_mail', 'classify_inbox', 'yolo_manage'];
+const USER_JOB_TYPES = ['recommend_focus', 'decompose_task', 'unblock_task', 'obsidian_merge', 'collect_mail', 'classify_inbox', 'yolo_manage', 'collect_school_mail', 'collect_school_notices'];
 
 class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -65,7 +66,9 @@ function validateJobInput(type, input) {
         mode: oneOf(input.mode, 'mode', ['append', 'section', 'new']),
       };
     }
-    case 'collect_mail': return {};
+    case 'collect_mail':
+    case 'collect_school_mail':
+    case 'collect_school_notices': return {};
     case 'yolo_manage': return { mode: oneOf(input.mode, 'mode', ['incoming', 'reevaluate'], 'incoming') };
     case 'classify_inbox': return { item_id: id(input.item_id, 'item_id') };
     default: throw new ValidationError('job type not allowed');
@@ -98,6 +101,9 @@ export function createAgentApp({ db, verifySession, yolo = null, now = () => Dat
       }];
     }
     if (method === 'POST' && path === '/worker/resume') { queue.resume(); store.audit('worker_resumed', 'user'); return [200, { paused: null }]; }
+
+    const school = handleSchoolRoute({ db, store, method, path, url });
+    if (school) return school;
 
     // YOLO task management history and rollback (writes always go through the P0 task API)
     if (method === 'GET' && path === '/yolo/runs') return [200, { enabled: Boolean(yolo), runs: db.prepare('SELECT * FROM yolo_runs ORDER BY started_at DESC LIMIT 30').all() }];
@@ -226,6 +232,13 @@ export function createAgentApp({ db, verifySession, yolo = null, now = () => Dat
         : error instanceof NotFoundError ? 404 : error instanceof ConflictError ? 409 : 500;
       if (status === 500) console.error('[mtos-agent]', error);
       payload = { error: status === 500 ? 'internal error' : error.message };
+    }
+    if (payload?.__file) {
+      // Stored originals are always sent as downloads, never rendered by the browser.
+      const { data, filename } = payload.__file;
+      res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`, 'content-length': data.length });
+      res.end(data);
+      return;
     }
     res.writeHead(status, { 'content-type': 'application/json' });
     res.end(JSON.stringify(payload));

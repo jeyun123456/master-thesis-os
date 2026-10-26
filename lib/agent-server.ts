@@ -4,8 +4,8 @@ import { noStore, P0_APP_SESSION_COOKIE, P0ApiError, readRequestBytesLimited, sa
 const DEFAULT_AGENT_URL = 'http://127.0.0.1:8789';
 const MAX_BODY = 512 * 1024;
 // First segment must be a known agent resource; deeper segments are ids/actions.
-const RESOURCE = /^(status|worker|jobs|memos|milestones|inbox|approvals|task-meta|occurrences|focus|context|settings|search)(\/[A-Za-z0-9_-]{1,200}){0,2}$/;
-const FORWARDED_QUERY = ['q', 'state', 'project_id', 'date'];
+const RESOURCE = /^(status|worker|jobs|memos|milestones|inbox|approvals|task-meta|occurrences|focus|context|settings|search|school)(\/[A-Za-z0-9_-]{1,200}){0,2}$/;
+const FORWARDED_QUERY = ['q', 'state', 'project_id', 'date', 'limit', 'offset', 'type'];
 
 export type AgentErrorCode = 'agent_unconfigured' | 'agent_unreachable' | 'auth_required' | 'bad_path';
 

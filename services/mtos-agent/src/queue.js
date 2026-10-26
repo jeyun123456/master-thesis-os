@@ -4,7 +4,7 @@ import { ConflictError, NotFoundError, ValidationError } from './validate.js';
 
 // Lower runs first. A request the user is waiting on always beats scheduled work.
 export const PRIORITY = { user: 0, system: 5, scheduled: 10 };
-export const JOB_TYPES = ['classify_inbox', 'collect_mail', 'recommend_focus', 'decompose_task', 'unblock_task', 'obsidian_merge', 'yolo_manage'];
+export const JOB_TYPES = ['classify_inbox', 'collect_mail', 'recommend_focus', 'decompose_task', 'unblock_task', 'obsidian_merge', 'yolo_manage', 'collect_school_mail', 'collect_school_notices'];
 const RETRY_BASE_MS = 60_000;
 const RETRY_MAX_MS = 30 * 60_000;
 

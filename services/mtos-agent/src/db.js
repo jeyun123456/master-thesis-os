@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS milestone_history (
 CREATE TABLE IF NOT EXISTS inbox_items (
   id TEXT PRIMARY KEY,
   dedupe_key TEXT NOT NULL UNIQUE,
-  source_kind TEXT NOT NULL CHECK (source_kind IN ('manual','gmail','portal','link')),
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('manual','gmail','portal','link','school_mail')),
   source_ref TEXT,
   source_url TEXT,
   raw_text TEXT NOT NULL,
@@ -203,6 +203,91 @@ CREATE TABLE IF NOT EXISTS yolo_sources (
   PRIMARY KEY (source_type, source_id)
 );
 
+-- School sources collected on the server: Outlook mail via Thunderbird (mbox, read-only)
+-- and Student Portal notices. Raw originals live on disk; sync progress is kept in
+-- collector_state (source = 'school_mail' | 'school_notices').
+CREATE TABLE IF NOT EXISTS school_mails (
+  id TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL,
+  message_key TEXT NOT NULL,
+  folder_id TEXT NOT NULL,
+  message_id TEXT,
+  subject TEXT NOT NULL DEFAULT '',
+  from_addr TEXT NOT NULL DEFAULT '',
+  to_addr TEXT NOT NULL DEFAULT '',
+  cc_addr TEXT NOT NULL DEFAULT '',
+  received_at TEXT,
+  sent_at TEXT,
+  body_text TEXT NOT NULL DEFAULT '',
+  body_html TEXT,
+  read_state INTEGER NOT NULL DEFAULT 0,
+  content_hash TEXT NOT NULL,
+  eml_path TEXT,
+  source TEXT NOT NULL DEFAULT 'thunderbird',
+  collected_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (account_id, message_key)
+);
+CREATE INDEX IF NOT EXISTS school_mails_received ON school_mails(received_at DESC);
+
+CREATE TABLE IF NOT EXISTS school_notices (
+  notice_id TEXT PRIMARY KEY,
+  notice_type TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL DEFAULT '',
+  department TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL DEFAULT '',
+  importance TEXT NOT NULL DEFAULT '',
+  published_at TEXT,
+  updated_at TEXT,
+  deadline TEXT,
+  expires_at TEXT,
+  body_text TEXT NOT NULL DEFAULT '',
+  source_url TEXT,
+  content_hash TEXT NOT NULL,
+  collected_at TEXT NOT NULL,
+  changed_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS school_notices_published ON school_notices(published_at DESC);
+CREATE TABLE IF NOT EXISTS school_notice_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  notice_id TEXT NOT NULL,
+  field TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  changed_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS source_attachments (
+  id TEXT PRIMARY KEY,
+  source_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  mime TEXT,
+  size INTEGER,
+  sha256 TEXT,
+  path TEXT,
+  url TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE (source_type, source_id, filename, sha256)
+);
+CREATE INDEX IF NOT EXISTS source_attachments_source ON source_attachments(source_type, source_id);
+
+CREATE TABLE IF NOT EXISTS source_ai_analysis (
+  inbox_item_id TEXT PRIMARY KEY,
+  source_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  importance TEXT NOT NULL DEFAULT 'normal',
+  requires_action INTEGER NOT NULL DEFAULT 0,
+  suggested_task TEXT,
+  deadline TEXT,
+  project_id TEXT,
+  reason TEXT,
+  model TEXT,
+  analyzed_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS source_ai_analysis_source ON source_ai_analysis(source_type, source_id, analyzed_at DESC);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   event TEXT NOT NULL,
@@ -217,7 +302,34 @@ export function openAgentDb(path) {
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
   db.exec(SCHEMA);
   db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '1')").run();
+  migrate(db);
   return db;
+}
+
+/**
+ * v2: inbox_items.source_kind also accepts 'school_mail'. SQLite cannot alter a CHECK,
+ * so the table is rebuilt once inside a transaction with every row copied unchanged.
+ */
+function migrate(db) {
+  const version = Number(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get()?.value ?? 1);
+  if (version >= 2) return;
+  const sql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'inbox_items'").get()?.sql ?? '';
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    if (!sql.includes("'school_mail'")) {
+      db.exec('DROP INDEX IF EXISTS inbox_state');
+      db.exec('ALTER TABLE inbox_items RENAME TO inbox_items_v1');
+      db.exec(sql.replace("'link')", "'link','school_mail')"));
+      db.exec('INSERT INTO inbox_items SELECT * FROM inbox_items_v1');
+      db.exec('DROP TABLE inbox_items_v1');
+      db.exec('CREATE INDEX IF NOT EXISTS inbox_state ON inbox_items(state, received_at)');
+    }
+    db.prepare("UPDATE meta SET value = '2' WHERE key = 'schema_version'").run();
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
 }
 
 export const nowIso = () => new Date().toISOString();

@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync, backup } from 'node:sqlite';
@@ -86,4 +86,26 @@ export async function restoreAgentFull(livePath, file, key, { snapshotDir }) {
   } finally {
     cleanup();
   }
+}
+
+/**
+ * Mirrors the server-side originals (mail EML, attachments) next to the DB backups.
+ * Files are key- or content-addressed and never change, so only missing files are copied.
+ * They are a plain copy on the same machine, exactly as sensitive as the originals.
+ */
+export function syncSourceFiles(srcDir, destDir) {
+  let copied = 0;
+  const visit = (rel) => {
+    for (const entry of readdirSync(join(srcDir, rel), { withFileTypes: true })) {
+      const next = join(rel, entry.name);
+      if (entry.isDirectory()) { visit(next); continue; }
+      const target = join(destDir, next);
+      if (existsSync(target)) continue;
+      mkdirSync(join(destDir, rel), { recursive: true });
+      copyFileSync(join(srcDir, next), target);
+      copied += 1;
+    }
+  };
+  if (existsSync(srcDir)) visit('');
+  return copied;
 }

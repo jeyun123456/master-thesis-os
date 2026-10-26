@@ -78,8 +78,31 @@ function checked(type, output) {
 
 const validDate = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 
-export function createJobHandlers({ store, queue, ai, collectMail, yolo = null, now = () => Date.now() }) {
+export function createJobHandlers({ store, queue, ai, collectMail, collectSchoolMail = null, collectSchoolNotices = null, yolo = null, now = () => Date.now() }) {
+  const YOLO_BATCH = 30;
+  /** New school items go straight to YOLO (one job per batch of 30); without YOLO they use the approval classifier. */
+  function dispatchNew(job, outcome) {
+    const ids = outcome.newItemIds ?? [];
+    if (yolo) {
+      for (let i = 0; i * YOLO_BATCH < ids.length && i < 20; i += 1) {
+        queue.enqueue({ type: 'yolo_manage', input: { mode: 'incoming' }, source: 'system', dedupeKey: `yolo:after:${job.id}:${i}` });
+      }
+    } else {
+      for (const itemId of ids) queue.enqueue({ type: 'classify_inbox', input: { item_id: itemId }, source: 'system', dedupeKey: `classify:${itemId}` });
+    }
+    return { fetched: outcome.fetched, new_items: ids.length, ...(outcome.paused ? { paused: outcome.session } : {}) };
+  }
   const handlers = {
+    async collect_school_mail(job) {
+      if (!collectSchoolMail) throw new PermanentJobError('School mail collection is not enabled.');
+      return dispatchNew(job, await collectSchoolMail({ trigger: job.source }));
+    },
+
+    async collect_school_notices(job) {
+      if (!collectSchoolNotices) throw new PermanentJobError('School notice collection is not enabled.');
+      return dispatchNew(job, await collectSchoolNotices({ trigger: job.source }));
+    },
+
     async classify_inbox(job) {
       const item = store.inbox.get(job.input.item_id);
       if (['applied', 'duplicate', 'dismissed', 'undone'].includes(item.state)) return { skipped: item.state };
