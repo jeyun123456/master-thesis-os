@@ -2815,3 +2815,36 @@ html .shell .section {
 .school-body { white-space: pre-wrap; word-break: break-word; font: inherit; max-height: 360px; overflow: auto; margin: 8px 0; }
 .school-attachments { margin: 6px 0 0; padding-left: 18px; }
 .school-ai-box { margin: 8px 0; }
+
+/* Mail rows are tinted by the AI rating (critical / important); notices the AI rates as interesting get a warm highlight. */
+.school-mail-card .microsoft-mail-list .microsoft-mail-row.school-mail-priority-critical {
+  background: #f9e7e3;
+  box-shadow: inset 4px 0 0 var(--red);
+  border-radius: 8px;
+  padding-left: 12px;
+}
+.school-mail-card .microsoft-mail-list .microsoft-mail-row.school-mail-priority-important {
+  background: #fbf1d8;
+  box-shadow: inset 4px 0 0 var(--orange);
+  border-radius: 8px;
+  padding-left: 12px;
+}
+.school-notices .microsoft-mail-list .microsoft-mail-row.school-notice-interest {
+  background: #fbf1d8;
+  box-shadow: inset 4px 0 0 var(--orange);
+  border-radius: 8px;
+  padding-left: 12px;
+}
+.school-notice-interest-label {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  margin-right: 6px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #f1d9a3;
+  color: #7a5320;
+  font-size: 12px;
+  font-weight: 800;
+  vertical-align: 1px;
+}

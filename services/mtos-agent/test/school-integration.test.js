@@ -53,7 +53,7 @@ test('migration keeps existing inbox rows when an older database gains the schoo
   assert.ok(new DatabaseSync(path).prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'inbox_state'").get());
 });
 
-test('school notice -> YOLO (gpt-6-luna runner) -> P0 task with source link, AI note and audit trail, then rollback', async () => {
+test('school notice -> YOLO (gpt-6-luna runner) -> AI rating only: no automatic task, note and audit trail kept', async () => {
   const db = freshDb();
   const store = createStore(db);
   const collect = createSchoolNoticeCollector({
@@ -74,18 +74,12 @@ test('school notice -> YOLO (gpt-6-luna runner) -> P0 task with source link, AI 
   ai.model = 'gpt-6-luna';
   const yolo = createYolo({ db, store, p0, ai, labRoot: mkdtempSync(join(tmpdir(), 'lab-')) });
   const run = await yolo.run({});
-  assert.equal(run.applied, 1);
-  const [task] = [...p0.tasks.values()];
-  assert.equal(task.due_date, '2026-11-05');
-  assert.equal(task.source_url, 'https://sp.ritsumei.ac.jp/studentportal/s/r-information/N1/view');
-  assert.equal(store.taskMeta.get(task.id).source_ref, `portal:${newItemIds[0]}`);
+  assert.equal(run.applied, 0);
+  assert.equal(p0.tasks.size, 0, 'a notice never creates a task by itself');
   const note = db.prepare('SELECT * FROM source_ai_analysis').get();
-  assert.deepEqual([note.source_type, note.source_id, note.summary, note.importance, note.requires_action, note.suggested_task, note.model], ['school_notice', 'N1', '11/5까지 장학금 신청.', 'high', 1, '奨学金 申請', 'gpt-6-luna']);
+  assert.deepEqual([note.source_type, note.source_id, note.summary, note.importance, note.requires_action, note.suggested_task, note.model], ['school_notice', 'N1', '11/5까지 장학금 신청.', 'high', 1, null, 'gpt-6-luna']); // rating and summary kept; no task title because none was created
   assert.equal(db.prepare('SELECT model FROM yolo_runs').get().model, 'gpt-6-luna');
-  assert.equal(yolo.changesOf(run.runId)[0].status, 'applied');
-
-  assert.equal((await yolo.rollback(run.runId)).rolled_back, 1);
-  assert.equal(p0.tasks.get(task.id).deleted, true);
+  assert.equal(yolo.changesOf(run.runId)[0].status, 'skipped');
 });
 
 test('worker schedules school jobs on their own interval, never overlaps, and sends new items to YOLO', async () => {

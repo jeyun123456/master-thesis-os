@@ -47,16 +47,6 @@ export function edgeLaunchUrl(verifiedHttpsUrl: string | null): string | null {
 export const isEmbeddedWebView = (userAgent: string) => /Sucrose/i.test(userAgent);
 
 /**
- * "chocomint-open:<url>" is a per-user protocol the PC owner installs once (ops/open-in-chrome). Its handler opens only the
- * school portal in Chrome, so the link is offered for that host alone.
- */
-export function chromeLaunchUrl(verifiedPortalUrl: string | null): string | null {
-  if (!verifiedPortalUrl) return null;
-  try { const u = new URL(verifiedPortalUrl); if (u.protocol !== 'https:' || u.hostname !== 'sp.ritsumei.ac.jp') return null; } catch { return null; }
-  return `chocomint-open:${verifiedPortalUrl}`;
-}
-
-/**
  * Thunderbird registers the mid: protocol on the PC that has it, so a mid:<Message-ID> link opens that exact mail there.
  * The ID comes from the collected mail header; anything that is not a plain Message-ID is refused.
  */

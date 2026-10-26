@@ -6,6 +6,7 @@ import {
   type SchoolMailDetail, type SchoolMailSummary, type SchoolNoticeDetail, type SchoolNoticeSummary, type SchoolSourceStatus,
 } from '../lib/mtos-client';
 import { fromNotice, fromSchoolMail } from '../lib/detail-model';
+import { isNoticeOfInterest, loadSeen, mailPriorityFromRating, markSeen } from '../lib/school-rating';
 import type { PrioritizedMail } from '../lib/mail-priority';
 import { DetailDrawer, useDetailSelection, useSelectedDetail } from './detail-drawer';
 import { DetailState, MailDetailBody, NoticeDetailBody, SourceActions } from './detail-views';
@@ -24,11 +25,11 @@ function syncLabel(status: SchoolSourceStatus | null): string {
   return status.last_success_at ? `마지막 동기화 ${formatDate(status.last_success_at)}` : '아직 동기화 전';
 }
 
-function toRow(mail: SchoolMailSummary): PrioritizedMail {
+function toRow(mail: SchoolMailSummary, seen: Set<string>): PrioritizedMail {
   return {
     id: mail.id, subject: mail.subject || '(제목 없음)', senderName: mail.from_addr || '발신자 정보 없음', senderAddress: '',
-    receivedAt: mail.received_at ?? mail.sent_at ?? mail.collected_at, isRead: mail.read_state,
-    priority: mail.analysis?.importance === 'high' ? 'important' : 'normal', category: 'other',
+    receivedAt: mail.received_at ?? mail.sent_at ?? mail.collected_at, isRead: mail.read_state || seen.has(mail.id),
+    priority: mailPriorityFromRating(mail.analysis), category: 'other',
   };
 }
 
@@ -40,6 +41,9 @@ export function ThunderbirdMailPanel() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const { selectedId, select, close } = useDetailSelection('school-mail');
+  const [seen, setSeen] = useState<Set<string>>(() => new Set());
+  useEffect(() => { setSeen(loadSeen('school-mail')); }, []);
+  const openMail = (id: string) => { setSeen(markSeen('school-mail', id)); select(id); };
   const detail = useSelectedDetail<SchoolMailDetail>(selectedId, async (id) => (await mtosApi.schoolMail(id)).mail, '메일을 열지 못했어.');
   const model = useMemo(() => (detail.data ? fromSchoolMail(detail.data) : null), [detail.data]);
 
@@ -63,14 +67,14 @@ export function ThunderbirdMailPanel() {
   const waiting = !loading && !error && status && !status.connected;
   return <section className="card section microsoft-mail-card school-mail-card">
     <div className="head"><h3>학교 Outlook (Thunderbird)</h3><span>{waiting ? '연결 준비 중' : syncLabel(status)}</span></div>
-    <div className="muted"><small>{accounts.length ? accounts.map(maskAccount).join(', ') : '서버 Thunderbird'} · 서버가 2분마다 확인 · 읽기 전용</small></div>
+    <div className="muted"><small>{accounts.length ? accounts.map(maskAccount).join(', ') : '서버 Thunderbird'} · 서버가 2분마다 확인 · 읽기 전용 · 여기서 연 메일은 이 기기에서만 읽음으로 보여(서버 Thunderbird의 읽음 상태는 그대로)</small></div>
     {loading && <div className="microsoft-mail-state">학교 메일을 불러오는 중이야…</div>}
     {error && <MailErrorNotice message={error} code="school_mail" onRetry={() => void load()} />}
     {!error && status?.last_error && <div className="note">최근 동기화 오류: {status.last_error}. 이미 받은 메일은 그대로 보여줘.</div>}
     {waiting && <div className="empty compact-empty">Thunderbird 이메일 연결 준비 중</div>}
     {!loading && !error && status?.connected && (mails.length
       ? <div className="microsoft-mail-list">{mails.map((mail) => <SchoolMailRow
-          key={mail.id} item={toRow(mail)} onOpen={(item) => select(item.id)}
+          key={mail.id} item={toRow(mail, seen)} onOpen={(item) => openMail(item.id)}
           analysisSummary={mail.analysis?.summary || undefined}
         />)}</div>
       : <div className="empty compact-empty">최근 90일 안에 수집된 학교 메일이 없어.</div>)}
@@ -90,6 +94,7 @@ export function SchoolNoticesPanel() {
   const [notices, setNotices] = useState<SchoolNoticeSummary[]>([]);
   const [status, setStatus] = useState<(SchoolSourceStatus & { needs_login: boolean }) | null>(null);
   const [filter, setFilter] = useState<'ALL' | 'DM' | 'both'>('both');
+  const [onlyInterest, setOnlyInterest] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const { selectedId, select, close } = useDetailSelection('school-notice');
@@ -115,17 +120,17 @@ export function SchoolNoticesPanel() {
   const waiting = !loading && !error && status && !status.connected && !status.needs_login;
   return <section className="card section school-notices">
     <div className="head"><h3>학교 공지</h3><span>{status?.needs_login ? '학교 포털 재로그인 필요' : waiting ? '연결 준비 중' : syncLabel(status)}</span></div>
-    <div className="muted"><small>RITSUMEIKAN STUDENT PORTAL · ALL · DM · 서버가 5분마다 확인 · 읽기 전용</small></div>
+    <div className="muted"><small>RITSUMEIKAN STUDENT PORTAL · ALL · DM · 서버가 5분마다 확인 · 읽기 전용 · AI가 관심 있어 보이는 공지만 ★로 표시 (할 일은 자동으로 만들지 않아)</small></div>
     {status?.needs_login && <div className="error" role="alert"><b>학교 포털 재로그인 필요</b> 포털 세션이 만료돼 수집을 멈췄어. 서버에서 <code>node scripts/portal-login.js</code>를 실행해 직접 로그인하면 다시 시작해. 이미 받은 공지는 그대로 보여줘.</div>}
     {!status?.needs_login && status?.last_error && <div className="note">최근 동기화 오류: {status.last_error}. 이미 받은 공지는 그대로 보여줘.</div>}
     {loading && <div className="microsoft-mail-state">학교 공지를 불러오는 중이야…</div>}
     {error && <div className="error" role="alert">{error} <button className="mini" onClick={() => void load()} type="button">다시 시도</button></div>}
     {waiting && <div className="empty compact-empty">학교 공지 연결 준비 중 — 서버에서 포털 로그인이 필요해.</div>}
-    {(status?.connected || status?.needs_login) && <div className="toolbar">{(['both', 'ALL', 'DM'] as const).map((value) => <button key={value} className={`mini${filter === value ? ' active' : ''}`} onClick={() => setFilter(value)} type="button">{value === 'both' ? '전체' : value}</button>)}</div>}
+    {(status?.connected || status?.needs_login) && <div className="toolbar">{(['both', 'ALL', 'DM'] as const).map((value) => <button key={value} className={`mini${filter === value ? ' active' : ''}`} onClick={() => setFilter(value)} type="button">{value === 'both' ? '전체' : value}</button>)}<button className={`mini${onlyInterest ? ' active' : ''}`} onClick={() => setOnlyInterest((v) => !v)} type="button" aria-pressed={onlyInterest}>★ 관심만</button></div>}
     {!loading && !error && status?.connected && (notices.length
-      ? <div className="microsoft-mail-list">{notices.map((notice) => <button key={notice.notice_id} className="microsoft-mail-row school-mail-row-button" onClick={() => select(notice.notice_id)} type="button" aria-label={`${notice.title} 공지 열기`}>
+      ? <div className="microsoft-mail-list">{notices.filter((notice) => !onlyInterest || isNoticeOfInterest(notice.analysis)).map((notice) => <button key={notice.notice_id} className={`microsoft-mail-row school-mail-row-button${isNoticeOfInterest(notice.analysis) ? ' school-notice-interest' : ''}`} onClick={() => select(notice.notice_id)} type="button" aria-label={`${notice.title} 공지 열기`}>
           <span className="microsoft-mail-main">
-            <b>{notice.analysis?.importance === 'high' && <span className="school-mail-priority-label important">중요</span>}[{notice.notice_type || 'ALL'}] {notice.title}</b>
+            <b>{isNoticeOfInterest(notice.analysis) && <span className="school-notice-interest-label">★ 관심</span>}[{notice.notice_type || 'ALL'}] {notice.title}</b>
             <small>{notice.department || '담당 부서 정보 없음'} · 게시 {formatDate(notice.published_at)}{notice.deadline ? ` · 기한 ${notice.deadline}` : ''}{notice.attachment_count ? ` · 첨부 ${notice.attachment_count}` : ''}</small>
             {notice.analysis?.summary && <small className="school-mail-ai-summary"><b>AI 요약</b> {notice.analysis.summary}</small>}
           </span>

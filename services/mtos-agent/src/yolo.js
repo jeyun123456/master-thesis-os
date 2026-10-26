@@ -165,6 +165,8 @@ export function createYolo({ db, store, p0, ai, labRoot, now = () => Date.now() 
             continue;
           }
           if (op.op === 'create') {
+            // School notices are read and rated by the AI (summary, importance, action needed) but never turned into tasks on their own.
+            if (op.source_type === 'portal') { skip(base, 'school notices only get an AI rating, no automatic task'); continue; }
             const title = (op.title ?? '').trim();
             if (!title) { skip(base, 'empty title'); continue; }
             const sourceRef = `${op.source_type}:${op.source_id}`;

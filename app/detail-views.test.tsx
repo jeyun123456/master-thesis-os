@@ -71,9 +71,9 @@ describe('detail views', () => {
 
   it('inside an embedded web view the link is handed to Edge instead of loading in the view; copy-link is offered', () => {
     const nt = renderToStaticMarkup(<SourceActions source={fromNotice(notice).source} kind="school-notice" embedded />);
-    expect(nt).toContain('원본 열기 (Chrome)'); expect(nt).not.toContain('href="chocomint-open:'); expect(nt).toContain('href="microsoft-edge:https://sp.ritsumei.ac.jp/notice/1"'); expect(nt).toContain('Edge로 열기'); expect(nt).toContain('링크 복사'); expect(nt).not.toContain('target="_blank"');
+    expect(nt).toContain('원본 열기 (Edge)'); expect(nt).toContain('href="microsoft-edge:https://sp.ritsumei.ac.jp/notice/1"'); expect(nt).not.toContain('chocomint-open'); expect(nt).not.toContain('Chrome'); expect(nt).toContain('링크 복사'); expect(nt).not.toContain('target="_blank"');
     const unverified = renderToStaticMarkup(<SourceActions source={{ ...fromNotice(notice).source, openUrl: 'https://evil.example/x' }} kind="school-notice" embedded />);
-    expect(unverified).not.toContain('microsoft-edge:'); expect(unverified).not.toContain('chocomint-open:'); expect(unverified).not.toContain('evil.example');
+    expect(unverified).not.toContain('microsoft-edge:'); expect(unverified).not.toContain('evil.example');
     const ol = renderToStaticMarkup(<SourceActions source={fromSchoolMail(mail).source} kind="outlook-web" embedded />);
     expect(ol).toContain('href="microsoft-edge:https://outlook.office.com/mail/"'); expect(ol).toContain('href="ms-outlook://emails"');
   });
@@ -81,7 +81,7 @@ describe('detail views', () => {
   it('desktop shows extra open-with buttons (Chrome/Edge/copy for notices, Thunderbird for school mail); phones do not', () => {
     const nt = renderToStaticMarkup(<SourceActions source={fromNotice(notice).source} kind="school-notice" desktop />);
     expect(nt).toContain('href="https://sp.ritsumei.ac.jp/notice/1"'); expect(nt).toContain('target="_blank"');
-    expect(nt).toContain('Chrome으로 열기'); expect(nt).toContain('Edge로 열기'); expect(nt).toContain('링크 복사');
+    expect(nt).not.toContain('Chrome'); expect(nt).toContain('Edge로 열기'); expect(nt).toContain('Edge로 열기'); expect(nt).toContain('링크 복사');
     const tb = renderToStaticMarkup(<SourceActions source={fromSchoolMail(mail).source} kind="outlook-web" desktop />);
     expect(tb).toContain('href="mid:abc.123@mail.x.ac.jp"'); expect(tb).toContain('Thunderbird로 열기');
     const phone = renderToStaticMarkup(<SourceActions source={fromSchoolMail(mail).source} kind="outlook-web" desktop={false} />);
