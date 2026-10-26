@@ -14,7 +14,7 @@ export const projectStatusOptions = [
   { value: 'complete', label: '완료' },
 ] as const;
 
-export const isThesisProject = (project: Pick<ResearchProject, 'id' | 'frontmatterId'>) => project.id === 'thesis' || project.frontmatterId === 'project-thesis';
+export const isThesisProject = (project: Pick<ResearchProject, 'id' | 'frontmatterId'>) => project.id === 'Master_필요노동과_노동력재생산' || project.frontmatterId === 'project-thesis';
 
 export const projectStatusValues = projectStatusOptions.map((option) => option.value);
 

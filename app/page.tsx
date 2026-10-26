@@ -333,7 +333,7 @@ function AuthenticatedPage() {
           </div>
           <div className="home-lower-grid section-gap">
             <CurrentResearchCard project={activeProject} researchStatus={researchStatus} onOpen={openResearchProject} />
-            <Card title="최근 분석 결과" right={dashboard.necessaryLabour?.source.yearRange || '결과 데이터'} className="home-results-card"><ResearchMiniTrend series={dashboard.necessaryLabour?.series || []} /></Card>
+            <Card title="최근 분석 결과" right={dashboard.necessaryLabour?.source.yearRange || (dashboard.source === 'empty' ? '미연결' : '결과 데이터')} className="home-results-card"><ResearchMiniTrend series={dashboard.necessaryLabour?.series || []} /></Card>
           </div>
           <div className="home-attention-grid section-gap">
             <Card title="최근 변경" right="연구 저장소 GitHub" className="home-recent-changes"><CommitList commits={commits.slice(0, 4)} /></Card>

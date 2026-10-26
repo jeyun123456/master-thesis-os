@@ -20,7 +20,7 @@ export function ResearchMiniTrend({ series, sourceLabel = '필요노동 · 시�
     .sort((left, right) => left.year - right.year);
 
   if (!points.length) {
-    return <div className={`research-mini-trend research-mini-trend-empty${className ? ` ${className}` : ''}`}>결과 데이터가 없어.</div>;
+    return <div className={`research-mini-trend research-mini-trend-empty${className ? ` ${className}` : ''}`}>분석 결과 미연결 · 결과 파일을 찾지 못했어.</div>;
   }
 
   const values = points.map((point) => point.value);
