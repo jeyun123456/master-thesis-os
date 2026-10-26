@@ -30,8 +30,13 @@ export function createSourceFiles(rootDir) {
   };
 }
 
-/** Attachment metadata rows; the same file under the same source is stored once. */
+/** Attachment metadata rows; the same file under the same source is stored once. A file that arrives later fills in the earlier name-only row. */
 export function recordAttachment(db, { sourceType, sourceId, filename, mime = null, size = null, sha256: digest = null, path = null, url = null }) {
+  if (digest) {
+    const filled = db.prepare("UPDATE source_attachments SET sha256 = ?, path = ?, size = ? WHERE source_type = ? AND source_id = ? AND filename = ? AND sha256 = ''")
+      .run(digest, path, size, sourceType, sourceId, String(filename).slice(0, 300));
+    if (filled.changes) return;
+  }
   db.prepare(`INSERT OR IGNORE INTO source_attachments (id, source_type, source_id, filename, mime, size, sha256, path, url, created_at)
     VALUES (?,?,?,?,?,?,?,?,?,?)`).run(randomUUID(), sourceType, sourceId, String(filename).slice(0, 300), mime, size, digest ?? '', path, url, nowIso());
 }

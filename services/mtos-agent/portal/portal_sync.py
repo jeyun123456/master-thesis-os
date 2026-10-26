@@ -39,7 +39,41 @@ def safe_name(name: str) -> str:
     return re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", name).strip()[:150] or "attachment"
 
 
-def download_attachments(context, attachments: list[dict], files_dir: Path) -> list[dict]:
+def save_bytes(body: bytes, filename: str, files_dir: Path) -> dict:
+    digest = hashlib.sha256(body).hexdigest()
+    target = files_dir / digest[:2] / f"{digest}{Path(safe_name(filename)).suffix.lower()[:10]}"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists():
+        target.write_bytes(body)
+    return {"path": str(target), "sha256": digest, "size": len(body)}
+
+
+def download_table_files(page, wanted: dict[str, dict], files_dir: Path) -> None:
+    """Files in the portal's attachment table only have a Download button: click it and take the browser download."""
+    rows = page.locator("tr[role='row'][data-row-key-value^='06A']")
+    for index in range(min(rows.count(), 20)):
+        row = rows.nth(index)
+        try:
+            name = (row.locator("[data-label='File Name']").first.get_attribute("data-cell-value") or "").strip()
+            ext = (row.locator("[data-label='File Type']").first.get_attribute("data-cell-value") or "").strip()
+            filename = name if not ext or name.lower().endswith(f".{ext.lower()}") else f"{name}.{ext}"
+            entry = wanted.get(filename)
+            if entry is None or entry["path"]:
+                continue
+            with page.expect_download(timeout=45000) as download:
+                row.locator("[data-label='Download'] button").first.click(timeout=10000)
+            temp = files_dir / f".download-{index}.tmp"
+            files_dir.mkdir(parents=True, exist_ok=True)
+            download.value.save_as(str(temp))
+            body = temp.read_bytes()
+            temp.unlink(missing_ok=True)
+            if body and len(body) <= MAX_ATTACHMENT_BYTES:
+                entry.update(save_bytes(body, filename, files_dir))
+        except Exception:
+            continue
+
+
+def download_attachments(context, attachments: list[dict], files_dir: Path, page=None) -> list[dict]:
     """Saves attachments that have a direct URL, through the logged-in browser context.
 
     Files the portal only offers behind a script-driven button have no URL; those keep
@@ -63,6 +97,8 @@ def download_attachments(context, attachments: list[dict], files_dir: Path) -> l
             except Exception:
                 pass
         result.append(entry)
+    if page is not None:
+        download_table_files(page, {e["filename"]: e for e in result if not e["path"]}, files_dir)
     return result
 
 
@@ -98,7 +134,7 @@ def run_sync(request: dict) -> dict:
                             raise
                         errors.append({"notice_id": summary.notice_id, "code": exc.code})
                         continue
-                    detail["attachments"] = download_attachments(context, detail.get("attachments") or [], files_dir)
+                    detail["attachments"] = download_attachments(context, detail.get("attachments") or [], files_dir, page)
                     detail["fingerprint"] = row["fingerprint"]
                     notices.append(detail)
     return {

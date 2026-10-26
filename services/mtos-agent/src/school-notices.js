@@ -53,7 +53,8 @@ export function createSchoolNoticeCollector({ db, store, env = process.env, now 
     const attachments = (detail.attachments ?? []).map((a) => ({ filename: String(a.filename ?? ''), url: a.url || null, path: a.path || null, sha256: a.sha256 || '', size: a.size ?? null })).filter((a) => a.filename);
     const hash = sha1([detail.title, detail.department, detail.published_at, detail.expires_at, detail.deadline, detail.importance, detail.category, detail.body, attachments.map((a) => a.filename).join(',')].join('\n'));
     const existing = db.prepare('SELECT * FROM school_notices WHERE notice_id = ?').get(noticeId);
-    if (existing && existing.content_hash === hash) return;
+    const record = () => { for (const a of attachments) recordAttachment(db, { sourceType: 'school_notice', sourceId: noticeId, filename: a.filename, size: a.size, sha256: a.sha256, path: a.path, url: a.url }); };
+    if (existing && existing.content_hash === hash) { record(); return; } // same text; a file may have been fetched since
     const row = {
       notice_type: detail.type ?? detail.notice_type ?? '', category: detail.category ?? '', department: detail.department ?? '', title: detail.title ?? '', importance: detail.importance ?? '',
       published_at: detail.published_at || null, deadline: detail.deadline || null, expires_at: detail.expires_at || null, body_text: detail.body ?? '', source_url: detail.source_url || null,
@@ -74,7 +75,7 @@ export function createSchoolNoticeCollector({ db, store, env = process.env, now 
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(noticeId, row.notice_type, row.category, row.department, row.title, row.importance, row.published_at, null, row.deadline, row.expires_at,
           row.body_text, row.source_url, hash, stamp, stamp);
       }
-      for (const a of attachments) recordAttachment(db, { sourceType: 'school_notice', sourceId: noticeId, filename: a.filename, size: a.size, sha256: a.sha256, path: a.path, url: a.url });
+      record();
     });
     out.stored += 1;
     const itemId = enqueueForAi(store, {
@@ -99,8 +100,13 @@ export function createSchoolNoticeCollector({ db, store, env = process.env, now 
       const fingerprints = { ...(cursor.fingerprints ?? {}) };
       const detailAt = { ...(cursor.detail_at ?? {}) };
       const recent = new Set(db.prepare('SELECT notice_id FROM school_notices WHERE published_at >= ?').all(new Date(now() - 14 * DAY_MS).toISOString()).map((r) => r.notice_id));
-      const refresh = [...recent].filter((id) => now() - Date.parse(detailAt[id] ?? 0) > DAY_MS);
-      const result = await run({ since, known: fingerprints, refresh, files_dir: filesDir });
+      const refresh = new Set([...recent].filter((id) => now() - Date.parse(detailAt[id] ?? 0) > DAY_MS));
+      // Notices whose files were never downloaded (earlier runs, failed downloads) get a few more tries.
+      const tries = { ...(cursor.download_tries ?? {}) };
+      for (const { source_id: id } of db.prepare("SELECT DISTINCT source_id FROM source_attachments WHERE source_type = 'school_notice' AND path IS NULL AND (url IS NULL OR url = '')").all()) {
+        if ((tries[id] ?? 0) < 3) { refresh.add(id); tries[id] = (tries[id] ?? 0) + 1; }
+      }
+      const result = await run({ since, known: fingerprints, refresh: [...refresh], files_dir: filesDir });
 
       if (!result.ok) {
         if (SESSION_CODES.has(result.code)) {
@@ -120,7 +126,7 @@ export function createSchoolNoticeCollector({ db, store, env = process.env, now 
       }
       store.settings.setCollector('school_notices', {
         last_success_at: startedAt, last_error: null,
-        cursor: JSON.stringify({ ...cursor, session: 'ok', initialized_at: cursor.initialized_at ?? startedAt, fingerprints, detail_at: detailAt, pending: result.pending ?? 0 }),
+        cursor: JSON.stringify({ ...cursor, session: 'ok', initialized_at: cursor.initialized_at ?? startedAt, fingerprints, detail_at: detailAt, download_tries: tries, pending: result.pending ?? 0 }),
       });
       return { fetched: out.stored, newItemIds: out.newItemIds, updated: out.updated, session: 'ok' };
     } catch (error) {

@@ -73,3 +73,15 @@ test('other portal failures keep existing data and are retried', async () => {
   await assert.rejects(() => s.collect(), /parsing_failed/);
   assert.equal(s.db.prepare('SELECT COUNT(*) n FROM school_notices').get().n, 1);
 });
+
+test('a file fetched later fills the name-only attachment row instead of adding a duplicate, without re-analysing', async () => {
+  const bare = notice('A', { attachments: [{ filename: 'form.pdf', url: '', path: null, sha256: null, size: null }] });
+  const filled = notice('A', { attachments: [{ filename: 'form.pdf', url: '', path: 'C:/files/ab/abc.pdf', sha256: 'abc', size: 12 }] });
+  const s = setup([ok([bare]), ok([filled])]);
+  assert.equal((await s.collect()).newItemIds.length, 1);
+  const again = await s.collect();
+  assert.equal(again.newItemIds.length, 0);
+  const rows = s.db.prepare('SELECT filename, sha256, path, size FROM source_attachments').all();
+  assert.deepEqual(rows.map((r) => [r.filename, r.sha256, r.path, r.size]), [['form.pdf', 'abc', 'C:/files/ab/abc.pdf', 12]]);
+  assert.deepEqual(s.requests[1].refresh, ['A']); // the missing file was requested again
+});
