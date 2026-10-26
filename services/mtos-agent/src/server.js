@@ -264,7 +264,7 @@ function main() {
     // metrics go to a separate SQLite file so the agent's production DB schema stays untouched
     const opsStore = createOpsStore(openOpsDb(env.MTOS_OPS_DB_PATH ?? join(dirname(dbPath), 'ops.db')));
     const intervalMs = (key, fallback) => Math.max(15, Number(env[key]) || fallback) * 1000;
-    const collector = createOpsCollector({ store: opsStore, log: console.error, intervals: { fast: intervalMs('MTOS_OPS_INTERVAL_SEC', 60), inventory: intervalMs('MTOS_OPS_INVENTORY_SEC', 300), slow: intervalMs('MTOS_OPS_CONFIG_SEC', 1800) } });
+    const collector = createOpsCollector({ store: opsStore, log: console.error, lowMemBytes: Math.max(0, Number(env.MTOS_OPS_LOW_MEM_MB) || 150) * 1048576, intervals: { fast: intervalMs('MTOS_OPS_INTERVAL_SEC', 60), inventory: intervalMs('MTOS_OPS_INVENTORY_SEC', 300), slow: intervalMs('MTOS_OPS_CONFIG_SEC', 1800) } });
     collector.start().catch((error) => console.error('[mtos-agent] ops collector failed to start', error));
     ops = createOpsApi({ opsStore, collector, agentDb: db, agentStore: createStore(db), env });
   }

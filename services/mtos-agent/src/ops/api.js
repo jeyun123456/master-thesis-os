@@ -142,7 +142,7 @@ export function createOpsApi({ opsStore, collector, agentDb, agentStore, env = p
     const rawFrom = raw[0]?.ts ?? t;
     const old = rawFrom > since ? opsStore.rollupSamplesSince(since).filter((r) => r.bucket < rawFrom) : [];
     const system = old.map((r) => ({ ts: r.bucket, cpu: r.cpu_avg, memAvail: r.avail_avg, memTotal: r.mem_total, commitUsed: r.commit_max, commitLimit: r.commit_limit, diskFreePct: null }))
-      .concat(raw.map((s) => ({ ts: s.ts, cpu: s.cpu, memAvail: s.mem_avail, memTotal: s.mem_total, commitUsed: s.commit_used, commitLimit: s.commit_limit, diskFreePct: Math.min(...JSON.parse(s.disks).map((d) => (d.size ? (d.free / d.size) * 100 : 100)), 100) })));
+      .concat(raw.map((s) => ({ ts: s.ts, cpu: s.cpu, memAvail: s.mem_avail, memTotal: s.mem_total, commitUsed: s.commit_used, commitLimit: s.commit_limit, diskFreePct: (() => { const d = JSON.parse(s.disks); return d.length ? Math.min(...d.map((x) => (x.size ? (x.free / x.size) * 100 : 100))) : null; })() })));
     const disks = raw.length ? raw.map((s) => ({ ts: s.ts, disks: JSON.parse(s.disks) })) : [];
     const gRaw = groups.length ? opsStore.groupSince(since, groups) : [];
     const gOld = groups.length && rawFrom > since ? opsStore.rollupGroupSince(since, groups).filter((r) => r.ts < rawFrom) : [];

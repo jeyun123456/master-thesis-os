@@ -212,3 +212,21 @@ test('over HTTP: no session -> 401, valid session without admin secret -> 403, w
     for (const path of ['/overview', '/processes', '/services', '/trend?range=24h', '/background?kind=mcp', '/ai', '/alerts', '/events']) assert.equal(await get(path, ok), 200, path);
   } finally { server.close(); collector.stop(); }
 });
+
+test('under extreme memory pressure only Node counters are recorded and the PowerShell probe is skipped', async () => {
+  const store = createOpsStore(openOpsDb(':memory:'));
+  const calls = [];
+  let free = 40 * MB;
+  const collector = createOpsCollector({ store, probe: async (tier) => { calls.push(tier); return fakeProbe({ cpu: 1 })(tier); }, freemem: () => free, totalmem: () => 8000 * MB, lowMemBytes: 150 * MB });
+  await collector.tick.fast();
+  assert.deepEqual(calls, [], 'no probe while memory is critically low');
+  assert.equal(store.latestSample().mem_avail, 40 * MB);
+  assert.equal(store.latestSample().commit_used, null);
+  assert.ok(store.eventsSince(0).some((e) => e.kind === 'probe_skipped_low_memory'));
+
+  free = 900 * MB;
+  await collector.tick.slow(); await collector.tick.inventory(); await collector.tick.fast();
+  assert.ok(calls.includes('fast'), 'normal probing resumes when memory recovers');
+  assert.equal(store.latestSample().commit_used, 30e9);
+  collector.stop();
+});

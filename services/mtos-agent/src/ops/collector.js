@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { cpus as osCpus } from 'node:os';
+import { cpus as osCpus, freemem as osFreemem, totalmem as osTotalmem } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { analyze, buildTree } from './classify.js';
@@ -32,7 +32,7 @@ export function runProbe(tier, { spawnImpl = spawn } = {}) {
 
 const cpuTotals = (list) => list.reduce((a, c) => ({ idle: a.idle + c.times.idle, total: a.total + c.times.user + c.times.nice + c.times.sys + c.times.idle + c.times.irq }), { idle: 0, total: 0 });
 
-export function createOpsCollector({ store, probe = runProbe, now = () => Date.now(), cpus = osCpus, intervals = {}, log = () => {} }) {
+export function createOpsCollector({ store, probe = runProbe, now = () => Date.now(), cpus = osCpus, freemem = osFreemem, totalmem = osTotalmem, lowMemBytes = 150 * 1024 * 1024, intervals = {}, log = () => {} }) {
   const every = { fast: 60_000, inventory: 5 * 60_000, slow: 30 * 60_000, ...intervals };
   const stat = { startedAt: now(), runs: 0, failures: 0, lastAt: null, lastMs: null, lastError: null, rssMb: null };
   const mem = { inventoryRaw: null, slow: store.state('slow')?.value ?? {}, fast: [], prevCpu: null, prevProc: new Map(), prevPresence: null, analysis: null, timers: [], stopped: false };
@@ -47,7 +47,23 @@ export function createOpsCollector({ store, probe = runProbe, now = () => Date.n
     if (persist) store.setState('analysis', now(), mem.analysis);
   };
 
+  // Under extreme memory pressure the PowerShell probe (~90MB) would make things worse, so only Node's own counters are recorded.
+  function runLightFast() {
+    const ts = now();
+    const totals = cpuTotals(cpus());
+    let cpu = null;
+    if (mem.prevCpu) {
+      const total = totals.total - mem.prevCpu.total;
+      cpu = total > 0 ? Math.round((1 - (totals.idle - mem.prevCpu.idle) / total) * 1000) / 10 : null;
+    }
+    mem.prevCpu = { ...totals, ts };
+    mem.prevProc = new Map();
+    store.saveSample(ts, { cpu, memTotal: totalmem(), memAvail: freemem(), commitUsed: null, commitLimit: null, standby: null, modified: null, compressedWs: null, pagefileUsedMb: null, procCount: null, disks: [] }, []);
+    store.addEvent(ts, 'probe_skipped_low_memory', 'collector', `available ${Math.round(freemem() / 1048576)}MB`);
+  }
+
   async function runFast() {
+    if (freemem() < lowMemBytes) { runLightFast(); return; }
     const s = await probe('fast');
     const ts = now();
     const list = cpus();
