@@ -57,6 +57,8 @@ export function createYolo({ db, store, p0, ai, labRoot, now = () => Date.now() 
     }
     const projects = await readChocomintProjects(labRoot);
     for (const project of projects) {
+      // Only active projects feed task creation; finished/waiting ones stay as prompt context.
+      if (project.status !== '진행중') continue;
       if (seen.get('github', project.id)?.version === project.version) continue;
       sources.push({
         type: 'github', id: project.id, url: LAB_BLOB + project.path, updated_at: null, version: project.version,
