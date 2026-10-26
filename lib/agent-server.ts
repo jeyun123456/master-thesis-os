@@ -4,8 +4,8 @@ import { noStore, P0_APP_SESSION_COOKIE, P0ApiError, readRequestBytesLimited, sa
 const DEFAULT_AGENT_URL = 'http://127.0.0.1:8789';
 const MAX_BODY = 512 * 1024;
 // First segment must be a known agent resource; deeper segments are ids/actions.
-const RESOURCE = /^(status|worker|jobs|memos|milestones|inbox|approvals|task-meta|occurrences|focus|context|settings|search|school)(\/[A-Za-z0-9_-]{1,200}){0,2}$/;
-const FORWARDED_QUERY = ['q', 'state', 'project_id', 'date', 'limit', 'offset', 'type'];
+const RESOURCE = /^(status|worker|jobs|memos|milestones|inbox|approvals|task-meta|occurrences|focus|context|settings|search|school|ops)(\/[A-Za-z0-9_-]{1,200}){0,2}$/;
+const FORWARDED_QUERY = ['q', 'state', 'project_id', 'date', 'limit', 'offset', 'type', 'sort', 'range', 'groups', 'kind', 'status', 'minMb'];
 
 export type AgentErrorCode = 'agent_unconfigured' | 'agent_unreachable' | 'auth_required' | 'bad_path';
 
@@ -59,6 +59,11 @@ export async function proxyToAgent(request: NextRequest, segments: string[]) {
     if (value !== null) url.searchParams.set(key, value.slice(0, 300));
   }
   const headers = new Headers({ accept: 'application/json', authorization: `Bearer ${token}` });
+  // Server management is admin-only: the secret lives in the Vercel server environment and is never sent to the browser.
+  if (path === 'ops' || path.startsWith('ops/')) {
+    const adminSecret = process.env.MTOS_OPS_ADMIN_SECRET?.trim();
+    if (adminSecret) headers.set('x-ops-admin', adminSecret);
+  }
   let body: Uint8Array | undefined;
   if (method !== 'GET' && method !== 'DELETE') {
     try {

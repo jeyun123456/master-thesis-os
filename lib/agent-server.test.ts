@@ -40,6 +40,17 @@ describe('proxyToAgent', () => {
     expect((await proxyToAgent(request('school/mails', { cookie: null }), ['school', 'mails'])).status).toBe(401);
   });
 
+  it('adds the server-side ops admin secret only to ops requests and needs a session', async () => {
+    vi.stubEnv('MTOS_OPS_ADMIN_SECRET', 'ops-secret-value');
+    expect((await proxyToAgent(request('ops/trend?range=24h&evil=1'), ['ops', 'trend'])).status).toBe(200);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe('http://127.0.0.1:8789/agent/api/ops/trend?range=24h');
+    expect(new Headers(init.headers).get('x-ops-admin')).toBe('ops-secret-value');
+    await proxyToAgent(request('memos'), ['memos']);
+    expect(new Headers(fetchMock.mock.calls[1][1].headers).get('x-ops-admin')).toBeNull();
+    expect((await proxyToAgent(request('ops/overview', { cookie: null }), ['ops', 'overview'])).status).toBe(401);
+  });
+
   it('rejects unknown resources and deep paths', async () => {
     expect((await proxyToAgent(request('admin'), ['admin'])).status).toBe(404);
     expect((await proxyToAgent(request('memos/a/b/c'), ['memos', 'a', 'b', 'c'])).status).toBe(404);

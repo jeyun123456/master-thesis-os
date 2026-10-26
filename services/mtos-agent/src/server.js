@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { AuthError, createSessionVerifier } from './auth.js';
 import { detectCodex } from './codex.js';
 import { openAgentDb } from './db.js';
+import { createOpsApi } from './ops/api.js';
+import { createOpsCollector } from './ops/collector.js';
+import { createOpsStore, openOpsDb } from './ops/store.js';
 import { createP0Client } from './p0-client.js';
 import { createQueue } from './queue.js';
 import { tokyoDate } from './schedule.js';
@@ -76,7 +79,7 @@ function validateJobInput(type, input) {
 }
 
 /** Request handler; collaborators are injectable for tests. */
-export function createAgentApp({ db, verifySession, yolo = null, now = () => Date.now(), codexInfo = () => detectCodex() }) {
+export function createAgentApp({ db, verifySession, yolo = null, ops = null, now = () => Date.now(), codexInfo = () => detectCodex() }) {
   const store = createStore(db);
   const queue = createQueue(db, { now });
 
@@ -87,6 +90,9 @@ export function createAgentApp({ db, verifySession, yolo = null, now = () => Dat
 
     const header = req.headers.authorization ?? '';
     await verifySession(header.startsWith('Bearer ') ? header.slice(7) : '');
+
+    // read-only server monitoring; handled before any body parsing and never reachable without the ops switch
+    if (ops?.handles(path)) return ops.handle({ req, method, path, url, readBody: () => readJson(req) });
 
     const body = method === 'POST' || method === 'PATCH' || method === 'PUT' ? await readJson(req) : undefined;
     let m;
@@ -248,11 +254,21 @@ export function createAgentApp({ db, verifySession, yolo = null, now = () => Dat
 function main() {
   const env = process.env;
   const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-  const db = openAgentDb(env.MTOS_AGENT_DB_PATH ?? join(root, 'data', 'mtos-agent.db'));
+  const dbPath = env.MTOS_AGENT_DB_PATH ?? join(root, 'data', 'mtos-agent.db');
+  const db = openAgentDb(dbPath);
   const yolo = env.MTOS_YOLO_ENABLED === '1' && env.P0_SERVICE_TOKEN
     ? createYolo({ db, store: createStore(db), ai: { model: env.MTOS_AI_MODEL || 'gpt-6-luna' }, p0: createP0Client({ baseUrl: env.MTOS_P0_URL ?? 'http://127.0.0.1:8787', token: env.P0_SERVICE_TOKEN }), labRoot: env.CHOCOMINT_LAB_ROOT ?? 'C:/work/chocomint-lab' })
     : null;
-  const app = createAgentApp({ db, yolo, verifySession: createSessionVerifier({ p0Url: env.MTOS_P0_URL ?? 'http://127.0.0.1:8787' }) });
+  let ops = null;
+  if (env.MTOS_OPS_ENABLED === '1') {
+    // metrics go to a separate SQLite file so the agent's production DB schema stays untouched
+    const opsStore = createOpsStore(openOpsDb(env.MTOS_OPS_DB_PATH ?? join(dirname(dbPath), 'ops.db')));
+    const intervalMs = (key, fallback) => Math.max(15, Number(env[key]) || fallback) * 1000;
+    const collector = createOpsCollector({ store: opsStore, log: console.error, intervals: { fast: intervalMs('MTOS_OPS_INTERVAL_SEC', 60), inventory: intervalMs('MTOS_OPS_INVENTORY_SEC', 300), slow: intervalMs('MTOS_OPS_CONFIG_SEC', 1800) } });
+    collector.start().catch((error) => console.error('[mtos-agent] ops collector failed to start', error));
+    ops = createOpsApi({ opsStore, collector, agentDb: db, agentStore: createStore(db), env });
+  }
+  const app = createAgentApp({ db, yolo, ops, verifySession: createSessionVerifier({ p0Url: env.MTOS_P0_URL ?? 'http://127.0.0.1:8787' }) });
   const port = Number(env.MTOS_AGENT_PORT ?? 8789);
   // Loopback only; reachable from Vercel through the P0 Cloudflare tunnel path rule.
   createServer(app).listen(port, '127.0.0.1', () => console.log(`mtos-agent listening on 127.0.0.1:${port}`));

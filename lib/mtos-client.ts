@@ -77,6 +77,8 @@ export function agentErrorText(error: unknown, fallback: string) {
 
 export const mtosApi = {
   status: () => agent<AgentStatus>('status'),
+  ops: <T>(name: string, query?: Record<string, string | undefined>) => agent<T>(`ops/${name}`, { query }),
+  opsSaveSettings: (settings: Record<string, number>) => agent<{ settings: Record<string, number> }>('ops/settings', { method: 'PUT', body: settings }),
   schoolStatus: () => agent<SchoolStatus>('school/status'),
   schoolMails: (limit = 50) => agent<{ mails: SchoolMailSummary[]; total: number }>('school/mails', { query: { limit: String(limit) } }),
   schoolMail: (id: string) => agent<{ mail: SchoolMailDetail }>(`school/mails/${id}`),

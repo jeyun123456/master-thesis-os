@@ -16,6 +16,7 @@ import { ResultsPanel as ResultsDashboardPanel } from '@/app/results-panel';
 import { DailyChecklist } from '@/app/daily-checklist';
 import { RewardSlotPanel } from '@/app/reward-slot';
 import { SchoolNoticesPanel, ThunderbirdMailPanel } from '@/app/school-server-panels';
+import { ServerOpsPanel } from '@/app/server-ops-panel';
 import { P0TasksPanel } from '@/app/p0-tasks-panel';
 import { ShortcutList, ShortcutsPanel } from '@/app/shortcuts-panel';
 import { isSafeRepositoryPath } from '@/lib/repository';
@@ -36,7 +37,7 @@ import { initialKanbanState, type KanbanViewState } from '@/app/research-kanban'
 import { p0TodayInTokyo } from '@/lib/p0-home';
 import appPackage from '../package.json';
 
-type Page = 'home' | 'research' | 'results' | 'library' | 'calendar' | 'slot' | 'shortcuts' | 'inbox' | 'mail' | 'portal' | 'planner' | 'settings';
+type Page = 'home' | 'research' | 'results' | 'library' | 'calendar' | 'slot' | 'shortcuts' | 'inbox' | 'mail' | 'portal' | 'planner' | 'server' | 'settings';
 
 const APP_VERSION = appPackage.version;
 
@@ -69,6 +70,7 @@ const pageMeta: Record<Page, [string, string]> = {
   mail: ['메일', '학교 업무 · 국제과를 폴더별로 확인'],
   portal: ['학교 공지', 'RITSUMEIKAN STUDENT PORTAL의 ALL · DM 공지'],
   planner: ['플래너', '서버 P0 할 일 관리 · AI가 자동으로 정리'],
+  server: ['서버 관리', '서버 자원 · 서비스 · 백그라운드 작업 · 운영 경고 (읽기 전용)'],
   settings: ['설정', '연구 저장소 · Google Calendar · 메일 · 세션'],
 };
 
@@ -101,6 +103,7 @@ const navigationGroups: NavigationGroup[] = [
     items: [
       { id: 'slot', label: '슬롯', icon: '◉' },
       { id: 'shortcuts', label: '바로가기', icon: '↗' },
+      { id: 'server', label: '서버 관리', icon: '▤' },
     ],
   },
 ];
@@ -419,6 +422,7 @@ function AuthenticatedPage() {
         {page === 'mail' && <section className="page active"><GmailMailPanel /><div className="section-gap"><ThunderbirdMailPanel /></div></section>}
         {page === 'portal' && <section className="page active"><SchoolNoticesPanel /></section>}
         {page === 'planner' && <section className="page active"><P0TasksPanel /></section>}
+        {page === 'server' && <section className="page active"><ServerOpsPanel /></section>}
         {page === 'inbox' && <section className="page active"><AiInboxPanel projects={projects} onTasksChanged={() => { void workspace.reloadTasks(); workspace.bumpTaskReload(); }} /></section>}
 
         {page === 'settings' && <section className="page active settings-page">
