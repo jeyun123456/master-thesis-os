@@ -39,7 +39,7 @@ export function detectCodex(env = process.env) {
  * and never appears in argv or logs.
  */
 export function createCodexRunner({ env = process.env, timeoutMs = 180_000, spawnImpl = spawn } = {}) {
-  const model = env.MTOS_AI_MODEL?.trim() || 'gpt-5.6-luna';
+  const model = env.MTOS_AI_MODEL?.trim() || 'gpt-6-luna';
   if (!MODEL_PATTERN.test(model)) throw new Error('MTOS_AI_MODEL is invalid');
 
   async function run({ prompt, schema }) {

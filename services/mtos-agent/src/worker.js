@@ -6,8 +6,10 @@ import { nowIso, openAgentDb } from './db.js';
 import { createGmailCollector, MailConfigError } from './gmail.js';
 import { createJobHandlers, PermanentJobError } from './jobs.js';
 import { createQueue } from './queue.js';
-import { latestCollectSlot, slotDue } from './schedule.js';
+import { latestCollectSlot, slotDue, tokyoDate } from './schedule.js';
+import { createP0Client } from './p0-client.js';
 import { createStore } from './store.js';
+import { createYolo } from './yolo.js';
 
 const LEASE_MS = 5 * 60_000;
 const AUTH_RECHECK_MS = 10 * 60_000;
@@ -16,16 +18,29 @@ const AUTH_RECHECK_MS = 10 * 60_000;
  * One worker tick: recover dead leases, enqueue the due mail slot, then run at
  * most one job. Exposed for tests; `startWorker` loops it.
  */
-export function createWorker({ db, ai, collectMail, owner = `${hostname()}:${process.pid}`, concurrency = 1, now = () => Date.now(), log = () => {} }) {
+export function createWorker({ db, ai, collectMail, yolo = null, yoloConfig = {}, owner = `${hostname()}:${process.pid}`, concurrency = 1, now = () => Date.now(), log = () => {} }) {
   const store = createStore(db);
   const queue = createQueue(db, { now });
-  const handlers = createJobHandlers({ store, queue, ai, collectMail, now });
+  const handlers = createJobHandlers({ store, queue, ai, collectMail, yolo, now });
+  const yoloEveryMs = Math.max(5, Number(yoloConfig.collectMinutes) || 30) * 60_000;
+  const reevalHour = Number.isInteger(yoloConfig.reevalHourJst) ? yoloConfig.reevalHourJst : 4;
   let lastAuthCheck = 0;
 
   function scheduleCollect() {
     const slot = latestCollectSlot(now());
     if (!slotDue(slot, now())) return null;
     return queue.enqueue({ type: 'collect_mail', source: 'scheduled', dedupeKey: `collect_mail:slot:${slot.key}`, maxAttempts: 4 });
+  }
+
+  /** YOLO cadence: collect + manage every N minutes, one re-evaluation of existing tasks per JST day. */
+  function scheduleYolo() {
+    const slot = Math.floor(now() / yoloEveryMs);
+    queue.enqueue({ type: 'collect_mail', source: 'scheduled', dedupeKey: `collect_mail:yolo:${slot}`, maxAttempts: 2 });
+    queue.enqueue({ type: 'yolo_manage', input: { mode: 'incoming' }, source: 'scheduled', dedupeKey: `yolo:incoming:${slot}`, maxAttempts: 2 });
+    const jstHour = new Date(now() + 9 * 3600_000).getUTCHours();
+    if (jstHour >= reevalHour) {
+      queue.enqueue({ type: 'yolo_manage', input: { mode: 'reevaluate' }, source: 'scheduled', dedupeKey: `yolo:reeval:${tokyoDate(now())}`, maxAttempts: 2 });
+    }
   }
 
   async function maybeResume() {
@@ -72,7 +87,7 @@ export function createWorker({ db, ai, collectMail, owner = `${hostname()}:${pro
       store.audit('jobs_recovered', String(recovered));
       log(`recovered ${recovered} job(s) left running by a stopped worker`);
     }
-    scheduleCollect();
+    if (yolo) scheduleYolo(); else scheduleCollect();
     await maybeResume();
     db.prepare("INSERT INTO meta (key, value) VALUES ('worker_heartbeat', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
       .run(JSON.stringify({ at: nowIso(), owner, codex_model: ai.model ?? null }));
@@ -92,7 +107,12 @@ export async function startWorker(env = process.env) {
   const ai = createCodexRunner({ env });
   const collectMail = createGmailCollector({ store, env });
   const concurrency = Math.max(1, Math.min(2, Number(env.MTOS_WORKER_CONCURRENCY ?? 1) || 1));
-  const worker = createWorker({ db, ai, collectMail, concurrency, log: (m) => console.log(`[mtos-worker] ${new Date().toISOString()} ${m}`) });
+  // YOLO needs an explicit opt-in and the P0 service token; otherwise the approval-based inbox flow stays as it was.
+  const yolo = env.MTOS_YOLO_ENABLED === '1' && env.P0_SERVICE_TOKEN
+    ? createYolo({ db, store, ai, p0: createP0Client({ baseUrl: env.MTOS_P0_URL ?? 'http://127.0.0.1:8787', token: env.P0_SERVICE_TOKEN }), labRoot: env.CHOCOMINT_LAB_ROOT ?? 'C:/work/chocomint-lab' })
+    : null;
+  const yoloConfig = { collectMinutes: env.MTOS_YOLO_COLLECT_MINUTES, reevalHourJst: env.MTOS_YOLO_REEVAL_HOUR_JST === undefined ? undefined : Number(env.MTOS_YOLO_REEVAL_HOUR_JST) };
+  const worker = createWorker({ db, ai, collectMail, yolo, yoloConfig, concurrency, log: (m) => console.log(`[mtos-worker] ${new Date().toISOString()} ${m}`) });
   let stopping = false;
   const stop = () => { stopping = true; };
   process.on('SIGINT', stop);

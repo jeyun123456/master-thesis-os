@@ -168,6 +168,41 @@ CREATE TABLE IF NOT EXISTS collector_state (
   last_error TEXT
 );
 
+-- YOLO task management: one row per run, one row per task change (before/after
+-- allows rollback), and the last source version already handled (change detection).
+CREATE TABLE IF NOT EXISTS yolo_runs (
+  id TEXT PRIMARY KEY,
+  mode TEXT NOT NULL,
+  model TEXT,
+  status TEXT NOT NULL,
+  summary TEXT,
+  error TEXT,
+  started_at TEXT NOT NULL,
+  finished_at TEXT
+);
+CREATE TABLE IF NOT EXISTS yolo_changes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id TEXT NOT NULL REFERENCES yolo_runs(id),
+  source_type TEXT,
+  source_id TEXT,
+  task_id TEXT,
+  action TEXT NOT NULL,
+  before TEXT NOT NULL DEFAULT '{}',
+  after TEXT NOT NULL DEFAULT '{}',
+  reason TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK (status IN ('applied','skipped','failed','rolled_back')),
+  error TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS yolo_changes_run ON yolo_changes(run_id);
+CREATE TABLE IF NOT EXISTS yolo_sources (
+  source_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  version TEXT NOT NULL,
+  processed_at TEXT NOT NULL,
+  PRIMARY KEY (source_type, source_id)
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   event TEXT NOT NULL,

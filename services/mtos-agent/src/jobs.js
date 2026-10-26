@@ -78,7 +78,7 @@ function checked(type, output) {
 
 const validDate = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 
-export function createJobHandlers({ store, queue, ai, collectMail, now = () => Date.now() }) {
+export function createJobHandlers({ store, queue, ai, collectMail, yolo = null, now = () => Date.now() }) {
   const handlers = {
     async classify_inbox(job) {
       const item = store.inbox.get(job.input.item_id);
@@ -161,10 +161,21 @@ export function createJobHandlers({ store, queue, ai, collectMail, now = () => D
 
     async collect_mail(job) {
       const outcome = await collectMail({ trigger: job.source });
+      if (yolo && outcome.newItemIds.length) {
+        // YOLO replaces the approval-based classifier: new mail goes straight to task management.
+        queue.enqueue({ type: 'yolo_manage', input: { mode: 'incoming' }, source: 'system', dedupeKey: `yolo:after:${job.id}` });
+        return { fetched: outcome.fetched, new_items: outcome.newItemIds.length };
+      }
       for (const itemId of outcome.newItemIds) {
         queue.enqueue({ type: 'classify_inbox', input: { item_id: itemId }, source: job.source === 'user' ? 'user' : 'system', dedupeKey: `classify:${itemId}` });
       }
       return { fetched: outcome.fetched, new_items: outcome.newItemIds.length };
+    },
+
+    async yolo_manage(job) {
+      if (!yolo) throw new PermanentJobError('YOLO task management is not enabled.');
+      const result = await yolo.run({ mode: job.input?.mode === 'reevaluate' ? 'reevaluate' : 'incoming', trigger: job.source });
+      return { ...result, ...(result.status === 'skipped' ? {} : { model: ai.model }) };
     },
 
     async recommend_focus(job) {

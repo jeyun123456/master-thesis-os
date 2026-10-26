@@ -4,15 +4,17 @@ import { fileURLToPath } from 'node:url';
 import { AuthError, createSessionVerifier } from './auth.js';
 import { detectCodex } from './codex.js';
 import { openAgentDb } from './db.js';
+import { createP0Client } from './p0-client.js';
 import { createQueue } from './queue.js';
 import { tokyoDate } from './schedule.js';
 import { createStore } from './store.js';
+import { createYolo } from './yolo.js';
 import { ConflictError, NotFoundError, ValidationError, date, id, isRecord, oneOf, text } from './validate.js';
 
 const PREFIX = '/agent/api';
 const MAX_BODY = 512 * 1024;
 // Job types the web app may request directly; collect/classify also run on schedule.
-const USER_JOB_TYPES = ['recommend_focus', 'decompose_task', 'unblock_task', 'obsidian_merge', 'collect_mail', 'classify_inbox'];
+const USER_JOB_TYPES = ['recommend_focus', 'decompose_task', 'unblock_task', 'obsidian_merge', 'collect_mail', 'classify_inbox', 'yolo_manage'];
 
 class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -64,13 +66,14 @@ function validateJobInput(type, input) {
       };
     }
     case 'collect_mail': return {};
+    case 'yolo_manage': return { mode: oneOf(input.mode, 'mode', ['incoming', 'reevaluate'], 'incoming') };
     case 'classify_inbox': return { item_id: id(input.item_id, 'item_id') };
     default: throw new ValidationError('job type not allowed');
   }
 }
 
 /** Request handler; collaborators are injectable for tests. */
-export function createAgentApp({ db, verifySession, now = () => Date.now(), codexInfo = () => detectCodex() }) {
+export function createAgentApp({ db, verifySession, yolo = null, now = () => Date.now(), codexInfo = () => detectCodex() }) {
   const store = createStore(db);
   const queue = createQueue(db, { now });
 
@@ -95,6 +98,20 @@ export function createAgentApp({ db, verifySession, now = () => Date.now(), code
       }];
     }
     if (method === 'POST' && path === '/worker/resume') { queue.resume(); store.audit('worker_resumed', 'user'); return [200, { paused: null }]; }
+
+    // YOLO task management history and rollback (writes always go through the P0 task API)
+    if (method === 'GET' && path === '/yolo/runs') return [200, { enabled: Boolean(yolo), runs: db.prepare('SELECT * FROM yolo_runs ORDER BY started_at DESC LIMIT 30').all() }];
+    if ((m = path.match(/^\/yolo\/runs\/([\w-]+)$/)) && method === 'GET') {
+      const run = db.prepare('SELECT * FROM yolo_runs WHERE id = ?').get(m[1]);
+      if (!run) throw new NotFoundError('run not found');
+      const changes = db.prepare('SELECT * FROM yolo_changes WHERE run_id = ? ORDER BY id').all(m[1]).map((c) => ({ ...c, before: JSON.parse(c.before), after: JSON.parse(c.after) }));
+      return [200, { run, changes }];
+    }
+    if ((m = path.match(/^\/yolo\/runs\/([\w-]+)\/rollback$/)) && method === 'POST') {
+      if (!yolo) throw new HttpError(503, 'YOLO is not enabled');
+      if (!db.prepare('SELECT 1 FROM yolo_runs WHERE id = ?').get(m[1])) throw new NotFoundError('run not found');
+      return [200, await yolo.rollback(m[1])];
+    }
 
     // jobs
     if (method === 'GET' && path === '/jobs') {
@@ -219,7 +236,10 @@ function main() {
   const env = process.env;
   const root = join(dirname(fileURLToPath(import.meta.url)), '..');
   const db = openAgentDb(env.MTOS_AGENT_DB_PATH ?? join(root, 'data', 'mtos-agent.db'));
-  const app = createAgentApp({ db, verifySession: createSessionVerifier({ p0Url: env.MTOS_P0_URL ?? 'http://127.0.0.1:8787' }) });
+  const yolo = env.MTOS_YOLO_ENABLED === '1' && env.P0_SERVICE_TOKEN
+    ? createYolo({ db, store: createStore(db), ai: { model: env.MTOS_AI_MODEL || 'gpt-6-luna' }, p0: createP0Client({ baseUrl: env.MTOS_P0_URL ?? 'http://127.0.0.1:8787', token: env.P0_SERVICE_TOKEN }), labRoot: env.CHOCOMINT_LAB_ROOT ?? 'C:/work/chocomint-lab' })
+    : null;
+  const app = createAgentApp({ db, yolo, verifySession: createSessionVerifier({ p0Url: env.MTOS_P0_URL ?? 'http://127.0.0.1:8787' }) });
   const port = Number(env.MTOS_AGENT_PORT ?? 8788);
   // Loopback only; reachable from Vercel through the P0 Cloudflare tunnel path rule.
   createServer(app).listen(port, '127.0.0.1', () => console.log(`mtos-agent listening on 127.0.0.1:${port}`));
