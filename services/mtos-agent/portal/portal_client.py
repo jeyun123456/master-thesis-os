@@ -33,6 +33,9 @@ PROFILE_DIRECTORY_NAME = "ritsumei-browser-profile"
 PROFILE_APP_DIRECTORY_NAME = "MasterThesisOSWallpaper"
 DEFAULT_WAIT_SECONDS = 60
 PORTAL_READY_TIMEOUT_SECONDS = 10
+# A sync reuses the Microsoft SSO cookie (valid for weeks) to rebuild the portal session, which takes a redirect round trip
+# through login.microsoftonline.com. Only declare the session expired if that sign-in never completes within this window.
+SYNC_READY_TIMEOUT_SECONDS = 45
 PORTAL_BODY_TIMEOUT_MS = 750
 DETAIL_NAVIGATION_TIMEOUT_MS = 30000
 DEFAULT_LOGIN_WAIT_SECONDS = 300
@@ -803,7 +806,7 @@ class PortalClient:
             ready_page = self._wait_for_portal_ready(
                 context,
                 "notices",
-                PORTAL_READY_TIMEOUT_SECONDS,
+                SYNC_READY_TIMEOUT_SECONDS,
                 login_error_code=code,
                 login_error_message=message,
                 timeout_error_code="parsing_failed",

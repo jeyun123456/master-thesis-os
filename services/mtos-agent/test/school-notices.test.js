@@ -85,3 +85,26 @@ test('a file fetched later fills the name-only attachment row instead of adding 
   assert.deepEqual(rows.map((r) => [r.filename, r.sha256, r.path, r.size]), [['form.pdf', 'abc', 'C:/files/ab/abc.pdf', 12]]);
   assert.deepEqual(s.requests[1].refresh, ['A']); // the missing file was requested again
 });
+
+test('a session pause retries quietly after the interval, recovers by itself when SSO works, and stays paused when it does not', async () => {
+  const s = setup([ok([notice('A')]), { ok: false, code: 'session_expired', message: 'expired' }, { ok: false, code: 'session_expired', message: 'still expired' }, ok([notice('B')])]);
+  await s.collect();
+  assert.equal((await s.collect()).paused, true); // second run: portal asks for a login
+  const calls = s.requests.length;
+  assert.equal((await s.collect()).paused, true);
+  assert.equal(s.requests.length, calls, 'no retry inside the interval');
+
+  s.now.advance(31 * 60_000);
+  assert.equal((await s.collect()).paused, true); // retry: SSO could not sign in
+  assert.equal(s.requests.length, calls + 1);
+  assert.equal(s.db.prepare("SELECT COUNT(*) n FROM audit_log WHERE event = 'portal_session'").get().n, 1, 'failed retries do not spam the log');
+  assert.equal((await s.collect()).paused, true);
+  assert.equal(s.requests.length, calls + 1, 'interval restarts after a failed retry');
+
+  s.now.advance(31 * 60_000);
+  const recovered = await s.collect(); // retry: SSO signs in silently
+  assert.equal(recovered.session, 'ok');
+  assert.equal(recovered.paused, undefined);
+  assert.equal(s.db.prepare("SELECT detail FROM audit_log WHERE event = 'portal_session' ORDER BY id DESC LIMIT 1").get().detail, 'recovered');
+  assert.equal(s.store.settings.collector('school_notices').last_error, null);
+});
