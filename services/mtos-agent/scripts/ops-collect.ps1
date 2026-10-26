@@ -25,7 +25,8 @@ if ($Tier -eq 'fast') {
         pagefileSizeMB = [int](($pf | Measure-Object AllocatedBaseSize -Sum).Sum)
     }
     $out.bootAt = $os.LastBootUpTime.ToUniversalTime().ToString('o')
-    $out.disks = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | ForEach-Object { [ordered]@{ id = $_.DeviceID; size = [int64]$_.Size; free = [int64]$_.FreeSpace } })
+    # fixed local NTFS volumes only: removable drives come and go, and the Google Drive mount (FAT32 "G:") mirrors cloud quota, not a disk
+    $out.disks = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3 AND FileSystem='NTFS'" | ForEach-Object { [ordered]@{ id = $_.DeviceID; size = [int64]$_.Size; free = [int64]$_.FreeSpace } })
     $out.procs = @(Get-Process | ForEach-Object {
         $cpu = $null; try { $cpu = [math]::Round($_.TotalProcessorTime.TotalSeconds, 2) } catch {}
         [ordered]@{ i = $_.Id; n = $_.ProcessName; w = [int64]$_.WorkingSet64; p = [int64]$_.PrivateMemorySize64; c = $cpu; t = $_.Threads.Count }
