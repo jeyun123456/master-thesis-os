@@ -420,8 +420,8 @@ export function P0HomeWorkspace({
     <div className={styles.header}>
       <div><h3 id="p0-home-title">오늘 할 일</h3><p>{today} · {state === 'ready' ? `미완료 ${view.openCount}개${view.overdueCount ? ` · 기한 지남 ${view.overdueCount}개` : ''}` : '할 일 확인 중'}</p></div>
       <div className={styles.headerActions}>
-        <button className="mini primary" type="button" onClick={() => setCreateOpen(true)}>? ??</button>
-        <details className={styles.headerMore}><summary>? ??</summary>
+        <button className="mini primary" type="button" onClick={() => setCreateOpen(true)}>＋ 추가</button>
+        <details className={styles.headerMore}><summary>더 보기</summary>
         {newCount > 0 && <button className="mini" type="button" onClick={() => void markAllSeen()}>새 항목 {newCount}개 읽음</button>}
         <button className="mini" type="button" onClick={() => void load()} disabled={state === 'loading'}>새로고침</button>
         <button className="mini" type="button" onClick={onOpenPlanner}>Planner</button>
@@ -438,25 +438,25 @@ export function P0HomeWorkspace({
       {nowTasks.length
         ? <ul className={styles.taskList}>{nowTasks.map((task) => renderTask(task, false, true))}</ul>
         : <p className={styles.empty}>지금 급한 일이 없어. 아래에서 오늘 집중할 일을 골라봐.</p>}
-      <details><summary>AI ??</summary><FocusRecommendations tasks={tasks} meta={meta} today={today} calendarEvents={calendarEvents} onAccept={pinToday} onVisibleChange={setRecommendedIds} /></details>
+      <details><summary>AI 추천</summary><FocusRecommendations tasks={tasks} meta={meta} today={today} calendarEvents={calendarEvents} onAccept={pinToday} onVisibleChange={setRecommendedIds} /></details>
     </section>}
 
-    <DetailDrawer compact open={createOpen} title="? ? ?" onClose={() => setCreateOpen(false)}>
-      <p className={styles.createIntro}>? ?? ???? ??? ??? ?????.</p>
+    <DetailDrawer compact open={createOpen} title="새 할 일" onClose={() => setCreateOpen(false)}>
+      <p className={styles.createIntro}>할 일을 추가하고 기한과 분류를 설정하세요.</p>
       <form className={styles.drawerForm} onSubmit={(event) => void submitCreate(event)}>
-        <label>? ? ?? *<input ref={titleInput} value={title} onChange={(event) => setTitle(event.target.value)} maxLength={500} placeholder="??? ?? ????" required={!pendingCreate} disabled={createBusy || Boolean(pendingCreate)} /></label>
-        <label>???<input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} disabled={createBusy || Boolean(pendingCreate)} /></label>
-        <label>??<select value={newCategory} onChange={(event) => setNewCategory(event.target.value as P0TaskCategory)} disabled={createBusy || Boolean(pendingCreate)}>{Object.entries(categoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <label>??<textarea rows={3} maxLength={10000} value={memo} onChange={(event) => setMemo(event.target.value)} placeholder="?? ?? (??)" disabled={createBusy || Boolean(pendingCreate)} /></label>
-        <label className={styles.detailCheck}><input type="checkbox" checked={focusNew} onChange={(event) => setFocusNew(event.target.checked)} disabled={createBusy || Boolean(pendingCreate)} /> ?? ??</label>
-        <button className="mini primary" type="submit" disabled={createBusy || (!pendingCreate && !title.trim())}>{createBusy ? '?? ??' : pendingCreate ? '?? ?? ???' : '? ? ??'}</button>
-        <button className="mini" type="button" onClick={() => setCreateOpen(false)}>??</button>
+        <label>할 일 제목 *<input ref={titleInput} value={title} onChange={(event) => setTitle(event.target.value)} maxLength={500} placeholder="무엇을 해야 하나요?" required={!pendingCreate} disabled={createBusy || Boolean(pendingCreate)} /></label>
+        <label>마감일<input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} disabled={createBusy || Boolean(pendingCreate)} /></label>
+        <label>분류<select value={newCategory} onChange={(event) => setNewCategory(event.target.value as P0TaskCategory)} disabled={createBusy || Boolean(pendingCreate)}>{Object.entries(categoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label>메모<textarea rows={3} maxLength={10000} value={memo} onChange={(event) => setMemo(event.target.value)} placeholder="상세 내용 (선택)" disabled={createBusy || Boolean(pendingCreate)} /></label>
+        <label className={styles.detailCheck}><input type="checkbox" checked={focusNew} onChange={(event) => setFocusNew(event.target.checked)} disabled={createBusy || Boolean(pendingCreate)} /> 오늘 집중</label>
+        <button className="mini primary" type="submit" disabled={createBusy || (!pendingCreate && !title.trim())}>{createBusy ? '저장 중…' : pendingCreate ? '같은 요청 재시도' : '할 일 추가'}</button>
+        <button className="mini" type="button" onClick={() => setCreateOpen(false)}>취소</button>
       </form>
     </DetailDrawer>
     {pendingCreate && <p className={styles.message} role="status">이전 생성 요청을 확인할 수 없어. 같은 ID로 재시도하면 중복 생성되지 않아.</p>}
 
     {state === 'ready' && <>
-      <details className={styles.filterDetails}><summary>?? ??</summary><div className={styles.toolbar}>
+      <details className={styles.filterDetails}><summary>분류 필터</summary><div className={styles.toolbar}>
         <div className={styles.filters} role="group" aria-label="분류 필터">
           {categoryOptions.map((option) => <button key={option.value} className="mini" type="button" aria-pressed={category === option.value} onClick={() => setCategory(option.value)}>{option.label}</button>)}
         </div>

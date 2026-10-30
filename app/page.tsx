@@ -340,7 +340,7 @@ function AuthenticatedPage() {
 
       <main className="main">
         <header className={`top${page === 'home' ? ' top-home' : ''}`}>
-          <div>{page === 'home' ? <><h2>Chocomint Lab</h2><p>{todayLabel || '오늘'} · 떠오른 생각을 기록하고 다음 행동을 시작하세요</p></> : <><h2>{pageMeta[page][0]}</h2><p>{pageMeta[page][1]}</p></>}</div>
+          <div>{page === 'home' ? <><h2>Chocomint Lab <span>/ 대시보드</span></h2><p className={homeStyles.clock}><img src="/figma/dashboard-status.svg" width="7" height="7" alt="" /> {todayLabel || '오늘'}</p></> : <><h2>{pageMeta[page][0]}</h2><p>{pageMeta[page][1]}</p></>}</div>
           <div className="badges"><GlobalSearch tasks={workspace.tasks} projects={projects} onNavigate={navigateToSearchResult} /><details className={homeStyles.connections}><summary>연결 상태</summary><div><span>Vault {repositorySource === 'local' ? '로컬' : repositorySource === 'github' ? 'GitHub' : '설정 필요'}</span><span>Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '연결됨' : '확인 필요'}</span><span>v{APP_VERSION}</span></div></details><button className="mini" type="button" disabled={authBusy} onClick={() => void signOut()}>로그아웃</button></div>
         </header>
 
@@ -351,13 +351,13 @@ function AuthenticatedPage() {
           <div className={homeStyles.dashboardGrid}>
             <P0HomeWorkspace projects={projects} onOpenPlanner={() => setPage('planner')} focusCreateRequest={focusCreateRequest}
               meta={workspace.meta} onMetaChanged={() => void workspace.reloadAgent()} calendarEvents={calendar.items} selectTaskRequest={selectTaskRequest} reloadSignal={workspace.taskReloadSignal} onTasksChanged={() => void workspace.reloadTasks()} />
-            <section className={homeStyles.schedule} aria-label="??? ??">
-              <div className={homeStyles.scheduleHeader}><h3>?? ??</h3><span>{todayLabel}</span></div>
-              {calendar.state === 'error' || calendar.state === 'unconfigured' ? <p role="status">{calendarStateText(calendar)}</p> : schedule.today.length ? schedule.today.map((event) => <div className={homeStyles.event} key={`${event.id}-${event.start}`}><strong>{event.title || '(?? ??)'}</strong><small>{event.allDay ? '??' : new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(event.start))} ? Google Calendar ??</small></div>) : <p>?? ??? ????.</p>}
-              <button className={homeStyles.calendarLink} type="button" onClick={() => showPage('calendar')}>?? ?? ?? ?</button>
-              <div className={homeStyles.scheduleHeader}><h3>???? ??</h3></div>
-              {workspace.tasksState === 'error' ? <p role="status">{workspace.tasksError}</p> : workspace.tasksState === 'loading' ? <p>? ?? ???? ??</p> : workspace.tasks.filter((task) => task.status === 'open' && task.due_date && task.due_date >= p0TodayInTokyo()).sort((a, b) => (a.due_date || '').localeCompare(b.due_date || '')).slice(0, 4).map((task) => <button className={homeStyles.deadline} key={task.id} type="button" onClick={() => openTask(task.id)}><span>{task.due_date?.slice(5).replace('-', '.')}</span><strong>{task.title}</strong></button>)}
-              <p className={homeStyles.note}>? ?? ??? ???? ??? ???? ?????.</p>
+            <section className={homeStyles.schedule} aria-label="일정과 마감">
+              <div className={homeStyles.scheduleHeader}><h3>오늘 일정</h3><span>{todayLabel}</span></div>
+              {calendar.state === 'error' || calendar.state === 'unconfigured' ? <p role="status">{calendarStateText(calendar)}</p> : schedule.today.length ? schedule.today.map((event) => <div className={homeStyles.event} key={`${event.id}-${event.start}`}><strong>{event.title || '(제목 없음)'}</strong><small>{event.allDay ? '종일' : new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(event.start))} · Google Calendar 일정</small></div>) : <p>오늘 일정이 없습니다.</p>}
+              <button className={homeStyles.calendarLink} type="button" onClick={() => showPage('calendar')}>전체 일정 보기 ↗</button>
+              <div className={homeStyles.scheduleHeader}><h3>다가오는 마감</h3></div>
+              {workspace.tasksState === 'error' ? <p role="status">{workspace.tasksError}</p> : workspace.tasksState === 'loading' ? <p>할 일을 불러오는 중…</p> : workspace.tasks.filter((task) => task.status === 'open' && task.due_date && task.due_date >= p0TodayInTokyo()).sort((a, b) => (a.due_date || '').localeCompare(b.due_date || '')).slice(0, 4).map((task) => <button className={homeStyles.deadline} key={task.id} type="button" onClick={() => openTask(task.id)}><span>{task.due_date?.slice(5).replace('-', '.')}</span><strong>{task.title}</strong></button>)}
+              <p className={homeStyles.note}>할 일에 기한을 입력하면 여기에 자동으로 표시됩니다.</p>
             </section>
           </div>
           <div className={homeStyles.workspace}>
