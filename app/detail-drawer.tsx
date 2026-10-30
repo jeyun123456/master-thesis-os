@@ -8,7 +8,7 @@ import styles from './detail-drawer.module.css';
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
 
 /** Right-hand slide-over: 45% wide on desktop, full screen on phones. Content is supplied by the caller. */
-export function DetailDrawer({ open, title, onClose, footer, children }: { open: boolean; title: string; onClose: () => void; footer?: ReactNode; children: ReactNode }) {
+export function DetailDrawer({ open, title, onClose, footer, children, compact = false }: { open: boolean; title: string; onClose: () => void; footer?: ReactNode; children: ReactNode; compact?: boolean }) {
   const titleId = useId();
   const panel = useRef<HTMLDivElement>(null);
 
@@ -40,14 +40,14 @@ export function DetailDrawer({ open, title, onClose, footer, children }: { open:
 
   if (!open || typeof document === 'undefined') return null;
   // Rendered on <body>: an ancestor's transform/overflow/stacking context can no longer hide or clip a fixed panel.
-  return createPortal(<DrawerPanel title={title} titleId={titleId} onClose={onClose} footer={footer} panelRef={panel}>{children}</DrawerPanel>, document.body);
+  return createPortal(<DrawerPanel title={title} titleId={titleId} onClose={onClose} footer={footer} panelRef={panel} compact={compact}>{children}</DrawerPanel>, document.body);
 }
 
 /** The dialog markup itself (kept separate so it can be rendered and tested without a browser). */
-export function DrawerPanel({ title, titleId, onClose, footer, panelRef, children }: { title: string; titleId: string; onClose: () => void; footer?: ReactNode; panelRef?: Ref<HTMLDivElement>; children: ReactNode }) {
+export function DrawerPanel({ title, titleId, onClose, footer, panelRef, children, compact = false }: { title: string; titleId: string; onClose: () => void; footer?: ReactNode; panelRef?: Ref<HTMLDivElement>; children: ReactNode; compact?: boolean }) {
   return <>
     <div className={styles.overlay} aria-hidden="true" />
-    <div className={styles.drawer} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} ref={panelRef}>
+    <div className={`${styles.drawer} ${compact ? styles.compact : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} ref={panelRef}>
       <div className={styles.header}>
         <h2 id={titleId}>{title}</h2>
         <button type="button" className={styles.close} onClick={onClose} aria-label="상세 패널 닫기">✕</button>

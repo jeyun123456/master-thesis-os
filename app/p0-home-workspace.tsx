@@ -67,6 +67,7 @@ export function P0HomeWorkspace({
   calendarEvents = [],
   selectTaskRequest,
   reloadSignal = 0,
+  onTasksChanged,
 }: {
   projects: ResearchProject[];
   onOpenPlanner: () => void;
@@ -76,6 +77,7 @@ export function P0HomeWorkspace({
   calendarEvents?: CalendarEvent[];
   selectTaskRequest?: { id: string; n: number } | null;
   reloadSignal?: number;
+  onTasksChanged?: () => void;
 }) {
   const [state, setState] = useState<HomeState>('loading');
   const [tasks, setTasks] = useState<P0Task[]>([]);
@@ -85,6 +87,8 @@ export function P0HomeWorkspace({
   const [draft, setDraft] = useState<DetailDraft | null>(null);
   const [pendingCreate, setPendingCreate] = useState<P0PendingCreate | null>(null);
   const [title, setTitle] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [memo, setMemo] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [newCategory, setNewCategory] = useState<P0TaskCategory>('unclassified');
   const [focusNew, setFocusNew] = useState(false);
@@ -150,7 +154,7 @@ export function P0HomeWorkspace({
   }, [load]);
 
   useEffect(() => {
-    if (focusCreateRequest) titleInput.current?.focus();
+    if (focusCreateRequest) setCreateOpen(true);
   }, [focusCreateRequest]);
 
   useEffect(() => {
@@ -183,12 +187,15 @@ export function P0HomeWorkspace({
       clearP0PendingCreate(storage());
       setPendingCreate(null);
       setTitle('');
+      setMemo('');
+      setCreateOpen(false);
       setDueDate('');
       setFocusNew(false);
       setTasks((current) => [result.task, ...current.filter((task) => task.id !== result.task.id)]);
       setSelectedId(result.task.id);
       setDraft(toDetailDraft(result.task));
       await load();
+      onTasksChanged?.();
     } catch (reason) {
       setPendingCreate(candidate);
       setError(reason instanceof Error ? reason.message : '할 일을 저장하지 못했어. 같은 요청 ID로 안전하게 재시도할 수 있어.');
@@ -215,6 +222,7 @@ export function P0HomeWorkspace({
         category: newCategory,
         status: 'open',
         is_today: focusNew,
+        memo: memo.trim(),
       },
     };
     if (!saveP0PendingCreate(storage(), candidate)) {
@@ -233,6 +241,7 @@ export function P0HomeWorkspace({
         ? await completeTask(task, meta.get(task.id), today)
         : await updateP0Task(task.id, { base_version: task.version, changes: { status: 'open' }, op_id: `mtos-web-status-${crypto.randomUUID()}` });
       setTasks((current) => current.map((item) => item.id === task.id ? result.task : item));
+      onTasksChanged?.();
       if (recurring) {
         onMetaChanged?.();
         await load();
@@ -367,7 +376,6 @@ export function P0HomeWorkspace({
     const due = dueChip(task);
     const project = task.project_id ? projects.find((item) => item.id === task.project_id)?.title ?? task.project_id : '';
     return <span className={styles.metaLine}>
-      {due && <span className={`${styles.chip} ${due.tone}`}>{due.text}</span>}
       <span className={styles.metaText}>{categoryLabels[task.category]}{project ? ` · ${project}` : ''}</span>
       {taskMeta?.recur && <span className={styles.tag}>반복</span>}
       {taskMeta?.ai_generated && <span className={styles.tag}>AI</span>}
@@ -393,6 +401,7 @@ export function P0HomeWorkspace({
         <span className={styles.taskTitle}>{task.title}</span>
         {taskMetaLine(task)}
       </button>
+      {dueChip(task) && <span className={`${styles.chip} ${dueChip(task)?.tone}`}>{dueChip(task)?.text}</span>}
       {missed && <span className={styles.rowActions}>
         <button className="mini" type="button" disabled={savingId === task.id} onClick={() => void toggleStatus(task)}>완료</button>
         <button className="mini" type="button" disabled={savingId === task.id} onClick={() => void occurrenceAction(task, 'skip')}>건너뛰기</button>
@@ -411,9 +420,12 @@ export function P0HomeWorkspace({
     <div className={styles.header}>
       <div><h3 id="p0-home-title">오늘 할 일</h3><p>{today} · {state === 'ready' ? `미완료 ${view.openCount}개${view.overdueCount ? ` · 기한 지남 ${view.overdueCount}개` : ''}` : '할 일 확인 중'}</p></div>
       <div className={styles.headerActions}>
+        <button className="mini primary" type="button" onClick={() => setCreateOpen(true)}>? ??</button>
+        <details className={styles.headerMore}><summary>? ??</summary>
         {newCount > 0 && <button className="mini" type="button" onClick={() => void markAllSeen()}>새 항목 {newCount}개 읽음</button>}
         <button className="mini" type="button" onClick={() => void load()} disabled={state === 'loading'}>새로고침</button>
         <button className="mini" type="button" onClick={onOpenPlanner}>Planner</button>
+        </details>
       </div>
     </div>
 
@@ -426,34 +438,30 @@ export function P0HomeWorkspace({
       {nowTasks.length
         ? <ul className={styles.taskList}>{nowTasks.map((task) => renderTask(task, false, true))}</ul>
         : <p className={styles.empty}>지금 급한 일이 없어. 아래에서 오늘 집중할 일을 골라봐.</p>}
-      <FocusRecommendations tasks={tasks} meta={meta} today={today} calendarEvents={calendarEvents} onAccept={pinToday} onVisibleChange={setRecommendedIds} />
+      <details><summary>AI ??</summary><FocusRecommendations tasks={tasks} meta={meta} today={today} calendarEvents={calendarEvents} onAccept={pinToday} onVisibleChange={setRecommendedIds} /></details>
     </section>}
 
-    <form className={styles.quick} onSubmit={(event) => void submitCreate(event)}>
-      <input ref={titleInput} aria-label="새 할 일" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={500} placeholder="새 할 일을 입력하고 Enter" disabled={createBusy || Boolean(pendingCreate)} />
-      <button className="mini primary" type="submit" disabled={createBusy || (!pendingCreate && !title.trim())}>{createBusy ? '저장 중…' : pendingCreate ? '같은 요청 재시도' : '추가'}</button>
-      <details className={styles.quickMore}>
-        <summary>기한 · 분류 · 오늘 집중</summary>
-        <div className={styles.quickFields}>
-          <label>기한<input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} disabled={createBusy || Boolean(pendingCreate)} /></label>
-          <label>분류
-            <select value={newCategory} onChange={(event) => setNewCategory(event.target.value as P0TaskCategory)} disabled={createBusy || Boolean(pendingCreate)}>
-              {Object.entries(categoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-          <label className={styles.detailCheck}><input type="checkbox" checked={focusNew} onChange={(event) => setFocusNew(event.target.checked)} disabled={createBusy || Boolean(pendingCreate)} /> 오늘 집중</label>
-        </div>
-      </details>
-    </form>
+    <DetailDrawer compact open={createOpen} title="? ? ?" onClose={() => setCreateOpen(false)}>
+      <p className={styles.createIntro}>? ?? ???? ??? ??? ?????.</p>
+      <form className={styles.drawerForm} onSubmit={(event) => void submitCreate(event)}>
+        <label>? ? ?? *<input ref={titleInput} value={title} onChange={(event) => setTitle(event.target.value)} maxLength={500} placeholder="??? ?? ????" required={!pendingCreate} disabled={createBusy || Boolean(pendingCreate)} /></label>
+        <label>???<input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} disabled={createBusy || Boolean(pendingCreate)} /></label>
+        <label>??<select value={newCategory} onChange={(event) => setNewCategory(event.target.value as P0TaskCategory)} disabled={createBusy || Boolean(pendingCreate)}>{Object.entries(categoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label>??<textarea rows={3} maxLength={10000} value={memo} onChange={(event) => setMemo(event.target.value)} placeholder="?? ?? (??)" disabled={createBusy || Boolean(pendingCreate)} /></label>
+        <label className={styles.detailCheck}><input type="checkbox" checked={focusNew} onChange={(event) => setFocusNew(event.target.checked)} disabled={createBusy || Boolean(pendingCreate)} /> ?? ??</label>
+        <button className="mini primary" type="submit" disabled={createBusy || (!pendingCreate && !title.trim())}>{createBusy ? '?? ??' : pendingCreate ? '?? ?? ???' : '? ? ??'}</button>
+        <button className="mini" type="button" onClick={() => setCreateOpen(false)}>??</button>
+      </form>
+    </DetailDrawer>
     {pendingCreate && <p className={styles.message} role="status">이전 생성 요청을 확인할 수 없어. 같은 ID로 재시도하면 중복 생성되지 않아.</p>}
 
     {state === 'ready' && <>
-      <div className={styles.toolbar}>
+      <details className={styles.filterDetails}><summary>?? ??</summary><div className={styles.toolbar}>
         <div className={styles.filters} role="group" aria-label="분류 필터">
           {categoryOptions.map((option) => <button key={option.value} className="mini" type="button" aria-pressed={category === option.value} onClick={() => setCategory(option.value)}>{option.label}</button>)}
         </div>
         <span className={styles.message}>나머지 {restCount}개</span>
-      </div>
+      </div></details>
 
       <div className={styles.listColumn}>
         {restFocus.length > 0 && <details className={styles.group} open>

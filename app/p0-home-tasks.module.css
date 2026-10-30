@@ -95,3 +95,25 @@
 .group[open] > summary::before { content: '▾'; }
 .groupDanger > summary { color: var(--red); }
 .group .taskRow { background: transparent; }
+/* Cool Minimal dashboard task presentation */
+.root { padding: 0; border: 0; box-shadow: none; background: #fff; color: #1e2935; }
+.header { align-items: center; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 2px solid #dce3eb; }
+.header h3 { font-size: 21px; }
+.header p, .metaText, .count { color: #536476; }
+.now { border: 0; border-radius: 0; padding: 0; background: none; }
+.now h4 { font-size: 16px; }
+.taskList { gap: 0; }
+.taskRow, .nowRow { min-height: 64px; padding: 8px; border: 0; border-bottom: 1px solid #dce3eb; border-radius: 0; background: transparent; }
+.nowRow .taskTitle, .taskTitle { font-size: 15.5px; }
+.group { border-color: #dce3eb; }
+.chip { background: transparent; padding: 0; }
+.chipDanger { color: #a62f34; }.chipWarn { color: #955400; }
+.createIntro { color: #536476; font-size: 14px; padding-bottom: 12px; border-bottom: 1px solid #dce3eb; }
+.drawerForm label { color: #1e2935; font-size: 14px; }
+.drawerForm input:not([type=checkbox]), .drawerForm select, .drawerForm textarea { min-height: 42px; padding: 9px 12px; border: 1px solid #dce3eb; border-radius: 6px; background: #fafbfd; color: #1e2935; }
+:global(html .shell .home-page) .root { padding: 0; border: 0; border-radius: 0; background: #fff; box-shadow: none; }
+.taskRow { grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; }
+.headerMore { position: relative; color: #536476; font-size: 12px; }
+.headerMore > summary, .filterDetails > summary { cursor: pointer; }
+.headerMore[open] { display: flex; gap: 4px; flex-wrap: wrap; }
+.filterDetails { color: #536476; font-size: 13px; }

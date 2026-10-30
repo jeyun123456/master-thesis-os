@@ -26,3 +26,16 @@
 @media (max-width: 390px) {
   .agenda { grid-template-columns: minmax(0, 1fr); }
 }
+.dashboardGrid { display: grid; grid-template-columns: minmax(0, 65fr) minmax(0, 35fr); gap: 24px; align-items: start; }
+.schedule { min-width: 0; color: #1e2935; }
+.scheduleHeader { display: flex; align-items: center; justify-content: space-between; min-height: 42px; border-bottom: 2px solid #dce3eb; margin-bottom: 10px; }
+.scheduleHeader h3 { margin: 0; font-size: 20px; }
+.scheduleHeader span, .schedule small, .note { color: #536476; font-size: 13px; }
+.event { display: grid; gap: 5px; margin: 10px 0; padding: 14px 16px; border-left: 4px solid #315f9b; border-radius: 6px; background: #edf3fa; }
+.calendarLink { border: 0; background: none; color: #315f9b; padding: 8px 0; cursor: pointer; font: inherit; font-size: 14px; }
+.deadline { display: flex; width: 100%; align-items: center; gap: 12px; border: 0; border-bottom: 1px solid #dce3eb; padding: 10px 0; background: none; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.deadline span { padding: 18px 10px; border-radius: 6px; background: #edf3fa; font-weight: 700; }
+.deadline strong { font-size: 15.5px; overflow-wrap: anywhere; }
+.clock { color: #536476; }
+@media(max-width: 800px) { .dashboardGrid { grid-template-columns: minmax(0, 1fr); } }
+.clock { display: flex; align-items: center; gap: 8px; }
