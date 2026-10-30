@@ -6,12 +6,12 @@
                        "shadows":  [
                                        {
                                            "name":  "panel-low",
-                                           "value":  "0 3px 12px rgba(47,39,31,.045)",
-                                           "purpose":  "기존 패널의 낮은 깊이"
+                                           "value":  "none",
+                                           "purpose":  "기본 패널의 경계선"
                                        },
                                        {
                                            "name":  "panel-hover",
-                                           "value":  "0 5px 16px rgba(47,39,31,.065)",
+                                           "value":  "0 5px 16px rgba(30,41,53,.08)",
                                            "purpose":  "기존 패널의 hover 깊이"
                                        }
                                    ],
@@ -45,7 +45,7 @@
                    ],
     "narrative":  {
                       "northStar":  "연구자의 개인 작업실",
-                      "overview":  "크림·세이지·브라운의 기존 분위기를 유지하며 읽기와 다음 행동을 우선한다.",
+                      "overview":  "Cool Minimal의 흰색·푸른 회색·파란색을 사용하며 읽기와 다음 행동을 우선한다.",
                       "keyCharacteristics":  [
                                                  "차분한 작업면",
                                                  "질문과 근거의 위계",

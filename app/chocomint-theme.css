@@ -1,30 +1,30 @@
 :root {
-  --bg: #f4f1eb;
-  --panel: #fffdfa;
-  --panel-elevated: #fffefa;
-  --panel-subtle: #eeeae3;
-  --text: #2e2a26;
-  --text-soft: #554f49;
-  --muted: #6f685f;
-  --line: #e5dfd6;
-  --line-strong: #d7cfc4;
-  --blue: #538371;
-  --blue-strong: #3f715e;
-  --blue-soft: #e9f1eb;
+  --bg: #fff;
+  --panel: #fff;
+  --panel-elevated: #fafbfd;
+  --panel-subtle: #f1f4f8;
+  --text: #1e2935;
+  --text-soft: #536476;
+  --muted: #536476;
+  --line: #dce3eb;
+  --line-strong: #b7c5d3;
+  --blue: #315f9b;
+  --blue-strong: #315f9b;
+  --blue-soft: #edf3fa;
   --blue2: var(--blue-soft);
   --green: #54826d;
   --orange: #9a7451;
   --red: #b65c56;
-  --shadow: 0 3px 12px rgba(47, 39, 31, .045);
-  --shadow-hover: 0 5px 16px rgba(47, 39, 31, .065);
+  --shadow: none;
+  --shadow-hover: 0 5px 16px rgba(30, 41, 53, .08);
   --radius: 14px;
-  --chrome: #302a25;
-  --chrome-raised: #3a342e;
-  --chrome-line: #49423b;
-  --chrome-text: #f2eee7;
-  --chrome-muted: #b5ada3;
+  --chrome: #f1f4f8;
+  --chrome-raised: #edf3fa;
+  --chrome-line: #dce3eb;
+  --chrome-text: #1e2935;
+  --chrome-muted: #536476;
   --accent: var(--blue-strong);
-  --accent-hover: #355f4f;
+  --accent-hover: #254c80;
   --surface: var(--panel);
   --surface-muted: var(--panel-subtle);
   --card: var(--panel);
@@ -50,9 +50,9 @@ html {
 }
 
 body {
-  background: linear-gradient(180deg, #f8f6f1 0, var(--bg) 38rem);
+  background: var(--bg);
   color: var(--text);
-  font-family: Inter, "Noto Sans KR", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "Noto Sans KR", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 @media (min-width: 761px) {
@@ -134,7 +134,7 @@ body {
 }
 
 .top h2 {
-  color: #302b26;
+  color: var(--text);
   font-size: 27px;
   letter-spacing: -.03em;
 }
@@ -144,14 +144,14 @@ body {
 }
 
 .badge {
-  background: rgba(255, 253, 250, .78);
+  background: var(--panel-elevated);
   border-color: var(--line);
-  color: #6b645c;
+  color: var(--text-soft);
 }
 
 html .shell .card {
   border-color: var(--line);
-  border-radius: 14px;
+  border-radius: 6px;
   background: var(--panel);
   box-shadow: var(--shadow);
 }
@@ -165,7 +165,7 @@ html .shell .section {
 }
 
 .shell .head h3 {
-  color: #36312b;
+  color: var(--text);
   font-size: 15px;
   letter-spacing: -.018em;
 }
@@ -184,7 +184,7 @@ html .shell .section {
 .inbox-capture-card h3,
 .inbox-list-head h3 {
   margin: 2px 0 0;
-  color: #302b26;
+  color: var(--text);
   font-size: 20px;
   letter-spacing: -.035em;
 }
@@ -209,10 +209,10 @@ html .shell .section {
   width: 100%;
   min-height: 74px;
   resize: vertical;
-  border: 1px solid #ddd8ce;
+  border: 1px solid var(--line);
   border-radius: 12px;
   outline: none;
-  background: #fffefa;
+  background: var(--panel-elevated);
   padding: 13px 14px;
   color: var(--text);
   font-size: var(--font-body, 15px);
@@ -225,8 +225,8 @@ html .shell .section {
 }
 
 .capture-textarea:focus {
-  border-color: #8ab49a;
-  box-shadow: 0 0 0 3px rgba(112, 164, 132, .13);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(49, 95, 155, .13);
 }
 
 .capture-textarea:disabled {
@@ -256,8 +256,8 @@ html .shell .section {
   border: 1px solid transparent;
   border-radius: 10px;
   padding: 8px 14px;
-  background: #3f715e;
-  color: #fffefa;
+  background: var(--accent);
+  color: #fff;
   cursor: pointer;
   font-size: 12px;
   font-weight: 750;
@@ -266,8 +266,8 @@ html .shell .section {
 
 .capture-add-button:hover:not(:disabled),
 .capture-ai-button:hover:not(:disabled) {
-  background: #345f4f;
-  box-shadow: 0 4px 12px rgba(52, 95, 79, .18);
+  background: var(--accent-hover);
+  box-shadow: 0 4px 12px rgba(49, 95, 155, .18);
   transform: translateY(-1px);
 }
 
@@ -296,14 +296,14 @@ html .shell .section {
   border: 0;
   background: none;
   padding: 3px 0;
-  color: #4a7964;
+  color: var(--accent);
   cursor: pointer;
   font-size: 12px;
   font-weight: 720;
 }
 
 .text-link:hover {
-  color: #315e4a;
+  color: var(--accent-hover);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -948,7 +948,7 @@ html .shell .section {
   flex: 0 0 auto;
   border: 1px solid #e0dbd2;
   border-radius: 8px;
-  background: #fffefa;
+  background: var(--panel-elevated);
   padding: 5px 9px;
   color: var(--blue-strong);
   cursor: pointer;
@@ -1877,7 +1877,7 @@ html .shell .section {
 .inbox-entry {
   border: 1px solid #e9e5dc;
   border-radius: 12px;
-  background: #fffefa;
+  background: var(--panel-elevated);
   padding: 12px 13px;
 }
 
@@ -1930,7 +1930,7 @@ html .shell .section {
   padding: 6px 30px 6px 10px;
   border: 1px solid #dedbd1;
   border-radius: 9px;
-  background: #fffefa;
+  background: var(--panel-elevated);
   color: #49443d;
   font: inherit;
   font-size:12px;
@@ -2158,7 +2158,7 @@ html .shell .section {
   justify-content: center;
   padding: 0 9px;
   border-radius: 8px;
-  background: #fffefa;
+  background: var(--panel-elevated);
   font: inherit;
   font-size:12px;
   font-weight: 700;
@@ -2314,7 +2314,7 @@ html .shell .section {
   padding: 0;
   border: 1px solid #e6e3d9;
   border-radius: 7px;
-  background: #fffefa;
+  background: var(--panel-elevated);
   color: #756f65;
   cursor: pointer;
   font: inherit;
@@ -2419,7 +2419,7 @@ html .shell .section {
   overflow: hidden;
   border: 1px solid #e5e1d6;
   border-radius: 10px;
-  background: #fffefa;
+  background: var(--panel-elevated);
   box-shadow: 0 10px 26px rgb(48 41 30 / 14%);
 }
 
@@ -2867,6 +2867,7 @@ html .shell .section {
 .shell.cool-home .nav button span, .shell.cool-home .sidebar-settings button span { color: #536476; font-family: "Noto Sans KR", sans-serif; font-size: 21px; }
 .shell.cool-home .nav button.active span, .shell.cool-home .sidebar-settings button.active span { color: #315f9b; }
 .shell.cool-home .nav button.active, .shell.cool-home .sidebar-settings button.active { background: #edf3fa; color: #315f9b; box-shadow: none; }
+.shell.cool-home .nav button:hover, .shell.cool-home .sidebar-settings button:hover { background: #edf3fa; color: #315f9b; }
 .shell.cool-home .main { background: #fff; padding: 12px 28px 48px; font-family: "Noto Sans KR", sans-serif; }
 html .shell.cool-home .home-page > div:first-of-type > section.card { padding: 0; border: 0; border-radius: 0; background: #fff; box-shadow: none; }
 .shell.cool-home .top-home { margin-bottom: 8px; }

@@ -326,7 +326,7 @@ function AuthenticatedPage() {
     return projectTasks.length ? projectTasks : researchStatus?.nextActions || [];
   }, [activeProject, researchStatus]);
   return (
-    <div className={`shell${sidebarExpanded ? ' sidebar-expanded' : ''}${page === 'home' ? ' cool-home' : ''}`}>
+    <div className={`shell cool-home${sidebarExpanded ? ' sidebar-expanded' : ''}`}>
       <aside className={`sidebar${sidebarExpanded ? ' expanded' : ''}`}>
         <div className="brand"><div className="logo">C</div><div><h1>Chocomint Lab</h1><p>Research Workspace · v{APP_VERSION}</p></div></div>
         <button className="sidebar-toggle" type="button" aria-label={sidebarExpanded ? '메뉴 접기' : '메뉴 펼치기'} aria-expanded={sidebarExpanded} onClick={() => setSidebarExpanded((expanded) => !expanded)}><span>{sidebarExpanded ? '‹' : '›'}</span></button>
@@ -339,8 +339,8 @@ function AuthenticatedPage() {
       </aside>
 
       <main className="main">
-        <header className={`top${page === 'home' ? ' top-home' : ''}`}>
-          <div>{page === 'home' ? <><h2>Chocomint Lab <span>/ 대시보드</span></h2><p className={homeStyles.clock}><img src="/figma/dashboard-status.svg" width="7" height="7" alt="" /> {todayLabel || '오늘'}</p></> : <><h2>{pageMeta[page][0]}</h2><p>{pageMeta[page][1]}</p></>}</div>
+        <header className="top top-home">
+          <div><h2>Chocomint Lab <span>/ {page === 'home' ? '대시보드' : pageMeta[page][0]}</span></h2><p className={homeStyles.clock}><img src="/figma/dashboard-status.svg" width="7" height="7" alt="" /> {todayLabel || '오늘'}</p></div>
           <div className="badges"><GlobalSearch tasks={workspace.tasks} projects={projects} onNavigate={navigateToSearchResult} /><details className={homeStyles.connections}><summary>연결 상태</summary><div><span>Vault {repositorySource === 'local' ? '로컬' : repositorySource === 'github' ? 'GitHub' : '설정 필요'}</span><span>Calendar {calendar.state === 'ready' || calendar.state === 'empty' ? '연결됨' : '확인 필요'}</span><span>v{APP_VERSION}</span></div></details><button className="mini" type="button" disabled={authBusy} onClick={() => void signOut()}>로그아웃</button></div>
         </header>
 
