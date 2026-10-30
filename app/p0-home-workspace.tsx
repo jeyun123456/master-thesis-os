@@ -376,7 +376,6 @@ export function P0HomeWorkspace({
     const due = dueChip(task);
     const project = task.project_id ? projects.find((item) => item.id === task.project_id)?.title ?? task.project_id : '';
     return <span className={styles.metaLine}>
-      {due && <span className={`${styles.chip} ${due.tone}`}>{due.text}</span>}
       <span className={styles.metaText}>{categoryLabels[task.category]}{project ? ` · ${project}` : ''}</span>
       {taskMeta?.recur && <span className={styles.tag}>반복</span>}
       {taskMeta?.ai_generated && <span className={styles.tag}>AI</span>}
@@ -402,6 +401,7 @@ export function P0HomeWorkspace({
         <span className={styles.taskTitle}>{task.title}</span>
         {taskMetaLine(task)}
       </button>
+      {dueChip(task) && <span className={`${styles.chip} ${dueChip(task)?.tone}`}>{dueChip(task)?.text}</span>}
       {missed && <span className={styles.rowActions}>
         <button className="mini" type="button" disabled={savingId === task.id} onClick={() => void toggleStatus(task)}>완료</button>
         <button className="mini" type="button" disabled={savingId === task.id} onClick={() => void occurrenceAction(task, 'skip')}>건너뛰기</button>
@@ -421,9 +421,11 @@ export function P0HomeWorkspace({
       <div><h3 id="p0-home-title">오늘 할 일</h3><p>{today} · {state === 'ready' ? `미완료 ${view.openCount}개${view.overdueCount ? ` · 기한 지남 ${view.overdueCount}개` : ''}` : '할 일 확인 중'}</p></div>
       <div className={styles.headerActions}>
         <button className="mini primary" type="button" onClick={() => setCreateOpen(true)}>? ??</button>
+        <details className={styles.headerMore}><summary>? ??</summary>
         {newCount > 0 && <button className="mini" type="button" onClick={() => void markAllSeen()}>새 항목 {newCount}개 읽음</button>}
         <button className="mini" type="button" onClick={() => void load()} disabled={state === 'loading'}>새로고침</button>
         <button className="mini" type="button" onClick={onOpenPlanner}>Planner</button>
+        </details>
       </div>
     </div>
 
@@ -436,7 +438,7 @@ export function P0HomeWorkspace({
       {nowTasks.length
         ? <ul className={styles.taskList}>{nowTasks.map((task) => renderTask(task, false, true))}</ul>
         : <p className={styles.empty}>지금 급한 일이 없어. 아래에서 오늘 집중할 일을 골라봐.</p>}
-      <FocusRecommendations tasks={tasks} meta={meta} today={today} calendarEvents={calendarEvents} onAccept={pinToday} onVisibleChange={setRecommendedIds} />
+      <details><summary>AI ??</summary><FocusRecommendations tasks={tasks} meta={meta} today={today} calendarEvents={calendarEvents} onAccept={pinToday} onVisibleChange={setRecommendedIds} /></details>
     </section>}
 
     <DetailDrawer compact open={createOpen} title="? ? ?" onClose={() => setCreateOpen(false)}>
@@ -454,12 +456,12 @@ export function P0HomeWorkspace({
     {pendingCreate && <p className={styles.message} role="status">이전 생성 요청을 확인할 수 없어. 같은 ID로 재시도하면 중복 생성되지 않아.</p>}
 
     {state === 'ready' && <>
-      <div className={styles.toolbar}>
+      <details className={styles.filterDetails}><summary>?? ??</summary><div className={styles.toolbar}>
         <div className={styles.filters} role="group" aria-label="분류 필터">
           {categoryOptions.map((option) => <button key={option.value} className="mini" type="button" aria-pressed={category === option.value} onClick={() => setCategory(option.value)}>{option.label}</button>)}
         </div>
         <span className={styles.message}>나머지 {restCount}개</span>
-      </div>
+      </div></details>
 
       <div className={styles.listColumn}>
         {restFocus.length > 0 && <details className={styles.group} open>

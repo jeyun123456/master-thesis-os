@@ -112,3 +112,8 @@
 .drawerForm label { color: #1e2935; font-size: 14px; }
 .drawerForm input:not([type=checkbox]), .drawerForm select, .drawerForm textarea { min-height: 42px; padding: 9px 12px; border: 1px solid #dce3eb; border-radius: 6px; background: #fafbfd; color: #1e2935; }
 :global(html .shell .home-page) .root { padding: 0; border: 0; border-radius: 0; background: #fff; box-shadow: none; }
+.taskRow { grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; }
+.headerMore { position: relative; color: #536476; font-size: 12px; }
+.headerMore > summary, .filterDetails > summary { cursor: pointer; }
+.headerMore[open] { display: flex; gap: 4px; flex-wrap: wrap; }
+.filterDetails { color: #536476; font-size: 13px; }
