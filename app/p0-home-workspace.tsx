@@ -314,6 +314,7 @@ export function P0HomeWorkspace({
       });
       setTasks((current) => current.map((task) => task.id === selected.id ? result.task : task));
       setDraft(toDetailDraft(result.task));
+      onTasksChanged?.();
       if (result.conflicts.length) setError('일부 필드는 다른 기기에서 먼저 수정돼 보존됐어. 새 값을 확인한 뒤 다시 저장해줘.');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '할 일을 저장하지 못했어.');
@@ -329,6 +330,7 @@ export function P0HomeWorkspace({
     try {
       await deleteP0Task(task.id);
       setTasks((current) => current.filter((item) => item.id !== task.id));
+      onTasksChanged?.();
       if (selectedId === task.id) {
         setSelectedId(null);
         setDraft(null);
@@ -443,6 +445,7 @@ export function P0HomeWorkspace({
 
     <DetailDrawer compact open={createOpen} title="새 할 일" onClose={() => setCreateOpen(false)}>
       <p className={styles.createIntro}>할 일을 추가하고 기한과 분류를 설정하세요.</p>
+      {error && <p className={styles.error} role="alert">{error}</p>}
       <form className={styles.drawerForm} onSubmit={(event) => void submitCreate(event)}>
         <label>할 일 제목 *<input ref={titleInput} value={title} onChange={(event) => setTitle(event.target.value)} maxLength={500} placeholder="무엇을 해야 하나요?" required={!pendingCreate} disabled={createBusy || Boolean(pendingCreate)} /></label>
         <label>마감일<input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} disabled={createBusy || Boolean(pendingCreate)} /></label>

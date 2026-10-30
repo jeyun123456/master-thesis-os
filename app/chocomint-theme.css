@@ -2864,6 +2864,8 @@ html .shell .section {
 .shell.cool-home .sidebar { background: #f1f4f8; border-color: #dce3eb; color: #536476; }
 .shell.cool-home .logo { background: #315f9b; color: white; border: 0; box-shadow: none; border-radius: 9px; }
 .shell.cool-home .nav button, .shell.cool-home .sidebar-settings button { color: #536476; }
+.shell.cool-home .nav button span, .shell.cool-home .sidebar-settings button span { color: #536476; font-family: "Noto Sans KR", sans-serif; font-size: 21px; }
+.shell.cool-home .nav button.active span, .shell.cool-home .sidebar-settings button.active span { color: #315f9b; }
 .shell.cool-home .nav button.active, .shell.cool-home .sidebar-settings button.active { background: #edf3fa; color: #315f9b; box-shadow: none; }
 .shell.cool-home .main { background: #fff; padding: 12px 28px 48px; font-family: "Noto Sans KR", sans-serif; }
 html .shell.cool-home .home-page > div:first-of-type > section.card { padding: 0; border: 0; border-radius: 0; background: #fff; box-shadow: none; }
