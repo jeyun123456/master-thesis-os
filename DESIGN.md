@@ -2,30 +2,27 @@
 name: Chocomint Research OS
 description: 읽기와 다음 행동을 돕는 개인 연구 작업실
 colors:
-  cream: "#f4f1eb"
-  paper: "#fffdfa"
-  brown: "#302a25"
-  ink: "#2e2a26"
-  muted: "#6f685f"
-  sage: "#3f715e"
-  sage-hover: "#355f4f"
-  line: "#e5dfd6"
-  paper-raised: "#fffefa"
-  paper-muted: "#eeeae3"
-  ink-soft: "#554f49"
-  line-strong: "#d7cfc4"
-  sage-base: "#538371"
-  sage-soft: "#e9f1eb"
+  paper: "#ffffff"
+  ink: "#1e2935"
+  muted: "#536476"
+  accent: "#315f9b"
+  accent-hover: "#254c80"
+  line: "#dce3eb"
+  paper-raised: "#fafbfd"
+  paper-muted: "#f1f4f8"
+  ink-soft: "#536476"
+  line-strong: "#b7c5d3"
+  accent-soft: "#edf3fa"
   success: "#54826d"
   warning: "#9a7451"
   danger: "#b65c56"
-  chrome-raised: "#3a342e"
-  chrome-line: "#49423b"
-  chrome-text: "#f2eee7"
-  chrome-muted: "#b5ada3"
+  chrome-raised: "#edf3fa"
+  chrome-line: "#dce3eb"
+  chrome-text: "#1e2935"
+  chrome-muted: "#536476"
 typography:
   body:
-    fontFamily: 'Inter, "Noto Sans KR", system-ui, sans-serif'
+    fontFamily: '"Noto Sans KR", system-ui, sans-serif'
     fontSize: "15px"
     lineHeight: 1.5
   caption:
@@ -64,11 +61,11 @@ spacing:
 
 ## Overview
 
-ユーザーが指定した「研究者の個人作業室」を継承する。既存のクリーム、セージ、ブラウンを保ち、読みやすさと作業上の優先順位を表現の中心に置く。対象モードは Operate / Read。
+確定した Cool Minimal の白・青みのあるグレー・青を全画面の共通基盤とし、読みやすさと作業上の優先順位を表現の中心に置く。対象モードは Operate / Read。
 
 ## Colors
 
-実装のトークン定義は `app/chocomint-theme.css` に集約する。`--accent` は `--blue-strong` を参照し、歴史的な blue という名前でも色はセージである。背景・境界・補助文字・危険・注意は意味ごとの変数を使う。
+実装のトークン定義は `app/chocomint-theme.css` に集約する。`--accent` は青の `--blue-strong` を参照する。背景・境界・補助文字・危険・注意は意味ごとの変数を使う。
 
 ## Typography
 
@@ -76,11 +73,11 @@ spacing:
 
 ## Layout
 
-共通の既存間隔6/10/14/18pxを保持し、セクション24px・ページ区切り32pxを追加する。ホームは期限・今日の作業を先に置き、補助的な点検は disclosure にまとめる。研究は質問・現在判断・根拠・次の行動を順に配置する。幅980px以下では新しい二列領域を一列にする。メニューは761px以上で72px/248px、760px以下では既存の下部ナビゲーションを使う。
+共通の既存間隔6/10/14/18pxを保持し、セクション24px・ページ区切り32pxを使う。ホームは期限・今日の作業を先に置き、補助的な点検は disclosure にまとめる。研究は質問・現在判断・根拠・次の行動を順に配置する。小さい画面では既存の下部ナビゲーションを使う。
 
 ## Elevation & Depth
 
-通常パネルは低い影 `0 3px 12px rgba(47,39,31,.045)` に抑える。新しい研究概要は面と区切り線でまとめ、カードの入れ子を増やさない。格子・点の背景装飾は除く。
+通常パネルは境界線で区切り、影を使わない。研究概要は面と区切り線でまとめ、カードの入れ子を増やさない。
 
 ## Shapes
 
@@ -88,7 +85,7 @@ spacing:
 
 ## Components
 
-研究概要とホームの新しい構成は CSS Modules で局所化する。補助的な管理・接続情報には標準 details/summary を使う。既存の保存・承認・同期処理は変更しない。ボタンのフォーカスをセージの輪郭で示し、モバイル共通ボタンは44px以上の高さを確保する。
+研究概要とホームの構成は CSS Modules で局所化する。補助的な管理・接続情報には標準 details/summary を使う。既存の保存・承認・同期処理は変更しない。ボタンのフォーカスを青の輪郭で示し、モバイル共通ボタンは44px以上の高さを確保する。
 
 ## Do's and Don'ts
 

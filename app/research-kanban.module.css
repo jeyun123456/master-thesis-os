@@ -4,7 +4,7 @@
 .toolbar p { color: var(--muted); font-size: 14px; margin: 0; }
 .filters { display: flex; gap: 6px; flex-wrap: wrap; }
 .filters button { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 9px 13px; cursor: pointer; color: var(--text); font-size: 14px; }
-.filters button.active { background: #236b53; color: #fff; border-color: #236b53; }
+.filters button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .warning { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: #fff6e8; color: #8a5100; font-size: 13px; }
 .board { display: grid; grid-template-columns: repeat(var(--columns, 7), minmax(220px, 1fr)); grid-auto-flow: column; gap: 12px; width: 100%; overflow-x: auto; padding: 0 0 14px; align-items: start; scroll-snap-type: x proximity; }
 .column { min-height: 300px; background: var(--surface-muted); border: 1px solid var(--line); border-radius: 15px; padding: 12px; scroll-snap-align: start; }
@@ -13,7 +13,7 @@
 .columnHeading span { background: var(--surface); border: 1px solid var(--line); padding: 2px 8px; border-radius: 15px; font-size: 13px; }
 .cards { display: grid; gap: 9px; }
 .card { text-align: left; width: 100%; cursor: pointer; display: flex; flex-direction: column; gap: 10px; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 13px; font: inherit; }
-.card:hover, .card:focus-visible { outline: 2px solid #65a987; outline-offset: 1px; }
+.card:hover, .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .card strong { font-size: 16px; line-height: 1.4; overflow-wrap: anywhere; }
 .badges { display: flex; gap: 6px; flex-wrap: wrap; }
 .stage, .status { border-radius: 6px; padding: 3px 7px; font-size: 12px; font-weight: 700; }
