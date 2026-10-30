@@ -9,6 +9,7 @@ export type P0PendingCreate = {
     category: P0TaskCategory;
     status: 'open';
     is_today: boolean;
+    memo?: string;
   };
 };
 
@@ -28,6 +29,7 @@ function parsePendingCreate(value: unknown): P0PendingCreate | null {
   if (typeof fields.title !== 'string' || !fields.title.trim() || fields.title.length > 500
     || (fields.due_date !== null && (typeof fields.due_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(fields.due_date)))
     || typeof fields.category !== 'string' || !categories.has(fields.category as P0TaskCategory)
+    || (fields.memo !== undefined && (typeof fields.memo !== 'string' || fields.memo.length > 10000))
     || fields.status !== 'open' || typeof fields.is_today !== 'boolean') return null;
   return {
     id: candidate.id,
@@ -38,6 +40,7 @@ function parsePendingCreate(value: unknown): P0PendingCreate | null {
       category: fields.category as P0TaskCategory,
       status: 'open',
       is_today: fields.is_today,
+      ...(typeof fields.memo === 'string' ? { memo: fields.memo } : {}),
     },
   };
 }

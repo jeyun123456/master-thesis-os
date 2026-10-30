@@ -2848,3 +2848,24 @@ html .shell .section {
   font-weight: 800;
   vertical-align: 1px;
 }
+/* Figma Cool Minimal home */
+.top-home { display: flex; align-items: center; min-height: 40px; margin-bottom: 8px; }
+.top-home > div:first-child { display: flex; align-items: center; gap: 24px; flex: 1; }
+.top-home h2 { font-size: 20px; color: #1e2935; }
+.top-home h2 span { font-size: 14px; font-weight: 400; }
+.top-home p { margin: 0; color: #536476; font-size: 14px; }
+.home-page { color: #1e2935; }
+.home-page .mini.primary { background: #315f9b; border-color: #315f9b; color: white; }
+@media(max-width:760px) { .top-home > div:first-child { flex-wrap: wrap; gap: 4px 12px; } }
+@media (min-width: 761px) {
+  html .shell.cool-home { --sidebar-width: 64px; }
+  html .shell.cool-home.sidebar-expanded { --sidebar-width: 240px; }
+}
+.shell.cool-home .sidebar { background: #f1f4f8; border-color: #dce3eb; color: #536476; }
+.shell.cool-home .logo { background: #315f9b; color: white; border: 0; box-shadow: none; border-radius: 9px; }
+.shell.cool-home .nav button, .shell.cool-home .sidebar-settings button { color: #536476; }
+.shell.cool-home .nav button.active, .shell.cool-home .sidebar-settings button.active { background: #edf3fa; color: #315f9b; box-shadow: none; }
+.shell.cool-home .main { background: #fff; padding: 12px 28px 48px; font-family: "Noto Sans KR", sans-serif; }
+html .shell.cool-home .home-page > div:first-of-type > section.card { padding: 0; border: 0; border-radius: 0; background: #fff; box-shadow: none; }
+.shell.cool-home .top-home { margin-bottom: 8px; }
+.shell.cool-home .top-home h2 { margin: 0; color: #1e2935; font-size: 20px; letter-spacing: normal; }

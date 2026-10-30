@@ -326,7 +326,7 @@ function AuthenticatedPage() {
     return projectTasks.length ? projectTasks : researchStatus?.nextActions || [];
   }, [activeProject, researchStatus]);
   return (
-    <div className={`shell${sidebarExpanded ? ' sidebar-expanded' : ''}`}>
+    <div className={`shell${sidebarExpanded ? ' sidebar-expanded' : ''}${page === 'home' ? ' cool-home' : ''}`}>
       <aside className={`sidebar${sidebarExpanded ? ' expanded' : ''}`}>
         <div className="brand"><div className="logo">C</div><div><h1>Chocomint Lab</h1><p>Research Workspace · v{APP_VERSION}</p></div></div>
         <button className="sidebar-toggle" type="button" aria-label={sidebarExpanded ? '메뉴 접기' : '메뉴 펼치기'} aria-expanded={sidebarExpanded} onClick={() => setSidebarExpanded((expanded) => !expanded)}><span>{sidebarExpanded ? '‹' : '›'}</span></button>
@@ -348,12 +348,18 @@ function AuthenticatedPage() {
 
         {page === 'home' && <section className="page active home-page">
           <UrgentApprovals today={p0TodayInTokyo()} onOpenInbox={() => showPage('inbox')} />
-          <section className={homeStyles.agenda} aria-label="다가오는 일정과 마감">
-            <HomeStatusCard id="today-schedule-card" label="오늘 일정" value={schedule.today.length ? `${schedule.today.length}건` : calendar.state === 'ready' || calendar.state === 'empty' ? '없음' : '확인 필요'} detail={schedule.today[0]?.title || calendarStateText(calendar)} />
-            <HomeStatusCard label="다음 마감" value={schedule.nextDeadline ? deadlineLabel(schedule.nextDeadline) : calendar.state === 'ready' || calendar.state === 'empty' ? '없음' : '확인 필요'} detail={schedule.nextDeadline?.title || calendarStateText(calendar)} />
-          </section>
-          <div className="section-gap"><P0HomeWorkspace projects={projects} onOpenPlanner={() => setPage('planner')} focusCreateRequest={focusCreateRequest}
-            meta={workspace.meta} onMetaChanged={() => void workspace.reloadAgent()} calendarEvents={calendar.items} selectTaskRequest={selectTaskRequest} reloadSignal={workspace.taskReloadSignal} /></div>
+          <div className={homeStyles.dashboardGrid}>
+            <P0HomeWorkspace projects={projects} onOpenPlanner={() => setPage('planner')} focusCreateRequest={focusCreateRequest}
+              meta={workspace.meta} onMetaChanged={() => void workspace.reloadAgent()} calendarEvents={calendar.items} selectTaskRequest={selectTaskRequest} reloadSignal={workspace.taskReloadSignal} onTasksChanged={() => void workspace.reloadTasks()} />
+            <section className={homeStyles.schedule} aria-label="??? ??">
+              <div className={homeStyles.scheduleHeader}><h3>?? ??</h3><span>{todayLabel}</span></div>
+              {calendar.state === 'error' || calendar.state === 'unconfigured' ? <p role="status">{calendarStateText(calendar)}</p> : schedule.today.length ? schedule.today.map((event) => <div className={homeStyles.event} key={`${event.id}-${event.start}`}><strong>{event.title || '(?? ??)'}</strong><small>{event.allDay ? '??' : new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(event.start))} ? Google Calendar ??</small></div>) : <p>?? ??? ????.</p>}
+              <button className={homeStyles.calendarLink} type="button" onClick={() => showPage('calendar')}>?? ?? ?? ?</button>
+              <div className={homeStyles.scheduleHeader}><h3>???? ??</h3></div>
+              {workspace.tasksState === 'error' ? <p role="status">{workspace.tasksError}</p> : workspace.tasksState === 'loading' ? <p>? ?? ???? ??</p> : workspace.tasks.filter((task) => task.status === 'open' && task.due_date && task.due_date >= p0TodayInTokyo()).sort((a, b) => (a.due_date || '').localeCompare(b.due_date || '')).slice(0, 4).map((task) => <button className={homeStyles.deadline} key={task.id} type="button" onClick={() => openTask(task.id)}><span>{task.due_date?.slice(5).replace('-', '.')}</span><strong>{task.title}</strong></button>)}
+              <p className={homeStyles.note}>? ?? ??? ???? ??? ???? ?????.</p>
+            </section>
+          </div>
           <div className={homeStyles.workspace}>
             <Card title="빠른 입력" right="AI 인박스" className="home-capture-card"><CaptureBox compact onSaved={() => void workspace.reloadAgent()} /><button className="mini" type="button" onClick={() => showPage('inbox')}>AI 인박스 열기</button></Card>
             <CurrentResearchCard project={activeProject} researchStatus={researchStatus} onOpen={openResearchProject} />
@@ -500,4 +506,4 @@ function errorMessage(error: unknown, fallback: string) { return error instanceo
 function formatDate(value: string) { if (!value) return ''; try { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)); } catch { return value; } }
 function deadlineLabel(event: CalendarEvent) { const days = daysUntil(event); return days <= 0 ? '오늘' : `D-${days}`; }
 function relativeDate(value: string) { if (!value) return '시간 정보 없음'; const diff = Date.now() - new Date(value).getTime(); const minutes = Math.max(0, Math.floor(diff / 60_000)); if (minutes < 60) return `${minutes}분 전`; const hours = Math.floor(minutes / 60); if (hours < 24) return `${hours}시간 전`; const days = Math.floor(hours / 24); if (days < 14) return `${days}일 전`; return formatDate(value); }
-function formatTodayDate(value: Date) { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(value); }
+function formatTodayDate(value: Date) { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(value); }

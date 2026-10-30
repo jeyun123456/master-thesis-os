@@ -27,6 +27,13 @@ describe('P0 pending create persistence', () => {
     expect(readP0PendingCreate(storage)).toBeNull();
   });
 
+  it('preserves the memo on a retried create', () => {
+    const storage = createStorage();
+    const withMemo = { ...pending, fields: { ...pending.fields, memo: '?? ??' } };
+    expect(saveP0PendingCreate(storage, withMemo)).toBe(true);
+    expect(readP0PendingCreate(storage)).toEqual(withMemo);
+  });
+
   it('drops malformed or unsafe pending data without returning it', () => {
     const storage = createStorage();
     storage.setItem('mtos-p0-pending-create', JSON.stringify({ ...pending, id: '../other-task' }));

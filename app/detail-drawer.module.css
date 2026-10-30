@@ -33,3 +33,8 @@
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @media (max-width: 760px) { .drawer { width: 100vw; border-left: 0; } .header { padding: 12px 14px; } .body { padding: 12px 14px 16px; } .text { font-size: 1rem; } .footer { padding-left: 14px; padding-right: 14px; } .btn { flex: 1; text-align: center; } }
 @media (prefers-reduced-motion: reduce) { .drawer, .overlay { animation: none; } }
+.compact { width: 400px; background: #fff; color: #1e2935; }
+.compact .header { padding: 20px 26px 8px; border: 0; align-items: center; }
+.compact .header h2 { font-size: 22px; }
+.compact .close { background: #edf3fa; border: 0; border-radius: 6px; }
+.compact .body { padding: 0 26px 20px; }
