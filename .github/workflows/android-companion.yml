@@ -34,3 +34,59 @@ jobs:
           name: Chocomint-Lab-Galaxy-debug
           path: experiments/android-home-poc/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+  sign-release-once:
+    if: contains(github.event.head_commit.message, '[sign-release]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Build release and encrypted signing backup
+        shell: bash
+        env:
+          CHOCOMINT_BASE_URL: https://master-thesis-os.vercel.app
+        run: |
+          set -euo pipefail
+          umask 077
+          client_id="$(curl -fsSL --max-time 15 "$CHOCOMINT_BASE_URL/api/p0/session" | jq -r '.googleClientId // empty')"
+          if [[ ! "$client_id" =~ ^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$ ]]; then
+            echo "Production Google client ID unavailable" >&2
+            exit 1
+          fi
+          store="$RUNNER_TEMP/chocomint-release.p12"
+          key_pass="$(openssl rand -hex 32)"
+          keytool -genkeypair -noprompt -storetype PKCS12 -keystore "$store" -alias chocomint -keyalg RSA -keysize 3072 -sigalg SHA256withRSA -validity 10950 -storepass "$key_pass" -keypass "$key_pass" -dname "CN=Chocomint Lab, O=Personal Software, C=JP"
+          mkdir -p "$RUNNER_TEMP/key-backup" experiments/android-home-poc/release-output
+          {
+            printf 'chocomint.baseUrl=%s\n' "$CHOCOMINT_BASE_URL"
+            printf 'chocomint.googleWebClientId=%s\n' "$client_id"
+            printf 'chocomint.keystore=%s\n' "$store"
+            printf 'chocomint.keystorePassword=%s\n' "$key_pass"
+            printf 'chocomint.keyAlias=chocomint\n'
+            printf 'chocomint.keyPassword=%s\n' "$key_pass"
+          } >> experiments/android-home-poc/gradle.properties
+          gradle -p experiments/android-home-poc :app:assembleRelease --no-daemon
+          output="experiments/android-home-poc/release-output/Chocomint-Lab-Galaxy-v1.0.0.apk"
+          cp experiments/android-home-poc/app/build/outputs/apk/release/app-release.apk "$output"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$output"
+          (cd experiments/android-home-poc/release-output && sha256sum Chocomint-Lab-Galaxy-v1.0.0.apk > Chocomint-Lab-Galaxy-v1.0.0.apk.sha256)
+          cp "$store" "$RUNNER_TEMP/key-backup/chocomint-release.p12"
+          printf 'storeType=PKCS12\nalias=chocomint\nstorePassword=%s\nkeyPassword=%s\n' "$key_pass" "$key_pass" > "$RUNNER_TEMP/key-backup/signing-info.txt"
+          tar -czf "$RUNNER_TEMP/signing-backup.tar.gz" -C "$RUNNER_TEMP/key-backup" .
+          openssl cms -encrypt -binary -aes-256-cbc -in "$RUNNER_TEMP/signing-backup.tar.gz" -outform DER -out "experiments/android-home-poc/release-output/Chocomint-Lab-signing-backup.cms" experiments/android-home-poc/signing-backup-recipient.pem
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Chocomint-Lab-Galaxy-v1.0.0-release-and-encrypted-key
+          path: experiments/android-home-poc/release-output/*
+          if-no-files-found: error
+          retention-days: 30
