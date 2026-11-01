@@ -11,7 +11,6 @@ import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.appWidgetBackground
-import androidx.glance.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Column
@@ -46,7 +45,7 @@ private fun CalendarContent(context: Context, model: WidgetModel) {
     val open = openAction(context, "calendar")
     val maxItems = if (LocalSize.current.height < 150.dp) 2 else 4
     Column(
-        modifier = GlanceModifier.fillMaxSize().appWidgetBackground().background(Bg).cornerRadius(22.dp).padding(14.dp),
+        modifier = GlanceModifier.fillMaxSize().appWidgetBackground().background(Bg).padding(14.dp),
     ) {
         WidgetHeader("오늘의 일정", model, open)
         Spacer(GlanceModifier.height(8.dp))

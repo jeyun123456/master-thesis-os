@@ -13,7 +13,6 @@ import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.appWidgetBackground
-import androidx.glance.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
@@ -70,7 +69,7 @@ class CompleteTaskAction : ActionCallback {
 private fun TasksContent(context: Context, model: WidgetModel) {
     val planner = openAction(context, "planner")
     Column(
-        modifier = GlanceModifier.fillMaxSize().appWidgetBackground().background(Bg).cornerRadius(22.dp).padding(14.dp),
+        modifier = GlanceModifier.fillMaxSize().appWidgetBackground().background(Bg).padding(14.dp),
     ) {
         WidgetHeader("오늘의 할 일", model, planner)
         val snapshot = model.snapshot

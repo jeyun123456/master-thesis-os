@@ -10,7 +10,7 @@ class UnauthorizedException : IOException("unauthorized")
 class ConflictException : IOException("conflict")
 class ApiException(val status: Int) : IOException("http $status")
 
-/** HTTPS-only client for `/api/mobile/**`. The Bearer token is only ever sent in the Authorization header. */
+/** HTTPS-only client for `/api/mobile/ endpoints`. The Bearer token is only ever sent in the Authorization header. */
 object MobileApiClient {
     private fun open(path: String, method: String, token: String?, body: JSONObject?): Pair<Int, String> {
         val base = BuildConfig.BASE_URL

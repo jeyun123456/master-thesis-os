@@ -10,7 +10,6 @@ import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.appWidgetBackground
-import androidx.glance.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
@@ -39,7 +38,7 @@ class QuickLaunchWidgetReceiver : GlanceAppWidgetReceiver() {
 @Composable
 private fun QuickLaunchContent(context: Context) {
     Column(
-        modifier = GlanceModifier.fillMaxSize().appWidgetBackground().background(Bg).cornerRadius(22.dp).padding(12.dp),
+        modifier = GlanceModifier.fillMaxSize().appWidgetBackground().background(Bg).padding(12.dp),
     ) {
         Text("Chocomint Lab", style = style(13, TextMain, true))
         Spacer(GlanceModifier.height(6.dp))
@@ -56,7 +55,7 @@ private fun QuickLaunchContent(context: Context) {
 @Composable
 private fun QuickButton(label: String, action: Action, modifier: GlanceModifier) {
     Box(
-        modifier = modifier.background(Surface).cornerRadius(12.dp).padding(vertical = 10.dp).clickable(action),
+        modifier = modifier.background(Surface).padding(vertical = 10.dp).clickable(action),
         contentAlignment = Alignment.Center,
     ) {
         Text(label, style = style(12, Accent, true), maxLines = 1)
