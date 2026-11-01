@@ -49,9 +49,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+
 
     buildFeatures {
         compose = true
@@ -59,6 +57,11 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
 // A release APK must never ship without a real HTTPS origin, a Google client id and a signing key.
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {
     doFirst {
