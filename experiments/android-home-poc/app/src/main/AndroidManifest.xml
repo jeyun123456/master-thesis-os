@@ -1,11 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application
         android:allowBackup="false"
+        android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="false"
         android:theme="@style/Theme.MasterThesisCompanion">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
         <activity
             android:name=".OpenMasterThesisActivity"
@@ -15,14 +29,39 @@
             android:theme="@android:style/Theme.NoDisplay" />
 
         <receiver
-            android:name=".widget.MasterThesisWidgetReceiver"
-            android:exported="true">
+            android:name=".widget.CalendarWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_calendar_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/master_thesis_widget_info" />
+                android:resource="@xml/calendar_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.TodayTasksWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_tasks_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/tasks_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.QuickLaunchWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_quick_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_widget_info" />
         </receiver>
     </application>
 

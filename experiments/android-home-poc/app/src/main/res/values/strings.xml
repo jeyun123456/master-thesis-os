@@ -1,4 +1,11 @@
 <resources>
-    <string name="app_name">Master Thesis OS Companion</string>
-    <string name="widget_description">오늘 할 일, 가까운 일정, 연구 진행 상태를 빠르게 확인하는 Master Thesis OS 홈화면 위젯</string>
+    <string name="app_name">Chocomint Lab</string>
+    <!-- Only referenced by the unused legacy provider xml. -->
+    <string name="widget_description">Chocomint Lab 위젯</string>
+    <string name="widget_calendar_label">오늘의 일정</string>
+    <string name="widget_tasks_label">오늘의 할 일</string>
+    <string name="widget_quick_label">빠른 실행</string>
+    <string name="widget_calendar_description">오늘과 가까운 Google Calendar 일정을 확인합니다.</string>
+    <string name="widget_tasks_description">집중·마감 우선 할 일을 확인하고 완료 처리합니다.</string>
+    <string name="widget_quick_description">Chocomint Lab 홈, AI 인박스, 플래너를 바로 엽니다.</string>
 </resources>
