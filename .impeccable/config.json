@@ -1,0 +1,27 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "files": [
+          "app/chocomint-theme.css",
+          "app/globals.css"
+        ],
+        "createdAt": "2026-10-25T13:27:10.227Z",
+        "reason": "Agent: existing Operate UI font fallback stack; Inter was not newly introduced, has no bundled font loader, and familiar system sans is intentional for the preserved reading workspace."
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "app/globals.css"
+        ],
+        "createdAt": "2026-10-25T13:27:10.270Z",
+        "reason": "Agent: both matches are existing school-mail critical/important priority indicators paired with text labels; preserve semantic priority cues within the explicitly unchanged mail surface."
+      }
+    ]
+  }
+}

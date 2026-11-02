@@ -160,15 +160,22 @@ export function StandardResultsView({ resultPath }: { resultPath: string }) {
   }
 
   return <>
-    <div className="result-controls card section">
-      <div><b>프로젝트 표준 결과</b><span>{bundle.source === 'local' ? 'Vault local' : 'GitHub live'} · scalar.csv + matrix.xlsx · view.json</span></div>
-      <code>{resultPath}</code>
+    {metricItems.length > 0 && <div className="kpis">
+      {metricItems.map(({ item, index }) => <MetricItem key={resultViewItemKey(item, index)} item={item as MetricView} index={index} datasets={loadedBundle.datasets} onChange={updateItem} onDelete={removeItem} />)}
+    </div>}
+    <div className="results-stack">
+      {chartItems.map(({ item, index }) => <ResultItem key={resultViewItemKey(item, index)} item={item} index={index} datasets={loadedBundle.datasets} onChange={updateItem} onDelete={removeItem} />)}
+      {tableItems.map(({ item, index }) => <ResultItem key={resultViewItemKey(item, index)} item={item} index={index} datasets={loadedBundle.datasets} onChange={updateItem} onDelete={removeItem} />)}
     </div>
-    <div className="card section result-view-toolbar">
+    {!view.items.length && <div className="empty compact-empty result-view-no-items">표시 중인 항목이 없어. 우측 `＋ 추가`에서 수치 카드·표·차트를 추가해줘.</div>}
+    <details className="card section result-settings" open={Boolean(notice) || !view.items.length}>
+      <summary>표시 설정 · 출처</summary>
+      <p className="result-source-line">출처 · <code>{resultPath}</code> · {bundle.source === 'local' ? 'Vault local' : 'GitHub live'} · scalar.csv + matrix.xlsx · view.json</p>
+    <div className="result-view-toolbar">
       <div className="result-view-toolbar-head">
         <div>
           <b>표시 설정</b>
-          <span>각 결과 항목의 dataset과 표시 방향을 이 화면에서 미리 조정할 수 있어.</span>
+          <span>항목의 데이터와 표시 방향을 이 화면에서만 미리 조정해. 원본 view.json은 바뀌지 않아.</span>
         </div>
         <div className="toolbar">
           <button className="mini" type="button" onClick={() => setAddOpen((current) => !current)} aria-expanded={addOpen}>＋ 추가</button>
@@ -194,14 +201,7 @@ export function StandardResultsView({ resultPath }: { resultPath: string }) {
       </div>}
     </div>
     {notice && <div className="note result-view-notice">{notice}</div>}
-    {metricItems.length > 0 && <div className="kpis">
-      {metricItems.map(({ item, index }) => <MetricItem key={resultViewItemKey(item, index)} item={item as MetricView} index={index} datasets={loadedBundle.datasets} onChange={updateItem} onDelete={removeItem} />)}
-    </div>}
-    <div className="results-stack">
-      {chartItems.map(({ item, index }) => <ResultItem key={resultViewItemKey(item, index)} item={item} index={index} datasets={loadedBundle.datasets} onChange={updateItem} onDelete={removeItem} />)}
-      {tableItems.map(({ item, index }) => <ResultItem key={resultViewItemKey(item, index)} item={item} index={index} datasets={loadedBundle.datasets} onChange={updateItem} onDelete={removeItem} />)}
-    </div>
-    {!view.items.length && <div className="empty compact-empty result-view-no-items">표시 중인 항목이 없어. 우측 `＋ 추가`에서 수치 카드·표·차트를 추가해줘.</div>}
+    </details>
   </>;
 }
 
@@ -222,6 +222,7 @@ function MetricItem({ item, index, datasets, onChange, onDelete }: {
   return <div className="card kpi result-view-kpi">
     <button className="mini result-view-delete result-view-kpi-delete" type="button" onClick={() => onDelete(index)}>삭제</button>
     <div className="result-view-kpi-content"><small>{label}</small><strong>{value}</strong><span>{dataset?.name || item.datasetId}</span></div>
+    <details className="result-item-settings"><summary>설정</summary>
     <ItemDatasetSelect options={options} value={dataset?.id || ''} onChange={(datasetId) => {
       const nextDataset = options.find((candidate) => candidate.id === datasetId);
       if (!nextDataset) return;
@@ -232,6 +233,7 @@ function MetricItem({ item, index, datasets, onChange, onDelete }: {
         {dataset.rows.map((candidate, candidateIndex) => <option value={candidateIndex} key={candidateIndex}>{candidateIndex + 1}: {cellText(candidate[0] ?? null) || `행 ${candidateIndex + 1}`}</option>)}
       </select>
     </label>}
+    </details>
   </div>;
 }
 
@@ -248,11 +250,13 @@ function ResultItem({ item, index, datasets, onChange, onDelete }: {
     const view = item as TableView;
     const visible = dataset ? datasetForView(dataset, view) : null;
     return <ResultCard title={item.title || dataset?.sheetName || dataset?.name || item.datasetId} right="표" onDelete={() => onDelete(index)}>
-      <div className="result-view-item-controls">
-        <ItemDatasetSelect options={options} value={dataset?.id || ''} onChange={(datasetId) => onChange(index, { ...view, datasetId })} />
-        <label className="result-checkbox"><input type="checkbox" checked={Boolean(view.transpose)} onChange={(event) => onChange(index, { ...view, transpose: event.target.checked })} /> 행/열 전환</label>
-      </div>
       {visible ? <ResultTable dataset={visible} /> : <ItemError message="호환 가능한 표 dataset이 없어." />}
+      <details className="result-item-settings"><summary>표시 옵션</summary>
+        <div className="result-view-item-controls">
+          <ItemDatasetSelect options={options} value={dataset?.id || ''} onChange={(datasetId) => onChange(index, { ...view, datasetId })} />
+          <label className="result-checkbox"><input type="checkbox" checked={Boolean(view.transpose)} onChange={(event) => onChange(index, { ...view, transpose: event.target.checked })} /> 행/열 전환</label>
+        </div>
+      </details>
     </ResultCard>;
   }
 
@@ -263,6 +267,8 @@ function ResultItem({ item, index, datasets, onChange, onDelete }: {
   const seriesOptions = numericColumns.filter((column) => column !== normalizedView.xColumn);
   const numericXAxis = Boolean(visible && normalizedView.xColumn >= 0 && visible.rows.filter((row) => numericValue(row[normalizedView.xColumn] ?? null) !== null).length > 1);
   return <ResultCard title={rawView.title || dataset?.sheetName || dataset?.name || rawView.datasetId} right={CHART_TYPE_LABELS[normalizedView.chartType] || '차트'} onDelete={() => onDelete(index)}>
+    {visible ? <ResultChart dataset={visible} view={normalizedView} title={rawView.title || dataset?.name || rawView.datasetId} /> : <ItemError message="호환 가능한 차트 dataset이 없어." />}
+    <details className="result-item-settings"><summary>표시 옵션</summary>
     <div className="result-view-item-controls result-chart-controls">
       <ItemDatasetSelect options={options} value={dataset?.id || ''} onChange={(datasetId) => {
         const nextDataset = options.find((candidate) => candidate.id === datasetId);
@@ -319,7 +325,7 @@ function ResultItem({ item, index, datasets, onChange, onDelete }: {
       <button className="mini" type="button" onClick={() => onChange(index, withoutAxisBounds(rawView))}>자동 범위</button>
       {!numericXAxis && <span className="muted">숫자형 가로축을 선택하면 X 범위를 사용할 수 있어.</span>}
     </div>
-    {visible ? <ResultChart dataset={visible} view={normalizedView} title={rawView.title || dataset?.name || rawView.datasetId} /> : <ItemError message="호환 가능한 차트 dataset이 없어." />}
+    </details>
   </ResultCard>;
 }
 

@@ -16,7 +16,7 @@ export type ResearchStatus = {
   importantFiles: ResearchLink[];
 };
 
-const DEFAULT_SOURCE_PATH = '02_Projects/thesis/project.md';
+const DEFAULT_SOURCE_PATH = '02_Projects/Master_필요노동과_노동력재생산/project.md';
 
 function section(markdown: string, title: string) {
   const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

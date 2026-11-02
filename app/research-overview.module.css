@@ -1,0 +1,33 @@
+.overview { min-width: 0; margin: 24px 0 32px; color: var(--text); }
+.header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+.header h3 { max-width: 34ch; margin: 0; font-size: 24px; line-height: 1.4; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.header button { flex-shrink: 0; }
+.overview h4 { margin: 0 0 12px; font-size: 16px; }
+.overview p, .overview li { max-width: 72ch; font-size: 15px; line-height: 1.75; overflow-wrap: anywhere; }
+.overview p { margin: 0 0 12px; white-space: pre-line; }
+.overview ul { margin: 0; padding-left: 22px; }
+.overview li + li { margin-top: 10px; }
+.question { margin-bottom: 24px; }
+.question > ul { font-weight: 600; }
+.purpose { margin-top: 16px; color: var(--text-soft); }
+.purpose summary { cursor: pointer; font-size: 13px; padding: 10px 0; }
+.purpose p { margin-top: 8px; }
+.columns { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 32px; border-top: 1px solid var(--line); padding-top: 24px; }
+.columns > section { min-width: 0; }
+.overview .empty, .source { color: var(--muted); }
+.overview .source { display: block; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; margin-top: 12px; }
+.links { list-style: none; padding-left: 0 !important; }
+.links button { border: 0; background: transparent; padding: 4px 0; text-align: left; font: inherit; color: var(--blue-strong); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.overview a { display: block; width: fit-content; margin-top: 12px; padding: 4px 0; color: var(--blue-strong); font-size: 13px; text-underline-offset: 3px; }
+.overview a:focus-visible, .links button:focus-visible { outline: 2px solid var(--blue-strong); outline-offset: 3px; }
+.next { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--line); }
+.more { margin-top: 16px; }
+.more > summary { cursor: pointer; padding: 10px 0; font-size: 13px; color: var(--text-soft); }
+@media (max-width: 980px) {
+  .columns { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+}
+@media (max-width: 760px) {
+  .header { flex-direction: column; gap: 12px; }
+  .header h3 { font-size: 21px; }
+  .overview a, .links button { min-height: 44px; display: flex; align-items: center; }
+}

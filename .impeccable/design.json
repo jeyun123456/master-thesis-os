@@ -1,0 +1,61 @@
+{
+    "schemaVersion":  2,
+    "generatedAt":  "2026-10-25T13:27:51Z",
+    "title":  "Design System: Chocomint Research OS",
+    "extensions":  {
+                       "shadows":  [
+                                       {
+                                           "name":  "panel-low",
+                                           "value":  "0 3px 12px rgba(47,39,31,.045)",
+                                           "purpose":  "기존 패널의 낮은 깊이"
+                                       },
+                                       {
+                                           "name":  "panel-hover",
+                                           "value":  "0 5px 16px rgba(47,39,31,.065)",
+                                           "purpose":  "기존 패널의 hover 깊이"
+                                       }
+                                   ],
+                       "breakpoints":  [
+                                           {
+                                               "name":  "mobile",
+                                               "value":  "760px"
+                                           },
+                                           {
+                                               "name":  "reading-stack",
+                                               "value":  "980px"
+                                           }
+                                       ],
+                       "typographyMeta":  {
+                                              "body":  {
+                                                           "displayName":  "본문",
+                                                           "purpose":  "연구 내용과 읽기용 본문"
+                                                       },
+                                              "caption":  {
+                                                              "displayName":  "보조정보",
+                                                              "purpose":  "출처·상태·메타정보"
+                                                          },
+                                              "helper":  {
+                                                             "displayName":  "도움말",
+                                                             "purpose":  "보조 설명과 연결 안내"
+                                                         }
+                                          }
+                   },
+    "components":  [
+
+                   ],
+    "narrative":  {
+                      "northStar":  "연구자의 개인 작업실",
+                      "overview":  "크림·세이지·브라운의 기존 분위기를 유지하며 읽기와 다음 행동을 우선한다.",
+                      "keyCharacteristics":  [
+                                                 "차분한 작업면",
+                                                 "질문과 근거의 위계",
+                                                 "진단 정보의 점진적 공개"
+                                             ],
+                      "dos":  [
+                                  "실제 원문과 상태를 표시한다"
+                              ],
+                      "donts":  [
+                                    "연구 판단이나 검증 상태를 만들지 않는다"
+                                ]
+                  }
+}

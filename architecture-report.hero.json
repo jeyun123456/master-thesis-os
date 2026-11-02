@@ -1,0 +1,734 @@
+{
+  "archflow_hero": 1,
+  "project": {
+    "title": "Master Thesis OS",
+    "subtitle": "Browser-first research workspace with cloud APIs and a separate loopback Bridge"
+  },
+  "canvas": {
+    "width": 1460,
+    "height": 880
+  },
+  "zones": [
+    {
+      "id": "zone-browser",
+      "title": "01 / Browser workspace",
+      "tone": "cool",
+      "frame": {
+        "x": 30,
+        "y": 80,
+        "w": 270,
+        "h": 380
+      }
+    },
+    {
+      "id": "zone-next",
+      "title": "02 / Next.js runtime",
+      "tone": "cool",
+      "frame": {
+        "x": 380,
+        "y": 80,
+        "w": 300,
+        "h": 380
+      }
+    },
+    {
+      "id": "zone-data",
+      "title": "03 / Research data and results",
+      "tone": "warm",
+      "frame": {
+        "x": 760,
+        "y": 80,
+        "w": 300,
+        "h": 380
+      }
+    },
+    {
+      "id": "zone-cloud",
+      "title": "04 / External APIs",
+      "tone": "cool",
+      "frame": {
+        "x": 1110,
+        "y": 80,
+        "w": 320,
+        "h": 370
+      }
+    },
+    {
+      "id": "zone-bridge",
+      "title": "05 / Local Bridge",
+      "tone": "cool",
+      "frame": {
+        "x": 30,
+        "y": 530,
+        "w": 300,
+        "h": 300
+      }
+    },
+    {
+      "id": "zone-local",
+      "title": "06 / Bridge-owned state and sessions",
+      "tone": "neutral",
+      "frame": {
+        "x": 380,
+        "y": 530,
+        "w": 1050,
+        "h": 300
+      }
+    }
+  ],
+  "entities": [
+    {
+      "id": "client-request",
+      "title": "Workspace shell",
+      "caption": "app/page.tsx / 11 feature views",
+      "kind": "view",
+      "zone": "zone-browser",
+      "tag": "REACT",
+      "frame": {
+        "x": 55,
+        "y": 155,
+        "w": 220,
+        "h": 82
+      },
+      "evidence": [
+        {
+          "path": "app/page.tsx",
+          "start_line": 1,
+          "end_line": 55
+        },
+        {
+          "path": "app/page.tsx",
+          "start_line": 148,
+          "end_line": 169
+        }
+      ]
+    },
+    {
+      "id": "client-view",
+      "title": "Panel state and views",
+      "caption": "research / results / mail / planner",
+      "kind": "view",
+      "zone": "zone-browser",
+      "tag": "CLIENT",
+      "frame": {
+        "x": 55,
+        "y": 285,
+        "w": 220,
+        "h": 82
+      },
+      "evidence": [
+        {
+          "path": "app/page.tsx",
+          "start_line": 148,
+          "end_line": 190
+        }
+      ]
+    },
+    {
+      "id": "api-routes",
+      "title": "App Router handlers",
+      "caption": "13 JSON route modules",
+      "kind": "interface",
+      "zone": "zone-next",
+      "tag": "NEXT.JS",
+      "frame": {
+        "x": 405,
+        "y": 155,
+        "w": 250,
+        "h": 82
+      },
+      "evidence": [
+        {
+          "path": "app/api/results/route.ts",
+          "start_line": 1,
+          "end_line": 13
+        },
+        {
+          "path": "app/api/calendar/events/route.ts",
+          "start_line": 46,
+          "end_line": 90
+        }
+      ]
+    },
+    {
+      "id": "domain-modules",
+      "title": "Domain clients and loaders",
+      "caption": "Vault / Calendar / results / mail",
+      "kind": "process",
+      "zone": "zone-next",
+      "tag": "LIB",
+      "frame": {
+        "x": 405,
+        "y": 285,
+        "w": 250,
+        "h": 82
+      },
+      "evidence": [
+        {
+          "path": "lib/client-api.ts",
+          "start_line": 18,
+          "end_line": 72
+        },
+        {
+          "path": "lib/vault-repository.ts",
+          "start_line": 37,
+          "end_line": 105
+        },
+        {
+          "path": "lib/calendar.ts",
+          "start_line": 298,
+          "end_line": 384
+        }
+      ]
+    },
+    {
+      "id": "vault-boundary",
+      "title": "VaultRepository",
+      "caption": "GitHub-first / local filesystem fallback",
+      "kind": "interface",
+      "zone": "zone-data",
+      "tag": "DUAL SOURCE",
+      "frame": {
+        "x": 785,
+        "y": 145,
+        "w": 250,
+        "h": 78
+      },
+      "evidence": [
+        {
+          "path": "lib/vault-repository.ts",
+          "start_line": 37,
+          "end_line": 105
+        },
+        {
+          "path": "lib/vault-repository.ts",
+          "start_line": 144,
+          "end_line": 180
+        }
+      ]
+    },
+    {
+      "id": "result-exporter",
+      "title": "Workbook exporter",
+      "caption": "canonical XLSX to schema-checked JSON",
+      "kind": "process",
+      "zone": "zone-data",
+      "tag": "PYTHON",
+      "frame": {
+        "x": 785,
+        "y": 245,
+        "w": 250,
+        "h": 78
+      },
+      "evidence": [
+        {
+          "path": "exporter/export_results.py",
+          "start_line": 217,
+          "end_line": 292
+        }
+      ]
+    },
+    {
+      "id": "results-json",
+      "title": "Results bundle",
+      "caption": "3 JSON docs / runtime checks require pass",
+      "kind": "store",
+      "zone": "zone-data",
+      "tag": "JSON",
+      "frame": {
+        "x": 785,
+        "y": 345,
+        "w": 250,
+        "h": 78
+      },
+      "evidence": [
+        {
+          "path": "lib/results.ts",
+          "start_line": 48,
+          "end_line": 94
+        },
+        {
+          "path": "app/api/results/route.ts",
+          "start_line": 1,
+          "end_line": 13
+        }
+      ]
+    },
+    {
+      "id": "bridge-api",
+      "title": "Loopback HTTP API",
+      "caption": "127.0.0.1 / compatibility v7",
+      "kind": "interface",
+      "zone": "zone-bridge",
+      "tag": "PYTHON",
+      "frame": {
+        "x": 55,
+        "y": 585,
+        "w": 250,
+        "h": 80
+      },
+      "evidence": [
+        {
+          "path": "local-bridge/bridge.py",
+          "start_line": 111,
+          "end_line": 150
+        },
+        {
+          "path": "local-bridge/bridge.py",
+          "start_line": 277,
+          "end_line": 300
+        },
+        {
+          "path": "local-bridge/bridge.py",
+          "start_line": 601,
+          "end_line": 620
+        },
+        {
+          "path": "local-bridge/bridge.py",
+          "start_line": 736,
+          "end_line": 736
+        }
+      ]
+    },
+    {
+      "id": "bridge-jobs",
+      "title": "Workspace and job owners",
+      "caption": "Inbox / Planner / Mail / Portal workers",
+      "kind": "process",
+      "zone": "zone-bridge",
+      "tag": "LOCAL",
+      "frame": {
+        "x": 55,
+        "y": 695,
+        "w": 250,
+        "h": 90
+      },
+      "evidence": [
+        {
+          "path": "local-bridge/workspace_store.py",
+          "start_line": 16,
+          "end_line": 60
+        },
+        {
+          "path": "local-bridge/mail_jobs.py",
+          "start_line": 11,
+          "end_line": 90
+        },
+        {
+          "path": "local-bridge/portal_jobs.py",
+          "start_line": 9,
+          "end_line": 76
+        }
+      ]
+    },
+    {
+      "id": "workspace-state",
+      "title": "Workspace and mail state",
+      "caption": "Inbox / Planner JSON / Thunderbird / two SQLite stores",
+      "kind": "store",
+      "zone": "zone-local",
+      "tag": "LOCAL DATA",
+      "frame": {
+        "x": 405,
+        "y": 585,
+        "w": 620,
+        "h": 82
+      },
+      "evidence": [
+        {
+          "path": "local-bridge/workspace_store.py",
+          "start_line": 16,
+          "end_line": 55
+        },
+        {
+          "path": "local-bridge/mail_db.py",
+          "start_line": 32,
+          "end_line": 106
+        },
+        {
+          "path": "local-bridge/portal_db.py",
+          "start_line": 45,
+          "end_line": 145
+        },
+        {
+          "path": "local-bridge/thunderbird_mail.py",
+          "start_line": 886,
+          "end_line": 960
+        }
+      ]
+    },
+    {
+      "id": "portal-session",
+      "title": "Ritsumeikan portal session",
+      "caption": "Playwright browser automation / local Bridge",
+      "kind": "source",
+      "zone": "zone-local",
+      "tag": "SCHOOL",
+      "frame": {
+        "x": 405,
+        "y": 700,
+        "w": 620,
+        "h": 82
+      },
+      "evidence": [
+        {
+          "path": "local-bridge/portal_client.py",
+          "start_line": 25,
+          "end_line": 35
+        },
+        {
+          "path": "local-bridge/portal_cli.py",
+          "start_line": 28,
+          "end_line": 100
+        }
+      ]
+    },
+    {
+      "id": "external-providers",
+      "title": "External providers",
+      "caption": "GitHub / Google Calendar / Microsoft Graph",
+      "kind": "source",
+      "zone": "zone-cloud",
+      "tag": "REMOTE",
+      "frame": {
+        "x": 1135,
+        "y": 135,
+        "w": 270,
+        "h": 70
+      },
+      "evidence": [
+        {
+          "path": "lib/github.ts",
+          "start_line": 59,
+          "end_line": 100
+        },
+        {
+          "path": "lib/github.ts",
+          "start_line": 125,
+          "end_line": 172
+        },
+        {
+          "path": "app/api/calendar/events/route.ts",
+          "start_line": 46,
+          "end_line": 90
+        },
+        {
+          "path": "lib/calendar.ts",
+          "start_line": 298,
+          "end_line": 384
+        },
+        {
+          "path": "lib/outlook-mail.ts",
+          "start_line": 1,
+          "end_line": 60
+        },
+        {
+          "path": "lib/microsoft-auth.ts",
+          "start_line": 180,
+          "end_line": 215
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "id": "ui-to-api",
+      "source": "client-request",
+      "target": "api-routes",
+      "kind": "request",
+      "source_port": "right",
+      "target_port": "left",
+      "source_offset": -18,
+      "target_offset": -18
+    },
+    {
+      "id": "api-to-domain",
+      "source": "api-routes",
+      "target": "domain-modules",
+      "kind": "control",
+      "source_port": "bottom",
+      "target_port": "top"
+    },
+    {
+      "id": "domain-to-vault",
+      "source": "domain-modules",
+      "target": "vault-boundary",
+      "kind": "data",
+      "source_port": "right",
+      "target_port": "left",
+      "via": [
+        [
+          700,
+          301
+        ],
+        [
+          700,
+          184
+        ]
+      ],
+      "source_offset": -25
+    },
+    {
+      "id": "vault-to-providers",
+      "source": "vault-boundary",
+      "target": "external-providers",
+      "kind": "data",
+      "source_port": "right",
+      "target_port": "left",
+      "via": [
+        [
+          1085,
+          184
+        ],
+        [
+          1085,
+          170
+        ]
+      ]
+    },
+    {
+      "id": "domain-to-results",
+      "source": "domain-modules",
+      "target": "results-json",
+      "kind": "data",
+      "source_port": "right",
+      "target_port": "left",
+      "via": [
+        [
+          725,
+          326
+        ],
+        [
+          725,
+          384
+        ]
+      ],
+      "source_offset": 0
+    },
+    {
+      "id": "export-to-json",
+      "source": "result-exporter",
+      "target": "results-json",
+      "kind": "data",
+      "source_port": "bottom",
+      "target_port": "top"
+    },
+    {
+      "id": "domain-to-providers",
+      "source": "api-routes",
+      "target": "external-providers",
+      "kind": "request",
+      "source_port": "top",
+      "target_port": "top",
+      "via": [
+        [
+          530,
+          45
+        ],
+        [
+          1270,
+          45
+        ]
+      ],
+      "source_offset": 0,
+      "target_offset": 0
+    },
+    {
+      "id": "browser-to-graph",
+      "source": "client-request",
+      "target": "external-providers",
+      "kind": "request",
+      "source_port": "left",
+      "target_port": "right",
+      "via": [
+        [
+          20,
+          196
+        ],
+        [
+          20,
+          25
+        ],
+        [
+          1445,
+          25
+        ],
+        [
+          1445,
+          170
+        ]
+      ],
+      "source_offset": 0,
+      "target_offset": 0
+    },
+    {
+      "id": "browser-to-bridge",
+      "source": "client-view",
+      "target": "bridge-api",
+      "kind": "request",
+      "source_port": "bottom",
+      "target_port": "top",
+      "source_offset": 0,
+      "target_offset": 0
+    },
+    {
+      "id": "bridge-to-jobs",
+      "source": "bridge-api",
+      "target": "bridge-jobs",
+      "kind": "control",
+      "source_port": "bottom",
+      "target_port": "top"
+    },
+    {
+      "id": "jobs-to-state",
+      "source": "bridge-jobs",
+      "target": "workspace-state",
+      "kind": "data",
+      "source_port": "right",
+      "source_offset": -20,
+      "target_port": "left",
+      "via": [
+        [
+          350,
+          720
+        ],
+        [
+          350,
+          626
+        ]
+      ]
+    },
+    {
+      "id": "jobs-to-portal",
+      "source": "bridge-jobs",
+      "target": "portal-session",
+      "kind": "request",
+      "source_port": "right",
+      "source_offset": 22,
+      "target_port": "left",
+      "target_offset": 8,
+      "via": [
+        [
+          350,
+          762
+        ],
+        [
+          350,
+          749
+        ]
+      ]
+    },
+    {
+      "id": "domain-to-view",
+      "source": "domain-modules",
+      "target": "client-view",
+      "source_port": "left",
+      "target_port": "right",
+      "source_offset": 0,
+      "target_offset": 0
+    }
+  ],
+  "chapters": [
+    {
+      "id": "phase-interface",
+      "label": "01 / The browser shell gathers work across eleven workspace views.",
+      "color": "#79d9c8",
+      "zones": [
+        "zone-browser"
+      ],
+      "entities": [
+        "client-request"
+      ],
+      "flows": [
+        "ui-to-api"
+      ]
+    },
+    {
+      "id": "phase-dispatch",
+      "label": "02 / Same-origin requests enter App Router handlers, then typed domain clients.",
+      "color": "#83baff",
+      "zones": [
+        "zone-next"
+      ],
+      "entities": [
+        "api-routes",
+        "domain-modules"
+      ],
+      "flows": [
+        "api-to-domain"
+      ]
+    },
+    {
+      "id": "phase-repository",
+      "label": "03 / Vault reads resolve through GitHub or local storage; the workbook exporter builds a checked Results bundle.",
+      "color": "#e8b365",
+      "zones": [
+        "zone-data"
+      ],
+      "entities": [
+        "vault-boundary",
+        "result-exporter",
+        "results-json",
+        "external-providers"
+      ],
+      "flows": [
+        "domain-to-vault",
+        "vault-to-providers",
+        "domain-to-results",
+        "export-to-json"
+      ]
+    },
+    {
+      "id": "phase-cloud",
+      "label": "04 / Calendar stays server-side; school mail reaches Microsoft Graph directly from the browser.",
+      "color": "#83baff",
+      "zones": [
+        "zone-cloud"
+      ],
+      "entities": [
+        "external-providers"
+      ],
+      "flows": [
+        "domain-to-providers",
+        "browser-to-graph"
+      ]
+    },
+    {
+      "id": "phase-local",
+      "label": "05 / Mail, portal, and workspace operations cross from the browser to the loopback Bridge.",
+      "color": "#79d9c8",
+      "zones": [
+        "zone-bridge",
+        "zone-local"
+      ],
+      "entities": [
+        "bridge-api",
+        "bridge-jobs",
+        "workspace-state",
+        "portal-session"
+      ],
+      "flows": [
+        "browser-to-bridge",
+        "bridge-to-jobs",
+        "jobs-to-state",
+        "jobs-to-portal"
+      ]
+    },
+    {
+      "id": "phase-render",
+      "label": "06 / Typed JSON returns to the panels while local persistence stays on the user's machine.",
+      "color": "#83baff",
+      "zones": [
+        "zone-browser",
+        "zone-next"
+      ],
+      "entities": [
+        "client-view",
+        "domain-modules"
+      ],
+      "flows": [
+        "domain-to-view"
+      ]
+    }
+  ]
+}

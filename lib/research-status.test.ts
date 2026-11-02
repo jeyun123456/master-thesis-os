@@ -36,13 +36,13 @@ stage: 분석
 `;
 
     const status = parseResearchStatus(markdown);
-    expect(status.sourcePath).toBe('02_Projects/thesis/project.md');
+    expect(status.sourcePath).toBe('02_Projects/Master_필요노동과_노동력재생산/project.md');
     expect(status.researchQuestion).toContain('한국의 필요노동');
     expect(status.currentInterpretation).toContain('재생산조건');
     expect(status.unresolved).toHaveLength(2);
     expect(status.nextActions).toHaveLength(2);
     expect(status.currentStage).toBe('해석 · 집필 준비');
-    expect(status.decisions[0].path).toBe('02_Projects/thesis/decisions/D003_constant_price_main.md');
-    expect(status.importantFiles[0].path).toBe('02_Projects/thesis/코드/결과/주요결과/06_decomposition.xlsx');
+    expect(status.decisions[0].path).toBe('02_Projects/Master_필요노동과_노동력재생산/decisions/D003_constant_price_main.md');
+    expect(status.importantFiles[0].path).toBe('02_Projects/Master_필요노동과_노동력재생산/코드/결과/주요결과/06_decomposition.xlsx');
   });
 });

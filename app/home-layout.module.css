@@ -1,0 +1,28 @@
+.agenda { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; border-bottom: 1px solid var(--line); padding: 8px 0 24px; margin-bottom: 24px; }
+.status { display: grid; gap: 6px; min-width: 0; }
+.status > span { color: var(--text-soft); font-size: 13px; }
+.status > strong { font-size: 20px; font-weight: 650; line-height: 1.4; }
+.status > small { font-size: 13px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
+.research { min-width: 0; }
+.workspace { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); align-items: start; gap: 24px; margin-top: 24px; }
+.research h4 { margin: 0 0 16px; font-size: 18px; line-height: 1.5; overflow-wrap: anywhere; }
+.research p { margin: 6px 0 16px; max-width: 72ch; color: var(--text-soft); font-size: 14px; line-height: 1.75; overflow-wrap: anywhere; }
+.research b { font-size: 13px; color: var(--text); }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 16px 0; font-size: 13px; color: var(--muted); }
+.operations { margin-top: 32px; border-top: 1px solid var(--line); padding-top: 16px; }
+.operations > summary { cursor: pointer; padding: 8px 0; color: var(--text-soft); font-size: 14px; }
+.connections { position: relative; font-size: 13px; }
+.connections > summary { cursor: pointer; padding: 8px; color: var(--text-soft); }
+.connections > div { position: absolute; right: 0; z-index: 50; display: grid; gap: 8px; width: 240px; border: 1px solid var(--line); padding: 16px; background: var(--panel); border-radius: 12px; box-shadow: var(--shadow); }
+@media (max-width: 980px) {
+  .workspace { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .agenda { gap: 16px; }
+  .status > strong { font-size: 18px; }
+  .status > small { font-size: 12px; }
+  .connections > summary { min-height: 44px; }
+}
+@media (max-width: 390px) {
+  .agenda { grid-template-columns: minmax(0, 1fr); }
+}

@@ -222,7 +222,7 @@ function updateFrontmatterValue(markdown: string, key: string, value: string): s
   return `${updatedFrontmatter}${markdown.slice(match[0].length)}`;
 }
 
-/** Folder that holds a project's project.md (e.g. 02_Projects/thesis). Falls back to the legacy projects/<id> layout. */
+/** Folder that holds a project's project.md (e.g. 02_Projects/Master_필요노동과_노동력재생산). Falls back to the legacy projects/<id> layout. */
 export function projectFolder(project: Pick<ResearchProject, 'id' | 'sourcePath'>): string {
   const separator = project.sourcePath.lastIndexOf('/');
   return separator > 0 ? project.sourcePath.slice(0, separator) : `projects/${project.id}`;

@@ -3,7 +3,7 @@ import { readVaultText, vaultConfigured } from '@/lib/vault-repository';
 import { parseResearchStatus } from '@/lib/research-status';
 import { requireP0Session } from '@/lib/p0-server';
 
-const STATUS_PATH = '02_Projects/thesis/project.md';
+const STATUS_PATH = '02_Projects/Master_필요노동과_노동력재생산/project.md';
 
 export async function GET(request: NextRequest) {
   const authError = await requireP0Session(request);
