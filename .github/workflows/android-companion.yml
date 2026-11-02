@@ -1,4 +1,4 @@
-name: Android companion APK (feature branch only)
+name: Android companion APK
 on:
   push:
     branches:
@@ -36,7 +36,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: contains(github.event.head_commit.message, '[sign-release]')
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[sign-release]')
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     environment: android-release
@@ -81,7 +81,14 @@ jobs:
           mkdir -p experiments/android-home-poc/release-output
           output="experiments/android-home-poc/release-output/Chocomint-Lab-Galaxy-v1.0.0.apk"
           cp experiments/android-home-poc/app/build/outputs/apk/release/app-release.apk "$output"
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$output"
+          # SHA-1 of the signing certificate that Google OAuth is registered for; a different key would break sign-in and updates.
+          expected_sha1="fe79133f02e71b2b7905796a2e0c06afc8aefe86"
+          signer_output="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$output")"
+          actual_sha1="$(printf '%s\n' "$signer_output" | sed -n 's/^Signer #1 certificate SHA-1 digest: //p')"
+          if [[ "$actual_sha1" != "$expected_sha1" ]]; then
+            echo "Signing certificate SHA-1 mismatch; refusing to publish this APK." >&2
+            exit 1
+          fi
           (cd experiments/android-home-poc/release-output && sha256sum Chocomint-Lab-Galaxy-v1.0.0.apk > Chocomint-Lab-Galaxy-v1.0.0.apk.sha256)
       - uses: actions/upload-artifact@v4
         with:
