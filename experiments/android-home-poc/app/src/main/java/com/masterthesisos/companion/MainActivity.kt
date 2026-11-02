@@ -7,6 +7,12 @@ import android.view.Gravity
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.GetCredentialProviderConfigurationException
+import androidx.credentials.exceptions.GetCredentialUnsupportedException
+import androidx.credentials.exceptions.NoCredentialException
+import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import com.masterthesisos.companion.auth.GoogleSignInManager
 import com.masterthesisos.companion.data.WidgetRepository
 import com.masterthesisos.companion.sync.WidgetRefreshWorker
@@ -100,11 +106,24 @@ class MainActivity : Activity() {
                 val token = GoogleSignInManager.idToken(this@MainActivity)
                 repo.login(token)
                 WidgetRefreshWorker.schedule(this@MainActivity)
-            } catch (_: Exception) {
-                message.text = "로그인에 실패했어. 허용된 계정인지, 연결 상태를 확인해줘."
+            } catch (e: Exception) {
+                message.text = signInFailureMessage(e)
             }
             render()
         }
+    }
+
+    /** Maps the failure to its real type so a setup problem is not reported as a network or account problem. */
+    private fun signInFailureMessage(e: Exception): String = when (e) {
+        is GetCredentialCancellationException -> "로그인을 취소했어."
+        is NoCredentialException -> "이 기기에 Google 계정이 없어. 계정을 추가한 뒤 다시 시도해줘."
+        is GetCredentialProviderConfigurationException ->
+            "Google 로그인 설정이 맞지 않아. 패키지 이름과 SHA-1 등록을 확인해줘."
+        is GetCredentialUnsupportedException -> "이 기기는 Google 로그인을 지원하지 않아."
+        is GetCredentialException -> "Google 로그인 실패(${e.type})."
+        is GoogleIdTokenParsingException -> "Google 응답을 읽지 못했어."
+        is IllegalStateException -> "앱 설정 오류: ${e.message}"
+        else -> "로그인 실패(${e.javaClass.simpleName}). 연결 상태를 확인해줘."
     }
 
     private fun signOutClicked() {
