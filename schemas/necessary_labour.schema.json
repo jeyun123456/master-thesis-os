@@ -13,7 +13,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["workbook", "sheet", "yearRange", "valueRange"],
       "properties": {
-        "workbook": { "const": "projects/thesis/코드/결과/주요결과/05_constant_value.xlsx" },
+        "workbook": { "const": "02_Projects/Master_필요노동과_노동력재생산/코드/결과/주요결과/05_constant_value.xlsx" },
         "sheet": { "const": "summary" },
         "yearRange": { "const": "A2:A4" },
         "valueRange": { "const": "K2:K4" }
@@ -24,7 +24,7 @@
       "required": ["id", "version", "priceBasis", "sectorClassification"],
       "properties": {
         "id": { "const": "necessary-labour-constant-price" },
-        "version": { "const": "2026-09-03" },
+        "version": { "const": "2026-09-29-D011" },
         "priceBasis": { "const": "2020 constant prices" },
         "sectorClassification": { "const": "K77" }
       }

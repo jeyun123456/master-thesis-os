@@ -13,7 +13,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["workbook", "summarySheet", "summaryRange", "contributionColumns"],
       "properties": {
-        "workbook": { "const": "projects/thesis/코드/결과/주요결과/06_decomposition.xlsx" },
+        "workbook": { "const": "02_Projects/Master_필요노동과_노동력재생산/코드/결과/주요결과/06_decomposition.xlsx" },
         "summarySheet": { "const": "summary" },
         "summaryRange": { "const": "A1:I4" },
         "contributionColumns": { "const": "M:O" }
@@ -24,7 +24,7 @@
       "required": ["id", "version", "priceBasis", "sectorClassification"],
       "properties": {
         "id": { "const": "symmetric-two-factor-decomposition" },
-        "version": { "const": "2026-09-03" },
+        "version": { "const": "2026-09-29-D011" },
         "priceBasis": { "const": "2020 constant prices" },
         "sectorClassification": { "const": "K77" }
       }

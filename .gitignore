@@ -19,3 +19,6 @@ local-bridge/data/
 
 # mtos-agent runtime data
 services/mtos-agent/data/
+
+# Leftover local build output of the removed Wallpaper Companion
+experiments/wallpaper-host-poc/

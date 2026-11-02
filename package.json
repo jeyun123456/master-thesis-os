@@ -14,6 +14,8 @@
     "test:p0:integration": "node scripts/test-p0-http-integration.mjs",
     "test:p0:production": "node scripts/test-p0-http-integration.mjs --production",
     "lint": "tsc --noEmit",
+    "test:bridge": "python -m unittest discover -s local-bridge -p test_*.py",
+    "test:portal:e2e": "python scripts/portal_e2e_smoke.py",
     "test:exporter": "python -m unittest exporter.test_export_results",
     "test:web": "vitest run",
     "test:agent": "node --test \"services/mtos-agent/test/*.test.js\"",
@@ -28,9 +30,11 @@
     "react-dom": "19.2.7"
   },
   "devDependencies": {
+    "@oxlint/plugins": "1.87.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "oxlint": "1.87.0",
     "typescript": "^5.9.0",
     "vitest": "^5.0.0"
   }

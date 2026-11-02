@@ -83,7 +83,7 @@ export async function getDashboardBundle(options: { resultsPath?: string; localR
   try {
     configuredPath = (options.resultsPath || process.env.GITHUB_RESULTS_PATH || defaultResultsPath).replace(/\/$/, '');
     if (!isSafeRepositoryPath(configuredPath)) throw new Error('Invalid results path');
-    const source = (options.preferGithub ?? githubConfigured()) ? 'github' : 'local';
+    const source = (options.preferGithub ?? (githubConfigured() && !process.env.LOCAL_REPOSITORY_ROOT?.trim())) ? 'github' : 'local';
     const documents = source === 'github' ? await loadGithubDocuments(configuredPath) : await loadLocalDocuments(configuredPath, options.localRepositoryRoot);
     validateDashboardDocuments(documents);
     return { source, resultPath: configuredPath, necessaryLabour: documents[0], decomposition: documents[1], validation: documents[2] };
